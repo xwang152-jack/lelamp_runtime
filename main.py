@@ -234,7 +234,8 @@ async def entrypoint(ctx: agents.JobContext):
     
     session = AgentSession(
         llm=openai.realtime.RealtimeModel(
-            voice="ballad" 
+            voice="ballad",
+            base_url=os.getenv("OPENAI_BASE_URL")
         )
     )
 
