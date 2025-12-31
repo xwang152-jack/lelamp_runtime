@@ -88,8 +88,21 @@ class AnimationService:
     def handle_event(self, event_type: str, payload: Any):
         if event_type == "play":
             self._handle_play(payload)
+        elif event_type == "stop":
+            self._handle_stop()
         else:
             print(f"Unknown event type: {event_type}")
+
+    def _handle_stop(self):
+        """Stop current playback and clear queue to stay at current position"""
+        print("Stopping all motion")
+        self._current_recording = None
+        self._current_actions = []
+        self._current_frame_index = 0
+        self._interpolation_frames = 0
+        self._interpolation_target = None
+        with self._event_lock:
+            self._event_queue = []
     
     def _handle_play(self, recording_name: str):
         """Start playing a recording with interpolation from current state"""

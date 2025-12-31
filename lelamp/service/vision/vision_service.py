@@ -13,11 +13,13 @@ class VisionService(ServiceBase):
         *,
         enabled: bool = True,
         index_or_path: int | str = 0,
-        width: int = 640,
-        height: int = 640,
+        width: int = 1024,
+        height: int = 768,
         capture_interval_s: float = 2.5,
         jpeg_quality: int = 92,
         max_age_s: float = 15.0,
+        rotate_deg: int = 0,
+        flip: str = "none",
     ):
         super().__init__("vision")
         self.enabled = enabled
@@ -27,6 +29,8 @@ class VisionService(ServiceBase):
         self.capture_interval_s = capture_interval_s
         self.jpeg_quality = jpeg_quality
         self.max_age_s = max_age_s
+        self.rotate_deg = int(rotate_deg)
+        self.flip = str(flip or "none")
 
         self._camera = None
         self._camera_thread: threading.Thread | None = None
@@ -78,11 +82,36 @@ class VisionService(ServiceBase):
             self.jpeg_quality = int(cfg["jpeg_quality"])
         if "max_age_s" in cfg:
             self.max_age_s = float(cfg["max_age_s"])
+        if "rotate_deg" in cfg:
+            self.rotate_deg = int(cfg["rotate_deg"])
+        if "flip" in cfg:
+            self.flip = str(cfg["flip"] or "none")
 
         if self.enabled:
             self._start_camera_thread()
         else:
             self._stop_camera_thread(timeout=5.0)
+
+    def _apply_transform(self, frame_bgr):
+        import cv2
+
+        deg = int(self.rotate_deg or 0) % 360
+        if deg == 90:
+            frame_bgr = cv2.rotate(frame_bgr, cv2.ROTATE_90_CLOCKWISE)
+        elif deg == 180:
+            frame_bgr = cv2.rotate(frame_bgr, cv2.ROTATE_180)
+        elif deg == 270:
+            frame_bgr = cv2.rotate(frame_bgr, cv2.ROTATE_90_COUNTERCLOCKWISE)
+
+        flip = (self.flip or "none").strip().lower()
+        if flip in ("h", "horizontal", "x"):
+            frame_bgr = cv2.flip(frame_bgr, 1)
+        elif flip in ("v", "vertical", "y"):
+            frame_bgr = cv2.flip(frame_bgr, 0)
+        elif flip in ("hv", "vh", "both", "xy"):
+            frame_bgr = cv2.flip(frame_bgr, -1)
+
+        return frame_bgr
 
     def _start_camera_thread(self):
         if self._camera_thread and self._camera_thread.is_alive():
@@ -165,6 +194,7 @@ class VisionService(ServiceBase):
                 continue
 
             try:
+                frame = self._apply_transform(frame)
                 jpeg_b64 = self._encode_bgr_to_jpeg_b64(frame)
             except Exception as e:
                 self.logger.warning(f"Vision 编码 JPEG 失败: {e}")
