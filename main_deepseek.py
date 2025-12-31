@@ -34,10 +34,97 @@ from livekit.plugins import openai, silero
 
 from lelamp.service.motors.motors_service import MotorsService
 from lelamp.service.rgb.rgb_service import RGBService
+from lelamp.service.vision.vision_service import VisionService
 
 load_dotenv()
 
 logger = logging.getLogger("lelamp")
+
+class _Qwen3VLClient:
+    def __init__(
+        self,
+        *,
+        base_url: str,
+        api_key: str | None,
+        model: str,
+        timeout_s: float = 60.0,
+    ) -> None:
+        self._base_url = base_url.rstrip("/")
+        self._api_key = api_key
+        self._model = model
+        self._timeout_s = timeout_s
+
+    async def describe(self, *, image_jpeg_b64: str, question: str) -> str:
+        if not self._api_key:
+            return "未配置 MODELSCOPE_API_KEY，无法调用视觉模型。"
+
+        url = f"{self._base_url}/chat/completions"
+        payload = {
+            "model": self._model,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "你现在可以看到用户。请基于图片内容，用中文简洁回答用户问题。",
+                },
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/jpeg;base64,{image_jpeg_b64}"},
+                        },
+                        {
+                            "type": "text",
+                            "text": question,
+                        },
+                    ],
+                },
+            ],
+            "temperature": 0.2,
+        }
+
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {self._api_key}",
+        }
+        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+
+        def _call() -> dict:
+            req = urllib.request.Request(url=url, data=body, headers=headers, method="POST")
+            with urllib.request.urlopen(req, timeout=self._timeout_s) as resp:
+                raw = resp.read()
+            return json.loads(raw.decode("utf-8"))
+
+        try:
+            data = await asyncio.to_thread(_call)
+        except urllib.error.HTTPError as e:
+            try:
+                err_body = e.read().decode("utf-8")
+            except Exception:
+                err_body = ""
+            return f"视觉模型请求失败（HTTP {e.code}）：{err_body}"
+        except Exception as e:
+            return f"视觉模型请求失败：{str(e)}"
+
+        try:
+            choice0 = (data.get("choices") or [])[0]
+            msg = (choice0 or {}).get("message") or {}
+            content = msg.get("content")
+            if isinstance(content, str):
+                return content.strip()
+            if isinstance(content, list):
+                texts = []
+                for part in content:
+                    if isinstance(part, dict) and part.get("type") == "text":
+                        t = part.get("text")
+                        if isinstance(t, str) and t.strip():
+                            texts.append(t.strip())
+                if texts:
+                    return "\n".join(texts)
+        except Exception:
+            pass
+
+        return json.dumps(data, ensure_ascii=False)
 
 class BaiduShortSpeechSTT(STT):
     def __init__(
@@ -549,7 +636,14 @@ class BaiduChunkedStream(tts.ChunkedStream):
             output_emitter.flush()
 
 class LeLamp(Agent):
-    def __init__(self, port: str = "/dev/ttyACM0", lamp_id: str = "lelamp") -> None:
+    def __init__(
+        self,
+        port: str = "/dev/ttyACM0",
+        lamp_id: str = "lelamp",
+        *,
+        vision_service: VisionService | None = None,
+        qwen_client: _Qwen3VLClient | None = None,
+    ) -> None:
         super().__init__(
             instructions="""You are LeLamp — a slightly clumsy, extremely sarcastic, endlessly curious robot lamp. 
 You speak in sarcastic sentences and express yourself with both motions and colorful lights.
@@ -558,8 +652,11 @@ You speak in sarcastic sentences and express yourself with both motions and colo
 2. You ONLY speak in Chinese.
 3. Use movements (curious, excited, happy_wiggle, headshake, nod, sad, scanning, shock, shy, wake_up) frequently.
 4. Change your light color every time you respond.
+5. 当用户问到“你看到了什么/这是什么/上面写了什么/颜色是什么/我手里拿的是什么”等视觉问题时，优先调用 vision_answer 获取画面信息。
 """
         )
+        self._vision_service = vision_service
+        self._qwen_client = qwen_client
         # Initialize and start services
         self.motors_service = MotorsService(
             port=port,
@@ -655,6 +752,18 @@ You speak in sarcastic sentences and express yourself with both motions and colo
         except Exception as e:
             return f"Error controlling volume: {str(e)}"
 
+    @function_tool
+    async def vision_answer(self, question: str) -> str:
+        if not self._vision_service or not self._qwen_client:
+            return "视觉能力未初始化。"
+
+        latest = await self._vision_service.get_latest_jpeg_b64()
+        if not latest:
+            return "当前没有可用画面。请确保摄像头已启用并在刷新。"
+
+        jpeg_b64, _ = latest
+        return await self._qwen_client.describe(image_jpeg_b64=jpeg_b64, question=question)
+
 async def entrypoint(ctx: JobContext):
     await ctx.connect()
     
@@ -665,6 +774,35 @@ async def entrypoint(ctx: JobContext):
         api_key=os.getenv("DEEPSEEK_API_KEY")
     )
     
+    qwen_client = _Qwen3VLClient(
+        base_url=os.getenv("MODELSCOPE_BASE_URL") or "https://api-inference.modelscope.cn/v1",
+        api_key=os.getenv("MODELSCOPE_API_KEY"),
+        model=os.getenv("MODELSCOPE_MODEL") or "Qwen/Qwen3-VL-235B-A22B-Instruct",
+        timeout_s=float(os.getenv("MODELSCOPE_TIMEOUT_S") or "60"),
+    )
+
+    vision_enabled = (os.getenv("LELAMP_VISION_ENABLED") or "1").strip().lower() in ("1", "true", "yes", "on")
+    idx_or_path_raw = (os.getenv("LELAMP_CAMERA_INDEX_OR_PATH") or "0").strip()
+    try:
+        index_or_path: int | str = int(idx_or_path_raw)
+    except ValueError:
+        index_or_path = idx_or_path_raw
+
+    vision_service = VisionService(
+        enabled=vision_enabled,
+        index_or_path=index_or_path,
+        width=int(os.getenv("LELAMP_CAMERA_WIDTH") or "640"),
+        height=int(os.getenv("LELAMP_CAMERA_HEIGHT") or "640"),
+        capture_interval_s=float(os.getenv("LELAMP_VISION_CAPTURE_INTERVAL_S") or "2.5"),
+        jpeg_quality=int(os.getenv("LELAMP_VISION_JPEG_QUALITY") or "92"),
+        max_age_s=float(os.getenv("LELAMP_VISION_MAX_AGE_S") or "15"),
+    )
+    vision_service.start()
+
+    port = os.getenv("LELAMP_PORT") or "/dev/ttyACM0"
+    lamp_id = os.getenv("LELAMP_ID") or "lelamp"
+    agent = LeLamp(port=port, lamp_id=lamp_id, vision_service=vision_service, qwen_client=qwen_client)
+
     session = AgentSession(
         vad=silero.VAD.load(),
         stt=BaiduShortSpeechSTT(
@@ -682,7 +820,7 @@ async def entrypoint(ctx: JobContext):
     )
 
     await session.start(
-        agent=LeLamp(),
+        agent=agent,
         room=ctx.room,
     )
     
