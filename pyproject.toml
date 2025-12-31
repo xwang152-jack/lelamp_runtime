@@ -30,3 +30,8 @@ hardware = [
     "adafruit-circuitpython-neopixel",
     "rpi-ws281x",
 ]
+vision = [
+    "mediapipe; (sys_platform == 'darwin' and platform_machine == 'arm64') or (sys_platform == 'linux' and platform_machine == 'x86_64') or (sys_platform == 'win32' and platform_machine == 'AMD64')",
+    "opencv-python; sys_platform != 'linux'",
+    "opencv-python-headless; sys_platform == 'linux'",
+]
