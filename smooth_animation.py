@@ -1,4 +1,5 @@
 from dotenv import load_dotenv
+import os
 import argparse
 import subprocess
 
@@ -63,8 +64,14 @@ Demo rules:
         self.animation_service.start()
         self.rgb_service.start()
 
-        # Trigger wake up animation via animation service
-        self.animation_service.dispatch("play", "wake_up")
+        boot_anim_enabled = (os.getenv("LELAMP_BOOT_ANIMATION") or "0").strip().lower() in (
+            "1",
+            "true",
+            "yes",
+            "on",
+        )
+        if boot_anim_enabled:
+            self.animation_service.dispatch("play", "wake_up")
         self.rgb_service.dispatch("solid", (255, 255, 255))
         self._set_system_volume(100)
 
@@ -193,6 +200,19 @@ Demo rules:
         except Exception as e:
             result = f"Error painting RGB pattern: {str(e)}"
             return result
+
+    @function_tool
+    async def set_rgb_brightness(self, percent: int) -> str:
+        print(f"LeLamp: set_rgb_brightness function called with percent: {percent}")
+        try:
+            p = int(percent)
+        except Exception:
+            return "Error: brightness must be 0-100"
+        if p < 0 or p > 100:
+            return "Error: brightness must be 0-100"
+        v = int(round(p * 255 / 100))
+        self.rgb_service.dispatch("brightness", v)
+        return f"Set brightness to {p}%"
 
     @function_tool
     async def set_volume(self, volume_percent: int) -> str:

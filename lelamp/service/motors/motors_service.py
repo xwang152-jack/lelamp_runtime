@@ -1,8 +1,9 @@
 import os
 import csv
 import time
+import threading
 from typing import Any, List
-from ..base import ServiceBase
+from ..base import ServiceBase, Priority
 from lelamp.follower import LeLampFollowerConfig, LeLampFollower
 
 
@@ -15,6 +16,12 @@ class MotorsService(ServiceBase):
         self.robot_config = LeLampFollowerConfig(port=port, id=lamp_id)
         self.robot: LeLampFollower = None
         self.recordings_dir = os.path.join(os.path.dirname(__file__), "..", "..", "recordings")
+        self._cancel_playback = threading.Event()
+
+    def dispatch(self, event_type: str, payload: Any, priority: Priority = Priority.NORMAL):
+        if event_type == "stop":
+            self._cancel_playback.set()
+        return super().dispatch(event_type, payload, priority=priority)
     
     def start(self):
         super().start()
@@ -31,6 +38,8 @@ class MotorsService(ServiceBase):
     def handle_event(self, event_type: str, payload: Any):
         if event_type == "play":
             self._handle_play(payload)
+        elif event_type == "stop":
+            self.logger.info("Stopping motors playback")
         else:
             self.logger.warning(f"Unknown event type: {event_type}")
     
@@ -39,6 +48,8 @@ class MotorsService(ServiceBase):
         if not self.robot:
             self.logger.error("Robot not connected")
             return
+
+        self._cancel_playback.clear()
         
         csv_filename = f"{recording_name}.csv"
         csv_path = os.path.join(self.recordings_dir, csv_filename)
@@ -55,6 +66,9 @@ class MotorsService(ServiceBase):
             self.logger.info(f"Playing {len(actions)} actions from {recording_name}")
             
             for row in actions:
+                if self._cancel_playback.is_set():
+                    self.logger.info(f"Playback cancelled: {recording_name}")
+                    break
                 t0 = time.perf_counter()
                 
                 # Extract action data (exclude timestamp column)
