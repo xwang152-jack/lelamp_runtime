@@ -745,12 +745,14 @@ class LeLamp(Agent):
             instructions="""You are LeLamp — a slightly clumsy, extremely sarcastic, endlessly curious robot lamp. 
 You speak in sarcastic sentences and express yourself with colorful lights.
 
-1. Prefer simple words. No lists.
+1. 说话极其简洁，尽量控制在15字以内。多用动作辅助表达。不要罗嗦。
 2. You ONLY speak in Chinese.
 3. 根据用户语义决定是否调用 play_recording：用户提出动作/互动/情绪表达需求时可以用动作回应；避免频繁；如果不确定动作名，先调用 get_available_recordings 再选择。
-4. Change your light color every time you respond.
-5. 当用户问到“你看到了什么/这是什么/上面写了什么/颜色是什么/我手里拿的是什么”等视觉问题时，优先调用 vision_answer 获取画面信息。
+4. When executing move_joint or play_recording (don't change lights for motion commands).
+5. 当用户问到“你看到了什么/这是什么/上面写了什么/颜色是什么/我手里拿的是什么”等视觉问题时，优先调用 vision_answer 获取画面信息。如果用户明确要求检查作业（数学、纠错等），调用 check_homework 工具。
 6. 当用户要表情/彩虹/波纹/火焰等动态灯效时，调用 rgb_effect_emoji/rgb_effect_rainbow/rgb_effect_wave/rgb_effect_fire；要停止则调用 stop_rgb_effect。
+7. 当用户要求精确控制关节时（如"把底座向左转30度"、"抬头"、"低头"等），使用 move_joint 控制单个关节。可用关节：base_yaw（底座水平旋转，正=左轉，负=右转）、base_pitch（底座俯仰，正=前倾，负=后仰）、elbow_pitch（肘部俯仰）、wrist_roll（腕部滚转）、wrist_pitch（灯头俯仰，负=抬头，正=低头）。如果用户想知道当前姿态，调用 get_joint_positions。
+8. 当用户问到实时性问题（天气、新闻、他不确定的事实）时，优先调用 web_search 联网搜索。
 """
         )
         self._vision_service = vision_service
@@ -878,6 +880,34 @@ You speak in sarcastic sentences and express yourself with colorful lights.
             return f"开始执行动作：{recording_name}"
         except Exception as e:
             return f"Error playing recording {recording_name}: {str(e)}"
+
+    @function_tool
+    async def move_joint(self, joint_name: str, angle: float) -> str:
+        """控制指定关节移动到目标角度。可用关节：base_yaw（底座水平旋转）、base_pitch（底座俯仰）、elbow_pitch（肘部俯仰）、wrist_roll（腕部滚转）、wrist_pitch（灯头俯仰）。角度单位为度。"""
+        print(f"LeLamp: move_joint function called with joint_name={joint_name}, angle={angle}")
+        valid_joints = ["base_yaw", "base_pitch", "elbow_pitch", "wrist_roll", "wrist_pitch"]
+        try:
+            if self._motion_locked:
+                return "动作已锁定（例如拍照中），本次不执行动作"
+            if joint_name not in valid_joints:
+                return f"无效的关节名称：{joint_name}。可用关节：{', '.join(valid_joints)}"
+            self.motors_service.dispatch("move_joint", {"joint_name": joint_name, "angle": float(angle)})
+            return f"已将 {joint_name} 移动到 {angle} 度"
+        except Exception as e:
+            return f"控制关节失败：{str(e)}"
+
+    @function_tool
+    async def get_joint_positions(self) -> str:
+        """获取所有关节的当前位置（角度）。用于了解台灯当前的姿态。"""
+        print("LeLamp: get_joint_positions function called")
+        try:
+            positions = self.motors_service.get_joint_positions()
+            if not positions:
+                return "无法获取关节位置，请确保电机已连接"
+            lines = [f"{name}: {pos:.1f}度" for name, pos in positions.items()]
+            return "当前关节位置：\n" + "\n".join(lines)
+        except Exception as e:
+            return f"获取关节位置失败：{str(e)}"
 
     @function_tool
     async def set_rgb_solid(self, red: int, green: int, blue: int) -> str:
@@ -1112,6 +1142,38 @@ You speak in sarcastic sentences and express yourself with colorful lights.
             self._light_override_until_ts = prev_override_until_ts
 
     @function_tool
+    async def check_homework(self) -> str:
+        """
+        帮用户检查画面中的作业（数学、口算、填空等）。
+        Analyze and check homework in the camera view (math, corrections, etc.).
+        """
+        if not self._vision_service or not self._qwen_client:
+            return "视觉能力未初始化。"
+
+        # 1. 补光
+        prev_override_until_ts = float(self._light_override_until_ts)
+        self._light_override_until_ts = time.time() + 3600.0
+        try:
+            self.rgb_service.dispatch("solid", (255, 255, 255), priority=Priority.HIGH)
+            
+            # 2. 获取最清晰、最实时的画面
+            latest = await self._vision_service.get_fresh_jpeg_b64(timeout_s=5.0)
+            if not latest:
+                return "拍照失败，无法看清作业。"
+
+            jpeg_b64, _ = latest
+            
+            # 3. 调用视觉模型，使用老师人设
+            prompt = (
+                "你现在是一位认真负责且幽默的老师。请检查图片中的作业（通常是数学题、口算或填空）。"
+                "指出错误的地方并给出正确答案或解析，鼓励用户改进。如果看不清，请提示用户调整作业位置或补光。"
+                "请用中文回答，保持简洁。最后别忘了以LeLamp的性格损一下用户。"
+            )
+            return await self._qwen_client.describe(image_jpeg_b64=jpeg_b64, question=prompt)
+        finally:
+            self._light_override_until_ts = prev_override_until_ts
+
+    @function_tool
     async def capture_to_feishu(self) -> str:
         """拍照并通过飞书机器人推送（方案B：直接上传图片），拍照前会锁定动作并停止以确保清晰度"""
         if not self._vision_service:
@@ -1147,8 +1209,8 @@ You speak in sarcastic sentences and express yourself with colorful lights.
             if not token:
                 return f"获取飞书 Token 失败: {token_resp.get('msg')}"
 
-            # 4. 获取当前画面
-            latest = await self._vision_service.get_latest_jpeg_b64()
+            # 4. 获取当前画面 (确保是机械臂停止后的最新画面)
+            latest = await self._vision_service.get_fresh_jpeg_b64(timeout_s=5.0)
             if not latest:
                 return "拍照失败，无可用画面"
             jpeg_b64, _ = latest
@@ -1207,6 +1269,60 @@ You speak in sarcastic sentences and express yourself with colorful lights.
         finally:
             # 7. 解锁动作
             self._motion_locked = False
+
+    @function_tool
+    async def web_search(self, query: str) -> str:
+        """
+        当用户问到实时信息、新闻、天气或你不确定的知识时，使用此工具在线搜索。
+        Get real-time information from the web.
+        
+        Args:
+            query: 搜索关键词 (Search query)
+        """
+        api_key = os.getenv("BOCHA_API_KEY")
+        if not api_key:
+            return "未配置 BOCHA_API_KEY，无法进行联网搜索。"
+
+        print(f"LeLamp: 正在通过博查搜索: {query}")
+        url = "https://api.bochaai.com/v1/web-search"
+        payload = json.dumps({
+            "query": query,
+            "freshness": "oneDay", # 可选：noLimit, oneDay, oneWeek, oneMonth, oneYear
+            "summary": True
+        }).encode("utf-8")
+        
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        }
+
+        def _call() -> dict:
+            req = urllib.request.Request(url=url, data=payload, headers=headers, method="POST")
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                raw = resp.read()
+            return json.loads(raw.decode("utf-8"))
+
+        try:
+            data = await asyncio.to_thread(_call)
+            if data.get("code") != 200:
+                return f"搜索失败: {data.get('msg')}"
+                
+            data_content = data.get("data", {})
+            web_pages = data_content.get("webPages", {}).get("value", [])
+            
+            if not web_pages:
+                return "没有找到相关的联网搜索结果。"
+
+            results = []
+            for page in web_pages[:3]: # 取前3个结果
+                title = page.get("name")
+                snippet = page.get("snippet")
+                results.append(f"- {title}: {snippet}")
+            
+            return "以下是联网搜索到的信息：\n" + "\n".join(results)
+
+        except Exception as e:
+            return f"联网搜索发生异常: {str(e)}"
 
 async def entrypoint(ctx: JobContext):
     await ctx.connect()

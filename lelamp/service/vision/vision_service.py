@@ -39,6 +39,7 @@ class VisionService(ServiceBase):
         self._frame_lock = threading.Lock()
         self._latest_jpeg_b64: str | None = None
         self._latest_ts: float = 0.0
+        self._force_capture = False
 
     def start(self):
         super().start()
@@ -179,10 +180,16 @@ class VisionService(ServiceBase):
                     continue
 
             now = time.time()
-            if now - last_capture_ts < float(self.capture_interval_s):
+            if not self._force_capture and now - last_capture_ts < float(self.capture_interval_s):
                 time.sleep(0.02)
                 continue
 
+            self._force_capture = False
+
+            # Flush camera buffer: grab several frames to get the latest one
+            for _ in range(5):
+                self._camera.grab()
+                
             ok, frame = self._camera.read()
             if not ok or frame is None:
                 try:
@@ -218,3 +225,22 @@ class VisionService(ServiceBase):
                 return (self._latest_jpeg_b64, self._latest_ts)
 
         return await asyncio.to_thread(_get)
+
+    async def get_fresh_jpeg_b64(self, timeout_s: float = 5.0) -> tuple[str, float] | None:
+        """Wait for a new frame to be captured and return it."""
+        start_time = time.time()
+        self.trigger_capture()
+        
+        while time.time() - start_time < timeout_s:
+            latest = await self.get_latest_jpeg_b64()
+            if latest:
+                _, ts = latest
+                if ts >= start_time:
+                    return latest
+            await asyncio.sleep(0.1)
+            
+        return await self.get_latest_jpeg_b64()
+
+    def trigger_capture(self):
+        """Force the camera loop to capture a frame immediately."""
+        self._force_capture = True
