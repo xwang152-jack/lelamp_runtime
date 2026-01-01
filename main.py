@@ -53,7 +53,7 @@ Demo rules:
             led_pin=12,
             led_freq_hz=800000,
             led_dma=10,
-            led_brightness=255,
+            led_brightness=25,
             led_invert=False,
             led_channel=0
         )
