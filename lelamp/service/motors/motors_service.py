@@ -8,6 +8,9 @@ from lelamp.follower import LeLampFollowerConfig, LeLampFollower
 
 
 class MotorsService(ServiceBase):
+    # Valid joint names for the LeLamp robot
+    VALID_JOINTS = ["base_yaw", "base_pitch", "elbow_pitch", "wrist_roll", "wrist_pitch"]
+    
     def __init__(self, port: str, lamp_id: str, fps: int = 30):
         super().__init__("motors")
         self.port = port
@@ -38,10 +41,62 @@ class MotorsService(ServiceBase):
     def handle_event(self, event_type: str, payload: Any):
         if event_type == "play":
             self._handle_play(payload)
+        elif event_type == "move_joint":
+            self._handle_move_joint(payload)
         elif event_type == "stop":
             self.logger.info("Stopping motors playback")
         else:
             self.logger.warning(f"Unknown event type: {event_type}")
+    
+    def _handle_move_joint(self, payload: dict):
+        """Move a single joint to a specified angle"""
+        if not self.robot:
+            self.logger.error("Robot not connected")
+            return
+        
+        joint_name = payload.get("joint_name")
+        angle = payload.get("angle")
+        
+        if joint_name not in self.VALID_JOINTS:
+            self.logger.error(f"Invalid joint name: {joint_name}")
+            return
+        
+        try:
+            # Get current positions of all joints first
+            obs = self.robot.get_observation()
+            action = {}
+            for key, value in obs.items():
+                if key.endswith(".pos"):
+                    action[key] = value
+            
+            # Update only the target joint
+            action[f"{joint_name}.pos"] = float(angle)
+            
+            # Send full action with all joints
+            self.robot.send_action(action)
+            self.logger.info(f"Moved joint {joint_name} to {angle} degrees")
+        except Exception as e:
+            self.logger.error(f"Error moving joint {joint_name}: {e}")
+    
+    def get_joint_positions(self) -> dict[str, float]:
+        """Get current positions of all joints"""
+        if not self.robot:
+            self.logger.error("Robot not connected")
+            return {}
+        
+        try:
+            obs = self.robot.get_observation()
+            # Extract joint positions (remove ".pos" suffix from keys)
+            positions = {}
+            for key, value in obs.items():
+                if key.endswith(".pos"):
+                    joint_name = key.removesuffix(".pos")
+                    if joint_name in self.VALID_JOINTS:
+                        positions[joint_name] = value
+            return positions
+        except Exception as e:
+            self.logger.error(f"Error getting joint positions: {e}")
+            return {}
     
     def _handle_play(self, recording_name: str):
         """Play a recording by name"""
