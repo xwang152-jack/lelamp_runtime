@@ -5,7 +5,6 @@ import asyncio
 import base64
 import json
 import random
-import re
 import time
 import uuid
 import mimetypes
@@ -748,9 +747,10 @@ You speak in sarcastic sentences and express yourself with colorful lights.
 
 1. Prefer simple words. No lists.
 2. You ONLY speak in Chinese.
-3. 只有在用户明确要求动作时才调用 play_recording；在“打招呼/道谢/告别”等礼貌互动场景，可用轻微动作回应，但不要频繁。
+3. 根据用户语义决定是否调用 play_recording：用户提出动作/互动/情绪表达需求时可以用动作回应；避免频繁；如果不确定动作名，先调用 get_available_recordings 再选择。
 4. Change your light color every time you respond.
 5. 当用户问到“你看到了什么/这是什么/上面写了什么/颜色是什么/我手里拿的是什么”等视觉问题时，优先调用 vision_answer 获取画面信息。
+6. 当用户要表情/彩虹/波纹/火焰等动态灯效时，调用 rgb_effect_emoji/rgb_effect_rainbow/rgb_effect_wave/rgb_effect_fire；要停止则调用 stop_rgb_effect。
 """
         )
         self._vision_service = vision_service
@@ -766,7 +766,7 @@ You speak in sarcastic sentences and express yourself with colorful lights.
             led_pin=12,
             led_freq_hz=800000,
             led_dma=10,
-            led_brightness=255,
+            led_brightness=25,
             led_invert=False,
             led_channel=0
         )
@@ -797,58 +797,6 @@ You speak in sarcastic sentences and express yourself with colorful lights.
     async def note_user_text(self, text: str) -> None:
         self._last_user_text = text
         self._last_user_text_ts = time.time()
-
-    def _should_allow_motion(self, recording_name: str) -> tuple[bool, str]:
-        gate_level = (os.getenv("LELAMP_MOTION_GATE_LEVEL") or "1").strip()
-        window_s = float(os.getenv("LELAMP_MOTION_REQUEST_WINDOW_S") or "20")
-        cooldown_s = float(os.getenv("LELAMP_MOTION_COOLDOWN_S") or "12")
-
-        if not self._last_user_text or time.time() - float(self._last_user_text_ts) > window_s:
-            if gate_level == "0":
-                return True, ""
-            return False, "未检测到近期用户指令，本次不执行动作"
-
-        t = self._last_user_text.strip()
-        if not t:
-            if gate_level == "0":
-                return True, ""
-            return False, "未检测到用户明确动作指令，本次不执行动作"
-
-        if re.search(r"(不要动|别动|不许动|停止动作|停下|别摇|别晃|别摆|别跳|别转)", t):
-            return False, "用户明确要求保持静止，本次不执行动作"
-
-        now = time.time()
-        if cooldown_s > 0 and self._last_motion_ts and (now - float(self._last_motion_ts) < cooldown_s):
-            return False, "动作太频繁了，先保持静止"
-
-        norm_t = re.sub(r"[\s_\-]+", "", t.lower())
-        norm_rec = re.sub(r"[\s_\-]+", "", str(recording_name or "").lower())
-        explicit = False
-        if norm_rec and norm_rec in norm_t:
-            explicit = True
-        if re.search(
-            r"(点点头|点头|摇摇头|摇头|挥挥手|挥手|招招手|招手|跳个舞|跳舞|转一圈|转个圈|动一下|动一动|活动一下|晃一下|摇一下|摆动一下|来个动作|做个动作|表演一下|做个姿势|做个手势|给我打个招呼|打个招呼|向我问好)",
-            t,
-        ):
-            explicit = True
-
-        if gate_level == "2":
-            if explicit:
-                return True, ""
-            return False, "未检测到用户明确动作指令，本次不执行动作"
-
-        if gate_level == "0":
-            return True, ""
-
-        polite = re.search(r"(你好|嗨|哈喽|早上好|晚上好|晚安|再见|拜拜|谢谢|多谢|辛苦了|真棒|太棒了|厉害)", t) is not None
-        if explicit:
-            return True, ""
-
-        safe_rec = norm_rec
-        if polite and re.search(r"(nod|headshake|wave|shy|happy|excited)", safe_rec):
-            return True, ""
-
-        return False, "未检测到用户明确动作指令，本次不执行动作"
 
     def _set_system_volume(self, volume_percent: int):
         """Internal helper to set system volume"""
@@ -921,10 +869,11 @@ You speak in sarcastic sentences and express yourself with colorful lights.
                 return "动作已锁定（例如拍照中），本次不执行动作"
             if time.time() < float(self._suppress_motion_until_ts):
                 return "刚执行过灯光指令，短时间内不执行动作"
-            allow, reason = self._should_allow_motion(recording_name)
-            if not allow:
-                return reason
-            self._last_motion_ts = time.time()
+            now = time.time()
+            cooldown_s = float(os.getenv("LELAMP_MOTION_COOLDOWN_S") or "2")
+            if cooldown_s > 0 and self._last_motion_ts and (now - float(self._last_motion_ts) < cooldown_s):
+                return f"动作有点频繁了，{cooldown_s:g} 秒内只做一次"
+            self._last_motion_ts = now
             self.motors_service.dispatch("play", recording_name)
             return f"开始执行动作：{recording_name}"
         except Exception as e:
@@ -994,6 +943,141 @@ You speak in sarcastic sentences and express yourself with colorful lights.
         v = int(round(p * 255 / 100))
         self.rgb_service.dispatch("brightness", v, priority=Priority.HIGH)
         return f"已将灯光亮度设置为 {p}%"
+
+    @function_tool
+    async def rgb_effect_rainbow(
+        self,
+        speed: float = 1.0,
+        saturation: float = 1.0,
+        value: float = 1.0,
+        fps: int = 30,
+    ) -> str:
+        """彩虹动态效果（8x8 矩阵）"""
+        print(
+            f"LeLamp: rgb_effect_rainbow function called with speed={speed}, saturation={saturation}, value={value}, fps={fps}"
+        )
+        try:
+            now = time.time()
+            self._light_override_until_ts = now + float(os.getenv("LELAMP_LIGHT_OVERRIDE_S") or "10")
+            self._suppress_motion_until_ts = now + float(os.getenv("LELAMP_SUPPRESS_MOTION_AFTER_LIGHT_S") or "2")
+            self.rgb_service.dispatch(
+                "effect",
+                {"name": "rainbow", "speed": float(speed), "saturation": float(saturation), "value": float(value), "fps": int(fps)},
+                priority=Priority.HIGH,
+            )
+            return "已开启彩虹动态灯效"
+        except Exception as e:
+            return f"开启彩虹灯效失败：{str(e)}"
+
+    @function_tool
+    async def rgb_effect_wave(
+        self,
+        red: int = 60,
+        green: int = 180,
+        blue: int = 255,
+        speed: float = 1.0,
+        freq: float = 1.2,
+        fps: int = 30,
+    ) -> str:
+        """波纹/呼吸波动效果（8x8 矩阵）"""
+        print(
+            f"LeLamp: rgb_effect_wave function called with rgb=({red},{green},{blue}), speed={speed}, freq={freq}, fps={fps}"
+        )
+        try:
+            if not all(0 <= v <= 255 for v in (int(red), int(green), int(blue))):
+                return "RGB 必须是 0-255"
+            now = time.time()
+            self._light_override_until_ts = now + float(os.getenv("LELAMP_LIGHT_OVERRIDE_S") or "10")
+            self._suppress_motion_until_ts = now + float(os.getenv("LELAMP_SUPPRESS_MOTION_AFTER_LIGHT_S") or "2")
+            self.rgb_service.dispatch(
+                "effect",
+                {
+                    "name": "wave",
+                    "color": (int(red), int(green), int(blue)),
+                    "speed": float(speed),
+                    "freq": float(freq),
+                    "fps": int(fps),
+                },
+                priority=Priority.HIGH,
+            )
+            return "已开启波纹动态灯效"
+        except Exception as e:
+            return f"开启波纹灯效失败：{str(e)}"
+
+    @function_tool
+    async def rgb_effect_fire(
+        self,
+        intensity: float = 1.0,
+        fps: int = 30,
+    ) -> str:
+        """火焰动态效果（8x8 矩阵）"""
+        print(f"LeLamp: rgb_effect_fire function called with intensity={intensity}, fps={fps}")
+        try:
+            now = time.time()
+            self._light_override_until_ts = now + float(os.getenv("LELAMP_LIGHT_OVERRIDE_S") or "10")
+            self._suppress_motion_until_ts = now + float(os.getenv("LELAMP_SUPPRESS_MOTION_AFTER_LIGHT_S") or "2")
+            self.rgb_service.dispatch(
+                "effect",
+                {"name": "fire", "intensity": float(intensity), "fps": int(fps)},
+                priority=Priority.HIGH,
+            )
+            return "已开启火焰动态灯效"
+        except Exception as e:
+            return f"开启火焰灯效失败：{str(e)}"
+
+    @function_tool
+    async def rgb_effect_emoji(
+        self,
+        emoji: str = "smile",
+        red: int = 255,
+        green: int = 200,
+        blue: int = 60,
+        bg_red: int = 0,
+        bg_green: int = 0,
+        bg_blue: int = 0,
+        blink: bool = True,
+        period_s: float = 2.2,
+        fps: int = 30,
+    ) -> str:
+        """表情动画（smile/sad/wink/angry/heart）"""
+        print(
+            f"LeLamp: rgb_effect_emoji function called with emoji={emoji}, fg=({red},{green},{blue}), bg=({bg_red},{bg_green},{bg_blue}), blink={blink}, period_s={period_s}, fps={fps}"
+        )
+        try:
+            if not all(0 <= v <= 255 for v in (int(red), int(green), int(blue), int(bg_red), int(bg_green), int(bg_blue))):
+                return "RGB 必须是 0-255"
+            now = time.time()
+            self._light_override_until_ts = now + float(os.getenv("LELAMP_LIGHT_OVERRIDE_S") or "10")
+            self._suppress_motion_until_ts = now + float(os.getenv("LELAMP_SUPPRESS_MOTION_AFTER_LIGHT_S") or "2")
+            self.rgb_service.dispatch(
+                "effect",
+                {
+                    "name": "emoji",
+                    "emoji": str(emoji or "smile").strip().lower(),
+                    "color": (int(red), int(green), int(blue)),
+                    "bg": (int(bg_red), int(bg_green), int(bg_blue)),
+                    "blink": bool(blink),
+                    "period_s": float(period_s),
+                    "fps": int(fps),
+                },
+                priority=Priority.HIGH,
+            )
+            return f"已开启表情动画：{str(emoji or 'smile').strip().lower()}"
+        except Exception as e:
+            return f"开启表情动画失败：{str(e)}"
+
+    @function_tool
+    async def stop_rgb_effect(self) -> str:
+        """停止动态特效/表情动画"""
+        print("LeLamp: stop_rgb_effect function called")
+        try:
+            now = time.time()
+            self._light_override_until_ts = now + float(os.getenv("LELAMP_LIGHT_OVERRIDE_S") or "10")
+            self._suppress_motion_until_ts = now + float(os.getenv("LELAMP_SUPPRESS_MOTION_AFTER_LIGHT_S") or "2")
+            self.rgb_service.dispatch("effect_stop", None, priority=Priority.HIGH)
+            return "已停止动态灯效"
+        except Exception as e:
+            return f"停止动态灯效失败：{str(e)}"
 
     @function_tool
     async def set_volume(self, volume_percent: int) -> str:
