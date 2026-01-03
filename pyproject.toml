@@ -21,7 +21,6 @@ dependencies = [
     "rpi-ws281x>=5.0.0; sys_platform == 'linux'",
     "sounddevice>=0.5.2",
     "httpx>=0.28.1",
-    "mcp>=1.25.0",
 ]
 
 [tool.uv.sources]
