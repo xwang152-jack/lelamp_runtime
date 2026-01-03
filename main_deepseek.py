@@ -726,6 +726,29 @@ async def entrypoint(ctx: JobContext):
     lamp_id = os.getenv("LELAMP_ID") or "lelamp"
     agent = LeLamp(port=port, lamp_id=lamp_id, vision_service=vision_service, qwen_client=qwen_client)
 
+    # --- MCP Integration ---
+    from lelamp.mcp import McpManager
+    mcp_manager = McpManager()
+    agent.mcp_manager = mcp_manager # Keep reference
+    
+    mcp_cmd = os.getenv("LELAMP_MCP_CMD")
+    if mcp_cmd:
+        try:
+            mcp_args = (os.getenv("LELAMP_MCP_ARGS") or "").split()
+            logger.info(f"Connecting to MCP server: {mcp_cmd} {mcp_args}")
+            await mcp_manager.connect_stdio("default", mcp_cmd, mcp_args)
+            
+            bridged_tools = await mcp_manager.get_bridged_tools()
+            for name, func in bridged_tools.items():
+                if not hasattr(agent, name):
+                    setattr(agent, name, func)
+                    logger.info(f"Registered MCP tool: {name}")
+                else:
+                    logger.warning(f"MCP tool {name} conflicts with existing agent method, skipping.")
+        except Exception as e:
+            logger.error(f"Failed to initialize MCP: {e}")
+    # -----------------------
+
     async def _on_state(state: str) -> None:
         await agent.set_conversation_state(state)
 
