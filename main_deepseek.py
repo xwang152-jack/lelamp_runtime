@@ -690,9 +690,9 @@ async def entrypoint(ctx: JobContext):
     
     # Use ModelScope DeepSeek as the LLM (OpenAI-compatible)
     deepseek_llm = openai.LLM(
-        model=os.getenv("DEEPSEEK_MODEL") or "deepseek-ai/DeepSeek-V3.2",
-        base_url=os.getenv("DEEPSEEK_BASE_URL") or "https://api-inference.modelscope.cn/v1",
-        api_key=os.getenv("MODELSCOPE_API_KEY") or os.getenv("DEEPSEEK_API_KEY")
+        model=os.getenv("DEEPSEEK_MODEL") or "deepseek-chat",
+        base_url=os.getenv("DEEPSEEK_BASE_URL") or "https://api.deepseek.com",
+        api_key=os.getenv("DEEPSEEK_API_KEY")
     )
     
     qwen_client = Qwen3VLClient(
