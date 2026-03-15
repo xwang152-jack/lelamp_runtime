@@ -878,6 +878,49 @@ You are LeLamp, a sentient robot lamp. You are clumsy, extremely sarcastic, but 
         except Exception as e:
             return f"联网搜索发生异常: {str(e)}"
 
+    @function_tool
+    async def check_for_updates(self) -> str:
+        """
+        检查系统是否有新的 OTA 更新。
+        Check for system updates.
+        """
+        if not self._ota_url:
+            return "OTA 更新服务未配置 (LELAMP_OTA_URL missing)。"
+        
+        has_update, version, notes = self._ota_manager.check_for_update()
+        if has_update:
+            return f"发现新版本 {version}！\n更新内容：{notes}\n请问是否需要现在更新？(请回复‘确认更新’)"
+        return f"当前已是最新版本 ({version})。"
+
+    @function_tool
+    async def perform_ota_update(self) -> str:
+        """
+        执行系统更新 (OTA)。注意：更新成功后服务将重启。
+        Perform system update. Note: Service will restart upon success.
+        """
+        if not self._ota_url:
+            return "OTA 更新服务未配置。"
+            
+        # Double check
+        has_update, version, _ = self._ota_manager.check_for_update()
+        if not has_update:
+            return "当前没有可用更新。"
+            
+        result = self._ota_manager.perform_update()
+        if "更新成功" in result:
+            # Schedule a restart? Or just return message and let the user handle it?
+            # Ideally, we should exit the process cleanly.
+            # But the agent session might need to close first.
+            asyncio.create_task(self._restart_later())
+            return f"{result} 服务将在 5 秒后重启。"
+        return f"更新失败：{result}"
+
+    async def _restart_later(self):
+        await asyncio.sleep(5)
+        logger.info("Triggering restart...")
+        # Rely on systemd or Docker to restart the container/process
+        sys.exit(0)
+
 async def entrypoint(ctx: JobContext):
     config = _load_config()
     await ctx.connect()
