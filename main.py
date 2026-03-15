@@ -34,10 +34,18 @@ from lelamp.integrations.baidu_speech import BaiduShortSpeechSTT, BaiduTTS
 from lelamp.integrations.qwen_vl import Qwen3VLClient
 from lelamp.utils import get_rate_limiter, get_all_rate_limiter_stats
 from lelamp.utils.security import verify_license
+from lelamp.utils.ota import get_ota_manager
 
 load_dotenv()
 
 logger = logging.getLogger("lelamp")
+
+# 读取版本号
+try:
+    with open("VERSION", "r") as f:
+        LELAMP_VERSION = f.read().strip()
+except FileNotFoundError:
+    LELAMP_VERSION = "0.0.0-dev"
 
 # 定义关节安全角度范围
 SAFE_JOINT_RANGES = {
@@ -78,6 +86,7 @@ class AppConfig:
     baidu_tts_per: int
     noise_cancellation_enabled: bool
     greeting_text: str
+    ota_url: str
 
 
 def _setup_logging() -> None:
@@ -174,6 +183,7 @@ def _load_config() -> AppConfig:
         baidu_tts_per=_get_env_int("BAIDU_SPEECH_TTS_PER", 4),
         noise_cancellation_enabled=_get_env_bool("LELAMP_NOISE_CANCELLATION", True),
         greeting_text=_get_env_str("LELAMP_GREETING_TEXT", "Hello! 小宝贝上线了.") or "",
+        ota_url=_get_env_str("LELAMP_OTA_URL", "") or "",
     )
 
 def _build_vad() -> object:
@@ -217,6 +227,7 @@ class LeLamp(Agent):
         *,
         vision_service: VisionService | None = None,
         qwen_client: Qwen3VLClient | None = None,
+        ota_url: str = "",
     ) -> None:
         super().__init__(
             instructions="""# Role
@@ -254,6 +265,8 @@ You are LeLamp, a sentient robot lamp. You are clumsy, extremely sarcastic, but 
         )
         self._vision_service = vision_service
         self._qwen_client = qwen_client
+        self._ota_url = ota_url
+        self._ota_manager = get_ota_manager(LELAMP_VERSION, ota_url)
         # Initialize and start services
         self.motors_service = MotorsService(
             port=port,
@@ -906,6 +919,7 @@ async def entrypoint(ctx: JobContext):
         lamp_id=config.lamp_id,
         vision_service=vision_service,
         qwen_client=qwen_client,
+        ota_url=config.ota_url,
     )
 
     async def _on_state(state: str) -> None:
