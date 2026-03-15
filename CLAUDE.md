@@ -162,6 +162,13 @@ Located in `lelamp/integrations/`:
 - Simple license key generation for authorization
 - `LELAMP_LICENSE_KEY` environment variable for device authorization
 
+**OTA Updates** (`lelamp/utils/ota.py`):
+- `OTAManager`: Handles over-the-air firmware updates
+- Version checking against remote server
+- Secure download with SHA256 hash verification
+- Thread-safe update operations with locking
+- Configured via `LELAMP_OTA_URL` environment variable
+
 ### Main Agent (main.py)
 
 The `LeLamp` class extends `Agent` from LiveKit:
@@ -254,6 +261,10 @@ Required in `.env` file (create from template):
 - `LELAMP_STT_INPUT_GAIN` (default: 3.0)
 - `LOG_LEVEL` (default: "INFO")
 
+**Commercialization & OTA**:
+- `LELAMP_LICENSE_KEY` (device authorization, see `scripts/generate_client_token.py`)
+- `LELAMP_OTA_URL` (OTA update server endpoint)
+
 ⚠️ **Security**: Never commit `.env` file. Use `.env.example` as template. API keys in git history are security vulnerabilities.
 
 ### VAD Configuration
@@ -270,11 +281,14 @@ Silero VAD can be customized via environment variables:
 - `lelamp/config.py`: Centralized configuration management with type-safe loading
 - `lelamp/service/`: Service architecture (base, motors, RGB, vision, privacy)
 - `lelamp/integrations/`: External AI service clients (Baidu, Qwen VL) with unified error handling
-- `lelamp/utils/`: Rate limiting, security utilities, shared helpers
+- `lelamp/utils/`: Rate limiting, security utilities, OTA updates, shared helpers
 - `lelamp/cache/`: TTL caching for LLM responses
 - `lelamp/follower/` & `lelamp/leader/`: Motor control configurations
 - `lelamp/recordings/`: CSV files with motor animation sequences
 - `lelamp/test/`: Hardware testing utilities
+- `web_client/`: Web-based user client for remote control and monitoring
+- `scripts/`: Build and token generation utilities for commercial deployment
+- `VERSION`: Current runtime version string (used for OTA updates)
 
 ## Hardware-Specific Notes
 
@@ -311,6 +325,13 @@ When adding API integrations:
 - Convert third-party exceptions to `IntegrationError` subclasses
 - Use rate limiters from `lelamp/utils/rate_limiter.py` to prevent API abuse
 
+When working with commercial features:
+- Generate client tokens using `scripts/generate_client_token.py` for authentication
+- Test web client locally before deploying to production
+- Use `LELAMP_LICENSE_KEY` for device authorization in commercial deployments
+- Implement OTA updates using `OTAManager` class for remote firmware updates
+- Build distribution packages with `scripts/build_dist.sh` for releases
+
 When debugging services:
 - Check logs with `LOG_LEVEL=DEBUG`
 - Service state available via `is_running` and `has_pending_event` properties
@@ -336,6 +357,31 @@ When debugging services:
 - **Token Management**: Use shared `BaiduAuth` for OAuth tokens to avoid code duplication
 - **Device Authorization**: Use `LELAMP_LICENSE_KEY` for device authentication (optional for development)
 - **Camera Privacy**: Always use `CameraPrivacyManager` for camera access with user consent and LED indicators
+
+### Commercial Features
+
+**Web Client** (`web_client/`):
+- Browser-based user interface for remote control and monitoring
+- Real-time video streaming via LiveKit WebRTC
+- Bidirectional audio communication
+- Control panel for lamp functions (lights, motors, vision)
+- Token-based authentication for secure connections
+
+**OTA Updates**:
+- `OTAManager` class handles firmware updates remotely
+- Version checking via `LELAMP_OTA_URL` endpoint
+- SHA256 hash verification for secure downloads
+- Thread-safe update process with locking
+- Update progress reporting and error handling
+
+**Token Generation** (`scripts/generate_client_token.py`):
+- Generate LiveKit access tokens for client authentication
+- Supports customizable room names and participant identities
+- Used by web client and mobile apps for secure device access
+
+**Build System** (`scripts/build_dist.sh`):
+- Distribution build script for packaging releases
+- Prepares runtime for OTA update distribution
 
 ### Performance
 - **CSV Recordings**: Cached in memory after first load (10x speedup)
