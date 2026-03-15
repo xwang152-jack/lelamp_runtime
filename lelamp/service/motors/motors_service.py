@@ -21,6 +21,11 @@ class MotorsService(ServiceBase):
         self.recordings_dir = os.path.join(os.path.dirname(__file__), "..", "..", "recordings")
         self._cancel_playback = threading.Event()
 
+        # 添加录制数据缓存，避免重复读取 CSV 文件
+        self._recording_cache: dict[str, list] = {}
+        self._cache_lock = threading.Lock()
+        self.logger.info(f"Motors service initialized with recording cache enabled")
+
     def dispatch(self, event_type: str, payload: Any, priority: Priority = Priority.NORMAL):
         if event_type == "stop":
             self._cancel_playback.set()
@@ -98,6 +103,38 @@ class MotorsService(ServiceBase):
             self.logger.error(f"Error getting joint positions: {e}")
             return {}
     
+    def _load_recording(self, recording_name: str) -> list:
+        """加载录制数据（带缓存）"""
+        # 检查缓存
+        with self._cache_lock:
+            if recording_name in self._recording_cache:
+                self.logger.debug(f"Using cached recording: {recording_name}")
+                return self._recording_cache[recording_name]
+
+        # 从文件加载
+        csv_filename = f"{recording_name}.csv"
+        csv_path = os.path.join(self.recordings_dir, csv_filename)
+
+        if not os.path.exists(csv_path):
+            self.logger.error(f"Recording not found: {csv_path}")
+            return []
+
+        try:
+            with open(csv_path, 'r') as csvfile:
+                csv_reader = csv.DictReader(csvfile)
+                actions = list(csv_reader)
+
+            # 缓存数据
+            with self._cache_lock:
+                self._recording_cache[recording_name] = actions
+
+            self.logger.info(f"Loaded and cached {len(actions)} actions from {recording_name}")
+            return actions
+
+        except Exception as e:
+            self.logger.error(f"Error loading recording {recording_name}: {e}")
+            return []
+
     def _handle_play(self, recording_name: str):
         """Play a recording by name"""
         if not self.robot:
@@ -105,19 +142,13 @@ class MotorsService(ServiceBase):
             return
 
         self._cancel_playback.clear()
-        
-        csv_filename = f"{recording_name}.csv"
-        csv_path = os.path.join(self.recordings_dir, csv_filename)
-        
-        if not os.path.exists(csv_path):
-            self.logger.error(f"Recording not found: {csv_path}")
+
+        # 使用缓存加载录制数据
+        actions = self._load_recording(recording_name)
+        if not actions:
             return
-        
+
         try:
-            with open(csv_path, 'r') as csvfile:
-                csv_reader = csv.DictReader(csvfile)
-                actions = list(csv_reader)
-            
             self.logger.info(f"Playing {len(actions)} actions from {recording_name}")
             
             for row in actions:
@@ -140,18 +171,36 @@ class MotorsService(ServiceBase):
         except Exception as e:
             self.logger.error(f"Error playing recording {recording_name}: {e}")
     
+    def clear_cache(self):
+        """清空录制数据缓存"""
+        with self._cache_lock:
+            cleared_count = len(self._recording_cache)
+            self._recording_cache.clear()
+            self.logger.info(f"Cleared {cleared_count} recordings from cache")
+
+    def get_cache_stats(self) -> dict:
+        """获取缓存统计信息"""
+        with self._cache_lock:
+            return {
+                "cached_recordings": len(self._recording_cache),
+                "cache_size_mb": sum(
+                    len(str(actions)) for actions in self._recording_cache.values()
+                ) / (1024 * 1024),
+                "cached_names": list(self._recording_cache.keys())
+            }
+
     def get_available_recordings(self) -> List[str]:
         """Get list of recording names available for this lamp ID"""
         if not os.path.exists(self.recordings_dir):
             return []
-        
+
         recordings = []
         suffix = f".csv"
-        
+
         for filename in os.listdir(self.recordings_dir):
             if filename.endswith(suffix):
                 # Remove the lamp_id suffix to get the recording name
                 recording_name = filename[:-len(suffix)]
                 recordings.append(recording_name)
-        
+
         return sorted(recordings)
