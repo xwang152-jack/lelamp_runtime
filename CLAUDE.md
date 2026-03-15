@@ -97,6 +97,15 @@ The system uses a priority-based event dispatch architecture built on `ServiceBa
   - `RGBService`: Manages 8x8 LED matrix with effects and patterns
   - `VisionService`: Captures camera frames for vision processing with privacy protection
 
+**Privacy Protection** (`lelamp/service/vision/privacy.py`):
+- `CameraPrivacyManager`: Manages camera privacy with LED indicators and user consent
+- Camera states: IDLE, ACTIVE, PAUSED, CONSENT_REQUIRED
+- LED indicators: Off (idle), Red breathing (active), Yellow blinking (consent needed)
+- User consent system with configurable timeout and TTL (1 hour default)
+- Usage statistics tracking (session count, total usage time)
+- Thread-safe state management with `threading.Lock`
+- `PrivacyGuard` context manager for automatic camera activation/deactivation
+
 ### Concurrency & Threading Critical
 
 **Cross-Thread Safety**: The agent runs in LiveKit's asyncio event loop, but services use threading.
@@ -139,6 +148,19 @@ Located in `lelamp/integrations/`:
 - `VisionCache`: Caches vision API responses (50 items, 10min TTL)
 - `SearchCache`: Caches search results (100 items, 5min TTL)
 - Automatic expiration and LRU eviction
+
+**Error Handling** (`lelamp/integrations/exceptions.py`):
+- Unified exception hierarchy for all integration errors
+- Exception types: `AuthenticationError`, `RateLimitError`, `NetworkError`, `ValidationError`, `ServiceUnavailableError`, `TimeoutError`
+- Automatic retry with exponential backoff via `@retry_on_error` decorator
+- Fallback strategies: `SilentFallback`, `MessageFallback`, `CachedFallback`
+- Error conversion utilities for LiveKit APIError and httpx exceptions
+- All exceptions mark whether they're retryable and include provider context
+
+**Security** (`lelamp/utils/security.py`):
+- Device ID generation (CPU serial on Linux, MAC address fallback)
+- Simple license key generation for authorization
+- `LELAMP_LICENSE_KEY` environment variable for device authorization
 
 ### Main Agent (main.py)
 
@@ -246,9 +268,9 @@ Silero VAD can be customized via environment variables:
 
 - `main.py`: Main entry point, agent definition, LiveKit integration
 - `lelamp/config.py`: Centralized configuration management with type-safe loading
-- `lelamp/service/`: Service architecture (base, motors, RGB, vision)
-- `lelamp/integrations/`: External AI service clients (Baidu, Qwen VL)
-- `lelamp/utils/`: Rate limiting, shared utilities
+- `lelamp/service/`: Service architecture (base, motors, RGB, vision, privacy)
+- `lelamp/integrations/`: External AI service clients (Baidu, Qwen VL) with unified error handling
+- `lelamp/utils/`: Rate limiting, security utilities, shared helpers
 - `lelamp/cache/`: TTL caching for LLM responses
 - `lelamp/follower/` & `lelamp/leader/`: Motor control configurations
 - `lelamp/recordings/`: CSV files with motor animation sequences
@@ -282,6 +304,13 @@ When modifying agent behavior:
 - Services communicate via `dispatch(event_type, payload, priority)`
 - Camera privacy: VisionService automatically controls privacy LED when capturing
 
+When adding API integrations:
+- Use unified error handling from `lelamp/integrations/exceptions.py`
+- Apply `@retry_on_error` decorator for resilient API calls
+- Implement fallback strategies with `@with_fallback` for graceful degradation
+- Convert third-party exceptions to `IntegrationError` subclasses
+- Use rate limiters from `lelamp/utils/rate_limiter.py` to prevent API abuse
+
 When debugging services:
 - Check logs with `LOG_LEVEL=DEBUG`
 - Service state available via `is_running` and `has_pending_event` properties
@@ -298,11 +327,15 @@ When debugging services:
 - **Rate Limiting**: Always use rate limiters for external API calls to prevent cost overruns
 - **Caching**: Use vision/search caches to reduce redundant API calls by 30-50%
 - **Input Validation**: Motor commands must validate against `SAFE_JOINT_RANGES`
+- **Error Handling**: Use `@retry_on_error` decorator for resilient API calls with exponential backoff
+- **Fallback Strategies**: Implement `@with_fallback` for graceful degradation when services fail
 
 ### Security
 - **Environment Variables**: Never commit `.env` file - use `.env.example` template
 - **Git History**: API keys in git history are security vulnerabilities
 - **Token Management**: Use shared `BaiduAuth` for OAuth tokens to avoid code duplication
+- **Device Authorization**: Use `LELAMP_LICENSE_KEY` for device authentication (optional for development)
+- **Camera Privacy**: Always use `CameraPrivacyManager` for camera access with user consent and LED indicators
 
 ### Performance
 - **CSV Recordings**: Cached in memory after first load (10x speedup)
