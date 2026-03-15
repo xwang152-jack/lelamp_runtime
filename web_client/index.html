@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LeLamp 用户端 (User App)</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- LiveKit JS SDK -->
+    <script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>LeLamp User App</h1>
+            <p>通过 Web 连接到您的智能台灯</p>
+        </header>
+
+        <section id="connection-panel">
+            <div class="form-group">
+                <label for="server-url">LiveKit Server URL</label>
+                <input type="text" id="server-url" placeholder="wss://your-project.livekit.cloud">
+            </div>
+            <div class="form-group">
+                <label for="token">Access Token</label>
+                <textarea id="token" placeholder="Paste generated token here" rows="3"></textarea>
+                <small>运行 <code>python3 scripts/generate_client_token.py</code> 获取 Token</small>
+            </div>
+            <button id="connect-btn">连接设备 (Connect)</button>
+        </section>
+
+        <section id="room-panel" class="hidden">
+            <div class="status-bar">
+                <span id="connection-status">已连接</span>
+                <button id="disconnect-btn" class="secondary">断开连接</button>
+            </div>
+
+            <div class="video-grid" id="video-container">
+                <!-- 远程视频流将显示在这里 -->
+                <div class="placeholder">
+                    等待摄像头画面...
+                </div>
+            </div>
+
+            <div class="controls">
+                <h3>控制面板</h3>
+                <div class="button-grid">
+                    <button onclick="sendChat('你好')">👋 打招呼</button>
+                    <button onclick="sendChat('帮我检查作业')">📚 检查作业</button>
+                    <button onclick="sendChat('打开补光灯')">💡 开灯</button>
+                    <button onclick="sendChat('关闭补光灯')">🌑 关灯</button>
+                </div>
+            </div>
+
+            <div class="chat-box">
+                <h3>实时对话</h3>
+                <div id="messages"></div>
+                <div class="input-row">
+                    <input type="text" id="chat-input" placeholder="输入消息...">
+                    <button id="send-btn">发送</button>
+                </div>
+            </div>
+        </section>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>
