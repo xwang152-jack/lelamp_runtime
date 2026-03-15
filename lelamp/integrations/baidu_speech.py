@@ -7,7 +7,7 @@ import base64
 import logging
 import httpx
 from array import array
-from typing import Callable, Awaitable, List
+from typing import Callable, Awaitable, List, Optional
 from dataclasses import dataclass
 
 from livekit import rtc
@@ -17,6 +17,8 @@ from livekit.agents.stt import STTCapabilities, SpeechData, SpeechEvent, SpeechE
 from livekit.agents.types import APIConnectOptions, DEFAULT_API_CONNECT_OPTIONS, NOT_GIVEN, NotGivenOr
 from livekit.agents.utils import AudioBuffer
 from livekit.agents.utils.audio import merge_frames
+
+from .baidu_auth import BaiduAuth
 
 logger = logging.getLogger("lelamp.integrations.baidu")
 
@@ -45,15 +47,16 @@ class BaiduShortSpeechSTT(stt.STT):
         super().__init__(capabilities=STTCapabilities(streaming=False, interim_results=False))
         self._dev_pid = dev_pid
         self._endpoint = endpoint
-        self._oauth_endpoint = oauth_endpoint
-        self._api_key = api_key
-        self._secret_key = secret_key
         self._cuid = cuid or "lelamp"
         self._state_cb = state_cb
         self._transcript_cb = transcript_cb
-        self._access_token: str | None = None
-        self._access_token_expires_at: float = 0.0
-        self._token_lock = asyncio.Lock()
+
+        # 使用共享的认证管理器
+        self._auth = BaiduAuth(
+            api_key=api_key,
+            secret_key=secret_key,
+            oauth_endpoint=oauth_endpoint
+        )
 
     @property
     def provider(self) -> str:
@@ -64,61 +67,8 @@ class BaiduShortSpeechSTT(stt.STT):
         return str(self._dev_pid)
 
     async def _get_access_token(self, *, conn_options: APIConnectOptions) -> str:
-        if self._access_token and time.time() < self._access_token_expires_at - 60:
-            return self._access_token
-
-        if not self._api_key or not self._secret_key:
-            raise APIError(
-                "Baidu STT 需要 (api_key, secret_key)",
-                body={"provider": "baidu"},
-                retryable=False,
-            )
-
-        async with self._token_lock:
-            if self._access_token and time.time() < self._access_token_expires_at - 60:
-                return self._access_token
-
-            params = {
-                "grant_type": "client_credentials",
-                "client_id": self._api_key,
-                "client_secret": self._secret_key,
-            }
-            
-            try:
-                async with httpx.AsyncClient(timeout=conn_options.timeout) as client:
-                    resp = await client.get(self._oauth_endpoint, params=params)
-                    resp.raise_for_status()
-                    data = resp.json()
-            except httpx.HTTPStatusError as e:
-                body = None
-                try:
-                    body = e.response.json()
-                except Exception:
-                    pass
-                raise APIError(
-                    f"Baidu OAuth HTTP {e.response.status_code}",
-                    body=body,
-                    retryable=True,
-                ) from e
-            except Exception as e:
-                raise APIError(
-                    "Baidu OAuth 请求失败",
-                    body={"error": str(e)},
-                    retryable=True,
-                ) from e
-
-            access_token = data.get("access_token")
-            expires_in = data.get("expires_in", 0)
-            if not access_token:
-                raise APIError(
-                    "Baidu OAuth 响应缺少 access_token",
-                    body=data,
-                    retryable=False,
-                )
-
-            self._access_token = access_token
-            self._access_token_expires_at = time.time() + float(expires_in or 0)
-            return access_token
+        """使用共享认证管理器获取访问令牌"""
+        return await self._auth.get_access_token(conn_options=conn_options)
 
     def _downmix_to_mono(self, frame: rtc.AudioFrame) -> rtc.AudioFrame:
         if frame.num_channels == 1:
@@ -306,15 +256,16 @@ class BaiduTTS(tts.TTS):
             num_channels=1,
         )
         self._endpoint = endpoint
-        self._oauth_endpoint = oauth_endpoint
-        self._api_key = api_key
-        self._secret_key = secret_key
         self._cuid = cuid or "lelamp"
         self._opts = _BaiduTTSOptions(per=per, spd=spd, pit=pit, vol=vol, aue=aue, lan=lan)
         self._state_cb = state_cb
-        self._access_token: str | None = None
-        self._access_token_expires_at: float = 0.0
-        self._token_lock = asyncio.Lock()
+
+        # 使用共享的认证管理器
+        self._auth = BaiduAuth(
+            api_key=api_key,
+            secret_key=secret_key,
+            oauth_endpoint=oauth_endpoint
+        )
 
     @property
     def provider(self) -> str:
