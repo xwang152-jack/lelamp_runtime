@@ -2,9 +2,10 @@ import asyncio
 import base64
 import threading
 import time
-from typing import Any
+from typing import Any, Callable, Optional
 
 from ..base import ServiceBase
+from .privacy import CameraPrivacyManager, PrivacyConfig, PrivacyGuard, CameraState
 
 
 class VisionService(ServiceBase):
@@ -20,6 +21,11 @@ class VisionService(ServiceBase):
         max_age_s: float = 15.0,
         rotate_deg: int = 0,
         flip: str = "none",
+        # 隐私保护配置
+        enable_privacy_protection: bool = True,
+        privacy_config: PrivacyConfig | None = None,
+        rgb_setter: Callable[[tuple], None] | None = None,
+        notification_shower: Callable[[str], None] | None = None,
     ):
         super().__init__("vision")
         self.enabled = enabled
@@ -41,13 +47,25 @@ class VisionService(ServiceBase):
         self._latest_ts: float = 0.0
         self._force_capture = False
 
+        # 隐私保护
+        self.enable_privacy_protection = enable_privacy_protection
+        if privacy_config is None:
+            privacy_config = PrivacyConfig()
+        self._privacy_manager = CameraPrivacyManager(
+            config=privacy_config,
+            rgb_setter=rgb_setter,
+            notification_shower=notification_shower,
+        )
+
     def start(self):
         super().start()
         if self.enabled:
+            self._privacy_manager.start()
             self._start_camera_thread()
 
     def stop(self, timeout: float = 5.0):
         self.enabled = False
+        self._privacy_manager.stop()
         self._stop_camera_thread(timeout=timeout)
         super().stop(timeout)
 
@@ -244,3 +262,101 @@ class VisionService(ServiceBase):
     def trigger_capture(self):
         """Force the camera loop to capture a frame immediately."""
         self._force_capture = True
+
+    # ========================================================================
+    # 隐私保护相关方法
+    # ========================================================================
+
+    @property
+    def privacy_manager(self) -> CameraPrivacyManager:
+        """获取隐私管理器"""
+        return self._privacy_manager
+
+    async def get_latest_jpeg_b64_with_privacy(self) -> tuple[str, float] | None:
+        """
+        获取最新帧（带隐私保护）
+
+        Returns:
+            JPEG base64 数据和时间戳，如果摄像头未激活则返回 None
+        """
+        if not self.enable_privacy_protection:
+            return await self.get_latest_jpeg_b64()
+
+        # 检查摄像头是否激活
+        if not self._privacy_manager.is_active:
+            self.logger.debug("摄像头未激活，使用隐私保护")
+            return None
+
+        return await self.get_latest_jpeg_b64()
+
+    async def activate_camera(self) -> bool:
+        """
+        激活摄像头（带用户同意）
+
+        Returns:
+            是否成功激活
+        """
+        if not self.enable_privacy_protection:
+            self.logger.debug("隐私保护未启用，直接激活摄像头")
+            return True
+
+        success = await self._privacy_manager.activate_camera()
+        if success:
+            self.logger.info("摄像头已激活（通过隐私保护）")
+        else:
+            self.logger.warning("摄像头激活失败：用户未同意或超时")
+
+        return success
+
+    def deactivate_camera(self):
+        """停用摄像头"""
+        if not self.enable_privacy_protection:
+            return
+
+        self._privacy_manager.deactivate_camera()
+        self.logger.info("摄像头已停用（通过隐私保护）")
+
+    def grant_camera_consent(self):
+        """
+        授予摄像头使用同意
+
+        可由外部触发（例如：按钮、语音命令）
+        """
+        self._privacy_manager.grant_consent()
+        self.logger.info("用户授予摄像头使用同意")
+
+    def revoke_camera_consent(self):
+        """
+        撤销摄像头使用同意
+
+        可由外部触发（例如：按钮、语音命令）
+        """
+        self._privacy_manager.revoke_consent()
+        self.logger.info("用户撤销摄像头使用同意")
+
+    def get_camera_stats(self) -> dict:
+        """
+        获取摄像头使用统计
+
+        Returns:
+            包含使用统计的字典
+        """
+        stats = {
+            "enabled": self.enabled,
+            "privacy_protection_enabled": self.enable_privacy_protection,
+        }
+
+        if self.enable_privacy_protection:
+            stats.update(self._privacy_manager.get_stats())
+
+        return stats
+
+    def create_privacy_guard(self):
+        """
+        创建隐私保护上下文管理器
+
+        Example:
+            async with vision_service.create_privacy_guard():
+                frame = await vision_service.get_fresh_jpeg_b64()
+        """
+        return PrivacyGuard(self._privacy_manager, auto_activate=True)
