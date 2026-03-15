@@ -13,6 +13,15 @@ import httpx
 from livekit.agents._exceptions import APIError
 from livekit.agents.types import APIConnectOptions, DEFAULT_API_CONNECT_OPTIONS
 
+from .exceptions import (
+    AuthenticationError,
+    NetworkError,
+    ServiceUnavailableError,
+    retry_on_error,
+    RetryConfig,
+    convert_httpx_error,
+)
+
 logger = logging.getLogger("lelamp.integrations.baidu")
 
 
@@ -105,12 +114,13 @@ class BaiduAuth:
             # 获取新的 token
             return await self._fetch_token(conn_options)
 
+    @retry_on_error(config=RetryConfig(max_attempts=3, base_delay=2.0))
     async def _fetch_token(
         self,
         conn_options: APIConnectOptions
     ) -> str:
         """
-        获取新的访问令牌
+        获取新的访问令牌（带重试机制）
 
         Args:
             conn_options: API 连接选项
@@ -119,7 +129,9 @@ class BaiduAuth:
             访问令牌字符串
 
         Raises:
-            APIError: 如果获取令牌失败
+            AuthenticationError: 如果认证失败
+            NetworkError: 如果网络请求失败
+            ServiceUnavailableError: 如果服务不可用
         """
         self._token_refreshes += 1
         logger.info("Fetching new Baidu access token")
@@ -136,28 +148,11 @@ class BaiduAuth:
                 resp.raise_for_status()
                 data = resp.json()
 
-        except httpx.HTTPStatusError as e:
-            body = None
-            try:
-                body = e.response.json()
-            except Exception:
-                pass
-
-            error_msg = f"百度 OAuth HTTP {e.response.status_code}"
-            logger.error(f"{error_msg}: {body}")
-            raise APIError(
-                error_msg,
-                body=body,
-                retryable=e.response.status_code >= 500,
-            ) from e
-
         except Exception as e:
-            logger.error(f"百度 OAuth 请求失败: {e}")
-            raise APIError(
-                "百度 OAuth 请求失败",
-                body={"error": str(e)},
-                retryable=True,
-            ) from e
+            # 转换为统一的集成错误
+            integration_error = convert_httpx_error(e, provider="baidu")
+            logger.error(f"百度 OAuth 请求失败: {integration_error}")
+            raise integration_error
 
         # 解析响应
         access_token = data.get("access_token")
@@ -165,10 +160,9 @@ class BaiduAuth:
 
         if not access_token:
             logger.error(f"百度 OAuth 响应缺少 access_token: {data}")
-            raise APIError(
+            raise AuthenticationError(
                 "百度 OAuth 响应缺少 access_token",
-                body=data,
-                retryable=False,
+                provider="baidu",
             )
 
         # 缓存 token

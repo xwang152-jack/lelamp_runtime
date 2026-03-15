@@ -3,6 +3,18 @@ import asyncio
 import logging
 import httpx
 
+from .exceptions import (
+    NetworkError,
+    ServiceUnavailableError,
+    ValidationError,
+    TimeoutError,
+    with_fallback,
+    MessageFallback,
+    retry_on_error,
+    RetryConfig,
+    convert_httpx_error,
+)
+
 logger = logging.getLogger("lelamp.integrations.qwen")
 
 class Qwen3VLClient:
@@ -19,9 +31,33 @@ class Qwen3VLClient:
         self._model = model
         self._timeout_s = timeout_s
 
+    @with_fallback(
+        MessageFallback("视觉服务暂时不可用，请稍后再试"),
+        log_error=True,
+    )
+    @retry_on_error(config=RetryConfig(max_attempts=2, base_delay=1.0))
     async def describe(self, *, image_jpeg_b64: str, question: str) -> str:
+        """
+        描述图片内容（带重试和降级）
+
+        Args:
+            image_jpeg_b64: Base64 编码的 JPEG 图片
+            question: 用户问题
+
+        Returns:
+            图片描述文本
+
+        Raises:
+            NetworkError: 网络连接失败
+            ServiceUnavailableError: 服务不可用
+            ValidationError: 响应格式错误
+        """
         if not self._api_key:
-            return "未配置 MODELSCOPE_API_KEY，无法调用视觉模型。"
+            raise ValidationError(
+                "未配置 MODELSCOPE_API_KEY",
+                provider="modelscope",
+                field="api_key",
+            )
 
         url = f"{self._base_url}/chat/completions"
         payload = {
@@ -58,15 +94,12 @@ class Qwen3VLClient:
                 resp = await client.post(url, json=payload, headers=headers)
                 resp.raise_for_status()
                 data = resp.json()
-        except httpx.HTTPStatusError as e:
-            try:
-                err_body = e.response.text
-            except Exception:
-                err_body = ""
-            return f"视觉模型请求失败（HTTP {e.response.status_code}）：{err_body}"
-        except Exception as e:
-            return f"视觉模型请求失败：{str(e)}"
 
+        except Exception as e:
+            # 转换为统一的集成错误
+            raise convert_httpx_error(e, provider="modelscope")
+
+        # 解析响应
         try:
             choice0 = (data.get("choices") or [])[0]
             msg = (choice0 or {}).get("message") or {}
@@ -82,7 +115,14 @@ class Qwen3VLClient:
                             texts.append(t.strip())
                 if texts:
                     return "\n".join(texts)
-        except Exception:
-            pass
 
+        except Exception as e:
+            raise ValidationError(
+                f"视觉模型响应格式错误: {str(e)}",
+                provider="modelscope",
+                original=e,
+            )
+
+        # 如果无法解析，返回原始 JSON
+        logger.warning("无法解析视觉模型响应，返回原始数据")
         return json.dumps(data, ensure_ascii=False)
