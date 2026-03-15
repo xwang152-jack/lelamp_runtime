@@ -1,3 +1,4 @@
+import sys
 import os
 import subprocess
 import logging
@@ -32,6 +33,7 @@ from lelamp.service.vision.vision_service import VisionService
 from lelamp.integrations.baidu_speech import BaiduShortSpeechSTT, BaiduTTS
 from lelamp.integrations.qwen_vl import Qwen3VLClient
 from lelamp.utils import get_rate_limiter, get_all_rate_limiter_stats
+from lelamp.utils.security import verify_license
 
 load_dotenv()
 
@@ -950,4 +952,10 @@ async def entrypoint(ctx: JobContext):
 
 if __name__ == "__main__":
     _setup_logging()
+    
+    # 商业化保护：启动时校验设备授权
+    if not verify_license():
+        logger.fatal("设备授权校验失败。请检查 LELAMP_LICENSE_KEY 配置。")
+        sys.exit(1)
+        
     cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint))
