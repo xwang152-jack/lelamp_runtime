@@ -68,6 +68,16 @@ sudo uv run main.py console
 
 ## Architecture
 
+### Configuration Management
+
+Centralized configuration system in `lelamp/config.py`:
+- `AppConfig`: Main application configuration (LLM, Vision, Speech, Hardware)
+- `MotorConfig`: Motor control settings
+- `RGBConfig`: LED matrix configuration (brightness, pin, layout)
+- `VisionConfig`: Camera settings including privacy protection
+- `load_config()`: Loads all environment variables with type-safe defaults
+- All configuration is frozen (immutable) to prevent runtime mutations
+
 ### Service-Based Architecture
 
 The system uses a priority-based event dispatch architecture built on `ServiceBase`:
@@ -81,10 +91,11 @@ The system uses a priority-based event dispatch architecture built on `ServiceBa
 - **Queue Implementation**: Uses `heapq`-based priority queue with configurable max size
   - Prevents event loss during high-load scenarios
   - Higher-priority events can replace lower-priority ones when queue is full
+  - Tracks statistics: events dispatched, processed, and dropped
 - **Key Services**:
   - `MotorsService`: Controls servo motors, plays recorded animations
   - `RGBService`: Manages 8x8 LED matrix with effects and patterns
-  - `VisionService`: Captures camera frames for vision processing
+  - `VisionService`: Captures camera frames for vision processing with privacy protection
 
 ### Concurrency & Threading Critical
 
@@ -182,9 +193,16 @@ Required in `.env` file (create from template):
 - `LELAMP_VISION_ENABLED` (default: true)
 - `MODELSCOPE_API_KEY`
 - `MODELSCOPE_MODEL` (default: "Qwen/Qwen3-VL-235B-A22B-Instruct")
+- `MODELSCOPE_BASE_URL` (default: "https://api-inference.modelscope.cn/v1")
+- `MODELSCOPE_TIMEOUT_S` (default: 60.0)
 - `LELAMP_CAMERA_INDEX_OR_PATH` (default: "0")
 - `LELAMP_CAMERA_WIDTH` (default: 1024)
 - `LELAMP_CAMERA_HEIGHT` (default: 768)
+- `LELAMP_CAMERA_ROTATE_DEG` (default: 0)
+- `LELAMP_CAMERA_FLIP` (default: "none")
+- `LELAMP_VISION_CAPTURE_INTERVAL_S` (default: 2.5)
+- `LELAMP_VISION_JPEG_QUALITY` (default: 92)
+- `LELAMP_VISION_MAX_AGE_S` (default: 15.0)
 
 **Speech** (Baidu):
 - `BAIDU_SPEECH_API_KEY`
@@ -196,11 +214,22 @@ Required in `.env` file (create from template):
 - `LELAMP_PORT` (default: "/dev/ttyACM0")
 - `LELAMP_ID` (default: "lelamp")
 
+**LED Matrix Configuration**:
+- `LELAMP_LED_BRIGHTNESS` (default: 25)
+- `LELAMP_MATRIX_W` (default: 8)
+- `LELAMP_MATRIX_H` (default: 8)
+- `LELAMP_MATRIX_LAYOUT` (default: "serpentine")
+- `LELAMP_MATRIX_ORIGIN` (default: "top_left")
+- `LELAMP_MATRIX_ROTATE_DEG` (default: 180)
+- `LELAMP_MATRIX_FPS` (default: 30)
+
 **Optional Features**:
 - `BOCHA_API_KEY` (for web search)
 - `FEISHU_APP_ID`, `FEISHU_APP_SECRET`, `FEISHU_RECEIVE_ID` (for photo push)
 - `LELAMP_GREETING_TEXT` (startup message)
 - `LELAMP_BOOT_ANIMATION` (default: 1)
+- `LELAMP_NOISE_CANCELLATION` (default: true)
+- `LELAMP_STT_INPUT_GAIN` (default: 3.0)
 - `LOG_LEVEL` (default: "INFO")
 
 ⚠️ **Security**: Never commit `.env` file. Use `.env.example` as template. API keys in git history are security vulnerabilities.
@@ -216,6 +245,7 @@ Silero VAD can be customized via environment variables:
 ## Code Organization
 
 - `main.py`: Main entry point, agent definition, LiveKit integration
+- `lelamp/config.py`: Centralized configuration management with type-safe loading
 - `lelamp/service/`: Service architecture (base, motors, RGB, vision)
 - `lelamp/integrations/`: External AI service clients (Baidu, Qwen VL)
 - `lelamp/utils/`: Rate limiting, shared utilities
@@ -226,9 +256,15 @@ Silero VAD can be customized via environment variables:
 
 ## Hardware-Specific Notes
 
-- **RGB LEDs**: Controlled via `rpi-ws281x` library (GPIO pin 12, 64 LEDs)
+- **RGB LEDs**: Controlled via `rpi-ws281x` library (GPIO pin 12, 64 LEDs in 8x8 matrix)
+  - Supports configurable brightness, layout (serpentine), origin, and rotation
+  - Privacy indicator: LED turns red when camera is active
 - **Motors**: Uses Feetech servo SDK with serial communication
+  - 5 joints: base_yaw, base_pitch, elbow_pitch, wrist_roll, wrist_pitch
+  - All movements validated against SAFE_JOINT_RANGES to prevent damage
 - **Camera**: Supports rotation/flip via environment variables
+  - Privacy protection with LED indicator when capturing
+  - Configurable capture interval, JPEG quality, and frame caching
 - **System Volume**: Controlled via `amixer` for Line/Line DAC/HP outputs
 
 ## Development Workflow
@@ -240,9 +276,11 @@ When adding new motor animations:
 4. Recordings are cached in memory after first load for 10x faster replay
 
 When modifying agent behavior:
+- Use `lelamp/config.py` to add new configuration variables with type-safe loading
 - Edit the `instructions` parameter in `LeLamp.__init__()` for personality changes
 - Add new `@function_tool` methods for new capabilities
 - Services communicate via `dispatch(event_type, payload, priority)`
+- Camera privacy: VisionService automatically controls privacy LED when capturing
 
 When debugging services:
 - Check logs with `LOG_LEVEL=DEBUG`
