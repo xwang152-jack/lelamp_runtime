@@ -25,12 +25,23 @@
 - **标题**: `chore: 限制 Python 版本为 3.12`
 - **修改**: 4 个文件，+32/-565 行
 
-### 4. 🔄 正在安装 Python 3.12
+### 4. ✅ Python 3.12 安装完成
 
-使用 Homebrew 在后台安装：
+通过 Homebrew 成功安装：
 ```bash
 brew install python@3.12
 ```
+
+**安装信息**：
+- 版本：Python 3.12.13
+- 路径：`/opt/homebrew/bin/python3.12`
+- 安装位置：`/opt/homebrew/Cellar/python@3.12/3.12.13`
+- 文件数量：3,612 个文件
+- 占用空间：70 MB
+
+**安装方式**：
+- ✅ 方式 1: Homebrew 安装（已完成）
+- ✅ 方式 2: UV Python 管理（已配置 UV 使用 Python 3.12.12）
 
 ## 📊 版本更新详情
 
