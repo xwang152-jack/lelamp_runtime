@@ -1,220 +1,460 @@
-# LeLamp Runtime
+# LeLamp Runtime v2.0
 
 ![](./assets/images/Banner.png)
 
-This repository holds the code for controlling LeLamp. The runtime provides a comprehensive control system for the robotic lamp, including motor control, recording/replay functionality, voice interaction, and testing capabilities.
+**LeLamp Runtime** 是一个完整的 Python 控制系统，为 [LeLamp 机器人台灯](https://github.com/humancomputerlab/LeLamp)提供对话式 AI、视觉识别、动作表情、灯光效果等功能。基于 [Apple 的 Elegnt 研究](https://machinelearning.apple.com/research/elegnt-expressive-functional-movement)，由 [[Human Computer Lab]](https://www.humancomputerlab.com/) 开发。
 
-[LeLamp](https://github.com/humancomputerlab/LeLamp) is an open source robot lamp based on [Apple's Elegnt](https://machinelearning.apple.com/research/elegnt-expressive-functional-movement), made by [[Human Computer Lab]](https://www.humancomputerlab.com/)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
+[![License](https://img.shields.io/badge/license-See%20LeLamp%20Repo-green.svg)](https://github.com/humancomputerlab/LeLamp)
+[![UV](https://img.shields.io/badge/package%20manager-UV-orange.svg)](https://github.com/astral-sh/uv)
 
-## Overview
+---
 
-LeLamp Runtime is a Python-based control system that interfaces with the hardware components of LeLamp including:
+## ✨ 主要特性
 
-- Servo motors for articulated movement
-- Audio system (microphone and speaker)
-- RGB LED lighting
-- Camera system
-- Voice interaction capabilities
+### 🎙️ 对话式 AI
+- **语音交互**: 基于 LiveKit 的实时语音对话
+- **中文支持**: 百度语音识别和合成
+- **LLM 驱动**: DeepSeek 大语言模型提供智能对话
+- **状态指示**: LED 灯光指示倾听、思考、说话状态
 
-## Project Structure
+### 👀 视觉识别
+- **物体识别**: 识别日常物品、场景、文字
+- **作业检查**: AI 批改数学题、语文题
+- **飞书推送**: 拍照并发送到飞书群组
+- **隐私保护**: LED 指示灯 + 用户同意机制
+
+### 🎭 动作表情
+- **预设动作**: 点头、摇头、兴奋、睡觉、跳舞、思考
+- **录制回放**: 录制自定义动作并回放
+- **自动触发**: 根据对话内容自动做出表情
+- **动作冷却**: 防止过度运动保护硬件
+
+### 💡 灯光效果
+- **纯色控制**: 调色盘选择任意颜色
+- **灯效动画**: 呼吸、彩虹、波浪、火焰、烟花、星空
+- **状态指示**: 对话状态自动切换颜色
+- **隐私指示**: 摄像头激活时红色警示
+
+### 🌐 Web 客户端
+- **浏览器控制**: 现代化 Web 界面
+- **实时视频**: WebRTC 视频流
+- **双向音频**: 语音通话功能
+- **全功能面板**: 视觉、动作、灯光、聊天全覆盖
+
+### 🔐 企业级功能
+- **设备授权**: License Key 保护
+- **OTA 更新**: 远程固件升级
+- **隐私保护**: 摄像头使用同意机制
+- **速率限制**: API 调用保护
+- **响应缓存**: TTL 缓存减少重复调用
+
+---
+
+## 📊 系统架构
 
 ```
-lelamp_runtime/
-├── main.py                 # Main runtime entry point
-├── pyproject.toml         # Project configuration and dependencies
-├── lelamp/                # Core package
-│   ├── setup_motors.py    # Motor configuration and setup
-│   ├── calibrate.py       # Motor calibration utilities
-│   ├── list_recordings.py # List all recorded motor movements
-│   ├── record.py          # Movement recording functionality
-│   ├── replay.py          # Movement replay functionality
-│   ├── follower/          # Follower mode functionality
-│   ├── leader/            # Leader mode functionality
-│   └── test/              # Hardware testing modules
-└── uv.lock               # Dependency lock file
+┌─────────────────────────────────────────────────────────────┐
+│                    用户设备 (User Device)                    │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │          Web Browser / Mobile App                    │   │
+│  │  - 视频预览 | 双向语音 | 控制面板 | 实时对话          │   │
+│  └──────────────────┬──────────────────────────────────┘   │
+└─────────────────────┼──────────────────────────────────────┘
+                      │ WebSocket + WebRTC
+                      ↓
+┌─────────────────────────────────────────────────────────────┐
+│               LiveKit Cloud / Self-hosted                   │
+│  - SFU (Selective Forwarding Unit)                          │
+│  - 实时音视频流转发 | Data Channel 消息传输                  │
+└──────────────────┬──────────────────────────────────────────┘
+                   │ WebSocket + DTLS/SRTP
+                   ↓
+┌─────────────────────────────────────────────────────────────┐
+│          Raspberry Pi (LeLamp Runtime)                      │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │  LeLamp Agent (main.py)                             │   │
+│  │  - DeepSeek LLM (对话引擎)                           │   │
+│  │  - Qwen VL (视觉识别)                                │   │
+│  │  - Baidu Speech (STT/TTS)                            │   │
+│  │  - LiveKit Agents SDK (实时通信)                     │   │
+│  └─────────┬───────────────────────────────────────────┘   │
+│            │ Priority-based Event Dispatch                  │
+│  ┌─────────┴───────────────────────────────────────────┐   │
+│  │  Services (多线程架构)                               │   │
+│  │  ┌──────────────┐  ┌──────────────┐  ┌──────────┐  │   │
+│  │  │ MotorsService│  │ RGBService   │  │ Vision   │  │   │
+│  │  │ (5轴电机)    │  │ (64颗LED)    │  │ Service  │  │   │
+│  │  └──────────────┘  └──────────────┘  └──────────┘  │   │
+│  └─────────────────────────────────────────────────────┘   │
+│            │                 │                 │            │
+│  ┌─────────┴─────────────────┴─────────────────┴───────┐   │
+│  │  Hardware (硬件层)                                   │   │
+│  │  - Feetech 伺服电机 | WS2812B LED | USB 摄像头       │   │
+│  └─────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-## Installation
+**核心技术栈**:
+- 🐍 Python 3.12+
+- 🎙️ LiveKit (实时通信)
+- 🤖 DeepSeek (大语言模型)
+- 👁️ Qwen VL (视觉识别)
+- 🗣️ Baidu Speech (语音服务)
+- 🔧 UV (包管理器)
 
-### Prerequisites
+---
 
-- **Python 3.12+** (required)
-- UV package manager
-- Hardware components properly assembled (see main LeLamp documentation)
+## 🚀 快速开始
 
-### Setup
+### 前置要求
 
-1. Clone the runtime repository:
+#### 硬件
+- ✅ Raspberry Pi 4B+ (推荐 4GB RAM)
+- ✅ LeLamp 硬件套件 (电机、LED、摄像头)
+- ✅ 网络连接 (Wi-Fi / 有线)
 
+#### 软件
+- ✅ Python 3.12+
+- ✅ UV Package Manager
+- ✅ LiveKit Account (或自托管 LiveKit Server)
+
+#### 服务
+- ✅ DeepSeek API Key
+- ✅ ModelScope API Key (视觉功能)
+- ✅ Baidu Speech API Key (语音服务)
+
+### 安装步骤
+
+#### 1. 克隆项目
 ```bash
 git clone https://github.com/humancomputerlab/lelamp_runtime.git
 cd lelamp_runtime
 ```
 
-2. Install UV (if not already installed):
-
+#### 2. 安装 UV (如果未安装)
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-3. Install dependencies:
-
+#### 3. 安装依赖
 ```bash
-# If on your personal computer
-uv sync
-
-# If on Raspberry Pi
+# Raspberry Pi (包含硬件依赖)
 uv sync --extra hardware
+
+# 开发机 (仅电机控制,无硬件依赖)
+uv sync
 ```
 
-**Note**: For motor setup and control, LeLamp Runtime can run on your computer and you only need to run `uv sync`. For other functionality that connects to the head Pi (LED control, audio, camera), you need to install LeLamp Runtime on that Pi and run `uv sync --extra hardware`.
-
-If you have LFS problems, run the following command:
-
+**提示**: 如果遇到 LFS 问题:
 ```bash
 GIT_LFS_SKIP_SMUDGE=1 uv sync
 ```
 
-If your installation process is slow, use the following environment variable:
-
+#### 4. 配置环境变量
 ```bash
-export UV_CONCURRENT_DOWNLOADS=1
+cp .env.example .env
+nano .env
 ```
 
-### Dependencies
-
-The runtime includes several key dependencies:
-
-- **feetech-servo-sdk**: For servo motor control
-- **lerobot**: Robotics framework integration
-- **livekit-agents**: Real-time voice interaction
-- **numpy**: Mathematical operations
-- **sounddevice**: Audio input/output
-- **adafruit-circuitpython-neopixel**: RGB LED control (hardware)
-- **rpi-ws281x**: Raspberry Pi LED control (hardware)
-
-## Core Functionality
-
-Prior to following the instructions here, you should have an overview of how to control LeLamp through [this tutorial](https://github.com/humancomputerlab/LeLamp/blob/master/docs/5.%20LeLamp%20Control.md).
-
-### 1. Motor Setup and Calibration
-
-1. **Find the servo driver port**:
-
-This command finds the port your motor driver is connected to.
-
+**最小配置** (必填):
 ```bash
+# LiveKit (实时通信)
+LIVEKIT_URL=wss://your-project.livekit.cloud
+LIVEKIT_API_KEY=your_api_key
+LIVEKIT_API_SECRET=your_api_secret
+
+# DeepSeek (LLM)
+DEEPSEEK_API_KEY=your_deepseek_key
+
+# Baidu Speech (语音服务)
+BAIDU_SPEECH_API_KEY=your_baidu_api_key
+BAIDU_SPEECH_SECRET_KEY=your_baidu_secret_key
+
+# ModelScope (视觉识别 - 可选)
+MODELSCOPE_API_KEY=your_modelscope_key
+```
+
+#### 5. 硬件校准 (首次使用)
+```bash
+# 查找串口
 uv run lerobot-find-port
+
+# 设置电机 ID
+uv run -m lelamp.setup_motors --id lelamp --port /dev/ttyACM0
+
+# 校准电机
+sudo uv run -m lelamp.calibrate --id lelamp --port /dev/ttyACM0
 ```
 
-2. **Setup motors with unique IDs**:
-
-This command set up each motor of LeLamp with an unique ID.
-
+#### 6. 启动 LeLamp Agent
 ```bash
-uv run -m lelamp.setup_motors --id your_lamp_name --port the_port_found_in_previous_step
+sudo uv run main.py console
 ```
 
-3. **Calibrate motors**:
-
-This command calibrate your motors.
-
-```bash
-sudo uv run -m lelamp.calibrate --id your_lamp_name --port the_port_found_in_previous_step
+**预期输出**:
+```
+INFO:root:config ready: lamp_id=lelamp port=/dev/ttyACM0 vision=True
+INFO:root:MotorsService started
+INFO:root:RGBService started
+INFO:root:VisionService started
+INFO:livekit:Connected to LiveKit
 ```
 
-The calibration process will:
-
-- Calibrate both follower and leader modes
-- Ensure proper servo positioning and response
-- Set baseline positions for accurate movement
-
-### 2. Unit Testing
-
-The runtime includes comprehensive testing modules to verify all hardware components:
-
-#### RGB LEDs
-
+#### 7. 启动 Web Client
 ```bash
-# Run with sudo for hardware access
+# 生成访问 Token
+uv run python scripts/generate_client_token.py --room lelamp-room --user jack
+
+# 启动 HTTP 服务器
+python3 -m http.server 8000
+
+# 访问: http://localhost:8000/web_client/
+```
+
+在 Web Client 中粘贴 LiveKit URL 和 Token，点击"连接设备"即可开始使用！🎉
+
+---
+
+## 📚 核心功能
+
+### 1. 语音对话
+
+**使用方式**: 直接对着台灯说话
+
+**对话状态指示**:
+- 🤍 **白色**: 空闲状态 (Idle)
+- 🔵 **蓝色**: 正在倾听 (Listening)
+- 🟣 **紫色**: 思考中 (Thinking)
+- 🌈 **随机彩色**: 正在说话 (Speaking)
+
+**示例对话**:
+```
+用户: "你好"
+台灯: "你好呀，小主人！本灯又来陪你啦~"
+
+用户: "现在几点了"
+台灯: "现在是下午 3:45，怎么，还没写完作业就想着玩了？"
+
+用户: "讲个笑话"
+台灯: "好吧...为什么程序员总是搞混万圣节和圣诞节？因为 Oct 31 == Dec 25！"
+```
+
+---
+
+### 2. 视觉识别
+
+#### 拍照识别
+```
+用户: "这是什么？" (举起一个苹果)
+台灯: "这是一个红苹果，看起来很新鲜。"
+```
+
+#### 检查作业
+```
+用户: "帮我检查作业"
+台灯: "好的，让我看看..."
+
+结果:
+✅ 第1题: 5 + 3 = 8 (正确)
+✅ 第2题: 12 - 7 = 5 (正确)
+❌ 第3题: 6 × 4 = 32 (错误，应该是 24)
+
+正确率: 67% (2/3)
+```
+
+#### 推送飞书
+```
+用户: "拍照发送到飞书"
+台灯: "好的，正在拍照..." (拍照并发送到飞书群组)
+```
+
+---
+
+### 3. 动作表情
+
+**6 个预设动作**:
+- 👍 **点头** (nod): 表示同意
+- 👎 **摇头** (shake): 表示否定
+- 🎉 **兴奋** (excited): 快速摆动
+- 😴 **睡觉** (sleep): 缓慢低头
+- 💃 **跳舞** (dance): 有节奏摆动
+- 🤔 **思考** (think): 缓慢转动
+
+**使用方式**:
+```bash
+# 语音指令
+用户: "点个头"
+台灯: (执行点头动作)
+
+# Web Client 按钮
+点击 "🎭 动作表情" Tab 中的按钮
+
+# 自动触发
+用户: "你真棒！"
+台灯: (自动执行 excited 动作)
+```
+
+**录制自定义动作**:
+```bash
+# 录制新动作
+uv run -m lelamp.record --id lelamp --port /dev/ttyACM0 --name my_action
+
+# 回放动作
+uv run -m lelamp.replay --id lelamp --port /dev/ttyACM0 --name my_action
+
+# 列出所有录制
+uv run -m lelamp.list_recordings --id lelamp
+```
+
+---
+
+### 4. 灯光效果
+
+#### 纯色灯光
+- 🔴 暖红
+- 💖 粉红
+- 🟠 橙色
+- 🟡 金黄
+- 🟢 浅绿
+- 🔵 天蓝
+- 🟣 紫色
+- ⚪ 暖白 (护眼模式)
+
+#### 灯效动画
+- 💗 **呼吸灯**: 缓慢呼吸
+- 🌈 **彩虹**: 彩虹流动
+- 🌊 **波浪**: 波浪起伏
+- 🔥 **火焰**: 火焰跳动
+- 🎆 **烟花**: 烟花绽放
+- ⭐ **星空**: 星空闪烁
+
+**使用方式**:
+```bash
+# 语音指令
+用户: "打开红色灯光"
+台灯: (RGB 变为红色)
+
+用户: "来个彩虹灯效"
+台灯: (启动彩虹效果)
+
+# Web Client 控制
+在 "💡 灯光魔法" Tab 中使用调色盘或点击灯效按钮
+```
+
+---
+
+## 🧪 硬件测试
+
+### RGB LED 测试
+```bash
 sudo uv run -m lelamp.test.test_rgb
 ```
 
-#### Audio System (Microphone and Speaker)
-
+### 音频系统测试
 ```bash
 uv run -m lelamp.test.test_audio
 ```
 
-#### Motors
-
+### 电机测试
 ```bash
-uv run -m lelamp.test.test_motors --id your_lamp_name --port the_port_found_in_previous_step
+uv run -m lelamp.test.test_motors --id lelamp --port /dev/ttyACM0
 ```
 
-### 3. Record and Replay Episodes
+---
 
-One of LeLamp's key features is the ability to record and replay movement sequences:
+## ⚙️ 配置说明
 
-#### Recording Movement
+### 环境变量
 
-To record a movement sequence:
+完整的环境变量配置参见 `.env.example`。以下是核心配置：
 
+#### LiveKit 配置
 ```bash
-uv run -m lelamp.record --id your_lamp_name --port the_port_found_in_previous_step --name movement_sequence_name
+LIVEKIT_URL=wss://your-project.livekit.cloud
+LIVEKIT_API_KEY=APIxxxxxxxxxxxx
+LIVEKIT_API_SECRET=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
-This will:
-
-- Put the lamp in recording mode
-- Allow you to manually manipulate the lamp
-- Save the movement data to a CSV file
-
-#### Replaying Movement
-
-To replay a recorded movement:
-
+**获取方式**:
 ```bash
-uv run -m lelamp.replay --id your_lamp_name --port the_port_found_in_previous_step --name movement_sequence_name
+lk app env -w
+cat .env.local
 ```
 
-The replay system will:
-
-- Load the movement data from the CSV file
-- Execute the recorded movements with proper timing
-- Reproduce the original motion sequence
-
-#### Listing Recordings
-
-To view all recordings for a specific lamp:
-
+#### DeepSeek LLM
 ```bash
-uv run -m lelamp.list_recordings --id your_lamp_name
+DEEPSEEK_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+DEEPSEEK_MODEL=deepseek-chat  # 可选
 ```
 
-This will display:
+#### Baidu Speech
+```bash
+BAIDU_SPEECH_API_KEY=xxxxxxxxxxxxxxxxxxxxxxxx
+BAIDU_SPEECH_SECRET_KEY=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+BAIDU_SPEECH_TTS_PER=4  # 0=度小美, 1=度小宇, 4=度丫丫
+```
 
-- All available recordings for the specified lamp
-- File information including row count
-- Recording names that can be used for replay
+#### ModelScope 视觉
+```bash
+LELAMP_VISION_ENABLED=true
+MODELSCOPE_API_KEY=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+MODELSCOPE_MODEL=Qwen/Qwen3-VL-235B-A22B-Instruct
+```
 
-#### File Format
+#### 摄像头配置
+```bash
+LELAMP_CAMERA_INDEX_OR_PATH=0
+LELAMP_CAMERA_WIDTH=1024
+LELAMP_CAMERA_HEIGHT=768
+LELAMP_CAMERA_ROTATE_DEG=0  # 0, 90, 180, 270
+LELAMP_CAMERA_FLIP=none  # none, horizontal, vertical, both
+```
 
-Recorded movements are saved as CSV files with the naming convention:
-`{sequence_name}.csv`
+#### 硬件配置
+```bash
+LELAMP_PORT=/dev/ttyACM0
+LELAMP_ID=lelamp
+LELAMP_LED_BRIGHTNESS=25  # 0-255
+```
 
-## 4. Start upon boot
+#### 行为配置
+```bash
+LELAMP_GREETING_TEXT="Hello! 小宝贝上线了."
+LELAMP_BOOT_ANIMATION=1  # 启动动画
+LELAMP_MOTION_COOLDOWN_S=2  # 动作冷却时间
+LELAMP_LIGHT_OVERRIDE_S=10  # 灯光覆盖时长
+```
 
-If you want to start LeLamp's voice app upon booting. Create a systemd service file:
+#### 商业化配置
+```bash
+LELAMP_LICENSE_KEY=your_license_key_here  # 设备授权
+LELAMP_DEV_MODE=1  # 开发模式 (跳过授权检查)
+LELAMP_OTA_URL=https://api.lelamp.com/ota/check  # OTA 更新服务器
+```
 
+### 安全注意事项
+
+⚠️ **重要**:
+- 切勿提交 `.env` 文件到 Git
+- 使用 `.env.example` 作为模板
+- `LELAMP_LICENSE_SECRET` 必须是强随机密钥 (生产环境必需)
+- 所有外部 API URL 会被验证防止 SSRF 攻击
+
+---
+
+## 🏭 生产部署
+
+### Systemd 服务
+
+创建服务文件:
 ```bash
 sudo nano /etc/systemd/system/lelamp.service
 ```
 
-Add this content:
-
-```bash
-ini[Unit]
+**服务配置**:
+```ini
+[Unit]
 Description=Lelamp Runtime Service
 After=network.target
 
@@ -230,87 +470,272 @@ RestartSec=5
 WantedBy=multi-user.target
 ```
 
-Then enable and start the service:
-
+**启动服务**:
 ```bash
 sudo systemctl daemon-reload
 sudo systemctl enable lelamp.service
 sudo systemctl start lelamp.service
-```
 
-For other service controls:
-
-```bash
-# Disable from starting on boot
-sudo systemctl disable lelamp.service
-
-# Stop the currently running service
-sudo systemctl stop lelamp.service
-
-# Check status (should show "disabled" and "inactive")
+# 查看状态
 sudo systemctl status lelamp.service
+
+# 查看日志
+sudo journalctl -u lelamp.service -f
 ```
 
-Note: Boot time might vary with each run and extended usage (>1 hour) can burn the motors.
+### OTA 更新
 
-## Sample Apps
-
-Sample apps to test LeLamp's capabilities.
-
-### LiveKit Voice Agent
-
-To run a conversational agent on LeLamp, create a .env file with the following content in the root of this directory in your Raspberry Pi.
-
+配置 OTA 服务器:
 ```bash
-OPENAI_API_KEY=
-LIVEKIT_URL=
-LIVEKIT_API_KEY=
-LIVEKIT_API_SECRET=
+LELAMP_OTA_URL=https://api.lelamp.com/ota/check
 ```
 
-On how to get LiveKit secrets, please refer to [LiveKit's guide](https://docs.livekit.io/agents/start/voice-ai/). Install LiveKit CLI, then you can run the following command:
+**检查更新**:
+```
+用户: "检查更新"
+台灯: "发现新版本 1.2.0！是否现在更新？"
 
+用户: "确认更新"
+台灯: "更新成功！服务将在 5 秒后重启。"
+```
+
+---
+
+## 📖 文档
+
+### 用户文档
+- 📘 [完整使用指南](./docs/USER_GUIDE.md) - 端到端使用教程
+- 🌐 [Web Client 文档](./web_client/README.md) - Web 界面使用说明
+- ✅ [测试清单](./docs/TESTING_CHECKLIST.md) - 系统化测试流程
+
+### 产品文档
+- 📊 [产品评审报告](./docs/PRODUCT_APP_REVIEW.md) - 完整产品评审
+- 🎨 [用户体验设计](./docs/PRODUCT_UX_JOURNEY.md) - UX Journey Map
+- 🗺️ [技术实现路线图](./docs/PRODUCT_IMPLEMENTATION_ROADMAP.md) - 开发规划
+
+### 技术文档
+- 🔧 [开发者指南](./CLAUDE.md) - 代码架构和开发规范
+- 🐍 [Python 升级指南](./docs/PYTHON312_UPGRADE.md) - Python 3.12 升级
+- 📦 [依赖管理](./pyproject.toml) - 项目配置
+
+---
+
+## 🏗️ 项目结构
+
+```
+lelamp_runtime/
+├── main.py                      # 主入口 (LeLamp Agent)
+├── pyproject.toml              # 项目配置和依赖
+├── .env.example                # 环境变量模板
+├── VERSION                     # 版本号
+├── CLAUDE.md                   # 开发者指南
+├── README.md                   # 本文档
+│
+├── docs/                       # 文档目录
+│   ├── USER_GUIDE.md           # 完整使用指南
+│   ├── TESTING_CHECKLIST.md   # 测试清单
+│   ├── PRODUCT_*.md            # 产品评审文档
+│   └── PYTHON*.md              # Python 升级文档
+│
+├── web_client/                 # Web 客户端
+│   ├── index.html              # 主页面
+│   ├── style.css               # 样式表
+│   ├── app.js                  # 功能实现
+│   └── README.md               # Web Client 文档
+│
+├── lelamp/                     # 核心包
+│   ├── config.py               # 配置管理
+│   ├── setup_motors.py         # 电机配置
+│   ├── calibrate.py            # 电机校准
+│   ├── record.py               # 动作录制
+│   ├── replay.py               # 动作回放
+│   ├── list_recordings.py      # 列出录制文件
+│   │
+│   ├── service/                # 服务架构
+│   │   ├── base.py             # 服务基类
+│   │   ├── motors.py           # 电机服务
+│   │   ├── rgb.py              # RGB 服务
+│   │   └── vision/             # 视觉服务
+│   │       ├── service.py      # 视觉服务
+│   │       └── privacy.py      # 隐私保护
+│   │
+│   ├── integrations/           # 外部服务集成
+│   │   ├── baidu_speech.py     # 百度语音
+│   │   ├── qwen_vl.py          # Qwen 视觉
+│   │   ├── exceptions.py       # 异常处理
+│   │   └── bocha.py            # 博查搜索
+│   │
+│   ├── utils/                  # 工具函数
+│   │   ├── rate_limiter.py     # 速率限制
+│   │   ├── security.py         # 设备授权
+│   │   ├── url_validation.py   # URL 验证
+│   │   └── ota.py              # OTA 更新
+│   │
+│   ├── cache/                  # 响应缓存
+│   │   └── cache_manager.py    # 缓存管理
+│   │
+│   ├── recordings/             # 动作录制文件
+│   │   ├── nod.csv             # 点头
+│   │   ├── shake.csv           # 摇头
+│   │   ├── excited.csv         # 兴奋
+│   │   ├── sleep.csv           # 睡觉
+│   │   ├── dance.csv           # 跳舞
+│   │   ├── think.csv           # 思考
+│   │   └── ...                 # 其他动作
+│   │
+│   ├── follower/               # Follower 模式配置
+│   ├── leader/                 # Leader 模式配置
+│   └── test/                   # 硬件测试模块
+│       ├── test_rgb.py         # RGB 测试
+│       ├── test_audio.py       # 音频测试
+│       └── test_motors.py      # 电机测试
+│
+├── scripts/                    # 构建和工具脚本
+│   ├── generate_client_token.py  # Token 生成
+│   └── build_dist.sh           # 构建脚本
+│
+└── assets/                     # 资源文件
+    └── images/                 # 图片资源
+```
+
+---
+
+## 🔧 故障排查
+
+### 问题 1: 连接失败
+
+**症状**: Web Client 显示 "连接失败"
+
+**解决方案**:
 ```bash
-lk app env -w
-cat .env.local
+# 1. 检查 Agent 是否运行
+ps aux | grep "main.py"
+
+# 2. 检查 LiveKit URL
+echo $LIVEKIT_URL
+
+# 3. 重新生成 Token
+uv run python scripts/generate_client_token.py --room lelamp-room --user test
+
+# 4. 检查网络连接
+curl -v https://your-project.livekit.cloud
 ```
 
-This will automatically create an `.env.local` file for you, which contains all the secrets on LiveKit side.
+### 问题 2: 视频不显示
 
-On how to get OpenAI secrets, you can follow this [FAQ](https://help.openai.com/en/articles/4936850-where-do-i-find-my-openai-api-key).
+**症状**: 连接成功但无视频
 
-Then you can run the agent app by:
-
+**解决方案**:
 ```bash
-# Only need to run this once
-sudo uv run main.py download-files
+# 1. 检查摄像头设备
+ls -l /dev/video*
 
-# Pick one of the below
-# For Discrete Animation Mode
-sudo uv run main.py console
+# 2. 检查权限
+sudo usermod -a -G video pi
 
-# For Smooth Animation Mode
-sudo uv run smooth_animation.py console
+# 3. 测试摄像头
+ffplay /dev/video0
 ```
 
-In case your lamp is not `lelamp`, change the id of the lamp inside main.py:
+### 问题 3: 电机不动
 
-```py
-async def entrypoint(ctx: agents.JobContext):
-    agent = LeLamp(lamp_id="lelamp") # <- Chnage the name here
+**症状**: 动作按钮无响应
+
+**解决方案**:
+```bash
+# 1. 检查串口连接
+ls -l /dev/ttyACM*
+
+# 2. 检查权限
+sudo usermod -a -G dialout pi
+
+# 3. 校准电机
+sudo uv run -m lelamp.calibrate --id lelamp --port /dev/ttyACM0
+
+# 4. 测试电机
+uv run -m lelamp.test.test_motors --id lelamp --port /dev/ttyACM0
 ```
 
-## Contributing
+### 问题 4: LED 不亮
 
-This is an open-source project by Human Computer Lab. Contributions are welcome through the GitHub repository.
+**症状**: 灯光指令无效
 
-## Maintainers
-Maintained by [Human Computer Lab](https://www.humancomputerlab.com).
+**解决方案**:
+```bash
+# 1. 测试 LED (需要 sudo)
+sudo uv run -m lelamp.test.test_rgb
 
-## Acknowledgments & Sponsors
-See [CONTRIBUTORS.md](./CONTRIBUTORS.md) for contributors and their roles.  
-See [SPONSORS.md](./SPONSORS.md) for sponsor thanks and how to support the project.
+# 2. 调整亮度
+# 在 .env 中设置:
+LELAMP_LED_BRIGHTNESS=50
+```
 
-## License
+更多故障排查，请参见 [完整使用指南](./docs/USER_GUIDE.md)。
 
-Check the main [LeLamp repository](https://github.com/humancomputerlab/LeLamp) for licensing information.
+---
+
+## 📊 性能指标
+
+| 指标 | 数值 | 说明 |
+|------|------|------|
+| 视频延迟 | < 200ms | LiveKit WebRTC |
+| 语音识别延迟 | < 500ms | Baidu Speech |
+| 视觉识别延迟 | 3-8 秒 | Qwen VL API |
+| 动作响应时间 | < 100ms | 本地电机控制 |
+| 灯光响应时间 | < 50ms | 本地 LED 控制 |
+| CPU 占用率 | 30-50% | Raspberry Pi 4B |
+| 内存占用 | 800MB - 1.2GB | Python + Services |
+
+---
+
+## 🤝 贡献
+
+这是一个由 Human Computer Lab 开发的开源项目。欢迎通过 GitHub 仓库贡献代码。
+
+### 贡献方式
+1. Fork 项目
+2. 创建功能分支 (`git checkout -b feature/AmazingFeature`)
+3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
+4. 推送到分支 (`git push origin feature/AmazingFeature`)
+5. 创建 Pull Request
+
+---
+
+## 👥 维护者
+
+由 [Human Computer Lab](https://www.humancomputerlab.com) 维护。
+
+---
+
+## 🙏 致谢与赞助
+
+- 贡献者列表: [CONTRIBUTORS.md](./CONTRIBUTORS.md)
+- 赞助商致谢: [SPONSORS.md](./SPONSORS.md)
+
+---
+
+## 📄 许可证
+
+查看主 [LeLamp 仓库](https://github.com/humancomputerlab/LeLamp) 获取许可证信息。
+
+---
+
+## 🔗 相关链接
+
+- 🏠 [LeLamp 主仓库](https://github.com/humancomputerlab/LeLamp)
+- 📖 [LeLamp 控制教程](https://github.com/humancomputerlab/LeLamp/blob/master/docs/5.%20LeLamp%20Control.md)
+- 🌐 [Human Computer Lab 官网](https://www.humancomputerlab.com)
+- 📚 [LiveKit 文档](https://docs.livekit.io/agents/start/voice-ai/)
+- 🤖 [DeepSeek API 文档](https://api.deepseek.com)
+
+---
+
+## ⭐ Star History
+
+如果这个项目对你有帮助，请给我们一个 Star！⭐
+
+---
+
+**版本**: v2.0
+**最后更新**: 2026-03-16
+**Python 版本**: 3.12+
