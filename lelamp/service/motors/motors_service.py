@@ -5,17 +5,19 @@ import threading
 from typing import Any, List
 from ..base import ServiceBase, Priority
 from lelamp.follower import LeLampFollowerConfig, LeLampFollower
+from .health_monitor import MotorHealthMonitor, HealthThresholds, HealthStatus
 
 
 class MotorsService(ServiceBase):
     # Valid joint names for the LeLamp robot
     VALID_JOINTS = ["base_yaw", "base_pitch", "elbow_pitch", "wrist_roll", "wrist_pitch"]
     
-    def __init__(self, port: str, lamp_id: str, fps: int = 30):
+    def __init__(self, port: str, lamp_id: str, fps: int = 30, motor_config=None):
         super().__init__("motors")
         self.port = port
         self.lamp_id = lamp_id
         self.fps = fps
+        self.motor_config = motor_config  # MotorConfig 实例
         self.robot_config = LeLampFollowerConfig(port=port, id=lamp_id)
         self.robot: LeLampFollower = None
         self.recordings_dir = os.path.join(os.path.dirname(__file__), "..", "..", "recordings")
@@ -24,6 +26,13 @@ class MotorsService(ServiceBase):
         # 添加录制数据缓存，避免重复读取 CSV 文件
         self._recording_cache: dict[str, list] = {}
         self._cache_lock = threading.Lock()
+
+        # 健康监控器
+        self.health_monitor: MotorHealthMonitor = None
+        self._health_check_thread: threading.Thread = None
+        self._health_check_stop = threading.Event()
+        self._last_target_positions: dict[str, float] = {}  # 记录最后的目标位置
+
         self.logger.info(f"Motors service initialized with recording cache enabled")
 
     def dispatch(self, event_type: str, payload: Any, priority: Priority = Priority.NORMAL):
@@ -37,7 +46,28 @@ class MotorsService(ServiceBase):
         self.robot.connect(calibrate=False)
         self.logger.info(f"Motors service connected to {self.port}")
 
+        # 启动健康监控
+        if self.motor_config and self.motor_config.health_check_enabled:
+            thresholds = HealthThresholds(
+                temp_warning_c=self.motor_config.temp_warning_c,
+                temp_critical_c=self.motor_config.temp_critical_c,
+                voltage_min_v=self.motor_config.voltage_min_v,
+                voltage_max_v=self.motor_config.voltage_max_v,
+                load_warning=self.motor_config.load_warning,
+                load_stall=self.motor_config.load_stall,
+                position_error_deg=self.motor_config.position_error_deg,
+            )
+            self.health_monitor = MotorHealthMonitor(self.robot.bus, thresholds)
+            self._start_health_check_thread()
+            self.logger.info("Motor health monitoring started")
+
     def stop(self, timeout: float = 5.0):
+        # 停止健康检查线程
+        if self._health_check_thread and self._health_check_thread.is_alive():
+            self._health_check_stop.set()
+            self._health_check_thread.join(timeout=timeout)
+            self.logger.info("Motor health check thread stopped")
+
         if self.robot:
             self.robot.disconnect()
             self.robot = None
@@ -58,14 +88,14 @@ class MotorsService(ServiceBase):
         if not self.robot:
             self.logger.error("Robot not connected")
             return
-        
+
         joint_name = payload.get("joint_name")
         angle = payload.get("angle")
-        
+
         if joint_name not in self.VALID_JOINTS:
             self.logger.error(f"Invalid joint name: {joint_name}")
             return
-        
+
         try:
             # Get current positions of all joints first
             obs = self.robot.get_observation()
@@ -73,10 +103,13 @@ class MotorsService(ServiceBase):
             for key, value in obs.items():
                 if key.endswith(".pos"):
                     action[key] = value
-            
+
             # Update only the target joint
             action[f"{joint_name}.pos"] = float(angle)
-            
+
+            # 记录目标位置(用于健康监控)
+            self._last_target_positions[joint_name] = float(angle)
+
             # Send full action with all joints
             self.robot.send_action(action)
             self.logger.info(f"Moved joint {joint_name} to {angle} degrees")
@@ -204,3 +237,86 @@ class MotorsService(ServiceBase):
                 recordings.append(recording_name)
 
         return sorted(recordings)
+
+    # ========== 健康监控方法 ==========
+
+    def _start_health_check_thread(self):
+        """启动健康检查后台线程"""
+        if not self.health_monitor or not self.motor_config:
+            return
+
+        self._health_check_stop.clear()
+        self._health_check_thread = threading.Thread(
+            target=self._health_check_loop,
+            daemon=True,
+            name="MotorHealthCheck"
+        )
+        self._health_check_thread.start()
+
+    def _health_check_loop(self):
+        """健康检查循环"""
+        interval = self.motor_config.health_check_interval_s
+        self.logger.info(f"Health check loop started (interval: {interval}s)")
+
+        while not self._health_check_stop.is_set():
+            try:
+                # 检查所有舵机健康状态
+                health_results = self.health_monitor.check_all_motors_health(
+                    target_positions=self._last_target_positions
+                )
+
+                # 检查是否有异常状态
+                for motor_name, health_data in health_results.items():
+                    if health_data.status == HealthStatus.STALLED:
+                        self.logger.error(f"Motor {motor_name} STALLED! Taking protective action...")
+                        # 堵转时停止所有动作
+                        self._cancel_playback.set()
+                        # 可以在这里添加更多保护措施,如断电等
+
+                    elif health_data.status == HealthStatus.CRITICAL:
+                        self.logger.error(f"Motor {motor_name} in CRITICAL state!")
+                        # 严重状态时停止动作
+                        self._cancel_playback.set()
+
+                    elif health_data.status == HealthStatus.WARNING:
+                        self.logger.warning(f"Motor {motor_name} in WARNING state")
+                        # 警告状态可以继续运行,但记录日志
+
+            except Exception as e:
+                self.logger.error(f"Error in health check loop: {e}")
+
+            # 等待下一次检查
+            self._health_check_stop.wait(interval)
+
+        self.logger.info("Health check loop stopped")
+
+    def get_motor_health_summary(self) -> dict:
+        """获取舵机健康状态汇总"""
+        if not self.health_monitor:
+            return {"error": "Health monitoring not enabled"}
+
+        return self.health_monitor.get_health_summary()
+
+    def get_motor_health_history(self, motor_name: str, limit: int = 20) -> list[dict]:
+        """获取指定舵机的健康历史"""
+        if not self.health_monitor:
+            return []
+
+        return self.health_monitor.get_motor_history(motor_name, limit)
+
+    def check_motor_stall(self, motor_name: str) -> bool:
+        """检测指定舵机是否堵转"""
+        if not self.health_monitor:
+            return False
+
+        return self.health_monitor.detect_stall(motor_name)
+
+    def reset_health_statistics(self, motor_name: str = None):
+        """重置健康统计数据"""
+        if self.health_monitor:
+            self.health_monitor.reset_statistics(motor_name)
+
+    def clear_health_history(self, motor_name: str = None):
+        """清除健康历史记录"""
+        if self.health_monitor:
+            self.health_monitor.clear_history(motor_name)

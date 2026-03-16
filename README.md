@@ -45,6 +45,8 @@
 ### 🔐 企业级功能
 - **设备授权**: License Key 保护
 - **OTA 更新**: 远程固件升级
+- **舵机健康监控**: 温度、电压、负载实时监控 ⭐ NEW
+- **远程 PID 调参**: 无需上门即可优化动作性能 ⭐ NEW
 - **隐私保护**: 摄像头使用同意机制
 - **速率限制**: API 调用保护
 - **响应缓存**: TTL 缓存减少重复调用
@@ -428,10 +430,22 @@ LELAMP_LIGHT_OVERRIDE_S=10  # 灯光覆盖时长
 
 #### 商业化配置
 ```bash
-LELAMP_LICENSE_KEY=your_license_key_here  # 设备授权
+# 设备授权
+LELAMP_LICENSE_KEY=your_license_key_here
 LELAMP_DEV_MODE=1  # 开发模式 (跳过授权检查)
-LELAMP_OTA_URL=https://api.lelamp.com/ota/check  # OTA 更新服务器
+
+# OTA 更新
+LELAMP_OTA_URL=https://api.lelamp.com/ota/check
+
+# 舵机健康监控 ⭐ NEW
+LELAMP_MOTOR_HEALTH_CHECK_ENABLED=true
+LELAMP_MOTOR_HEALTH_CHECK_INTERVAL_S=300.0  # 5分钟检查一次
+LELAMP_MOTOR_TEMP_WARNING_C=65.0            # 温度警告阈值
+LELAMP_MOTOR_TEMP_CRITICAL_C=75.0           # 温度危险阈值
+LELAMP_MOTOR_LOAD_STALL=0.95                # 堵转检测阈值
 ```
+
+📖 **详细文档**: [舵机健康监控使用指南](./docs/MOTOR_HEALTH_MONITORING.md)
 
 ### 安全注意事项
 

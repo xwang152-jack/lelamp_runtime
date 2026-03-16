@@ -130,6 +130,16 @@ The system uses a priority-based event dispatch architecture built on `ServiceBa
 - **Follower/Leader Modes**: Configured in `lelamp/follower/` and `lelamp/leader/` directories
 - **Animation Playback**: Uses 30fps interpolation from recorded CSV data
 
+**Health Monitoring** (`lelamp/service/motors/health_monitor.py`):
+- `MotorHealthMonitor`: Monitors motor temperature, voltage, load, and position errors
+- Health states: HEALTHY, WARNING, CRITICAL, STALLED
+- Configurable thresholds via environment variables (see Configuration section)
+- Background health check thread runs at configurable intervals (default 5min)
+- Automatic protective actions on critical states (stop playback on stall/critical)
+- Health history tracking and statistics (warning/critical/stall counts)
+- Thread-safe with `threading.Lock` for concurrent access
+- Usage: `motors_service.get_motor_health_summary()` returns health status of all motors
+
 ### AI Integration Layer
 
 Located in `lelamp/integrations/`:
@@ -199,6 +209,7 @@ The `LeLamp` class extends `Agent` from LiveKit:
   - RGB effects: `set_rgb_solid`, `paint_rgb_pattern`, `rgb_effect_*`
   - Vision: `vision_answer`, `check_homework`, `capture_to_feishu`
   - System: `set_volume`, `web_search`
+  - Commercial: `get_motor_health`, `tune_motor_pid`, `reset_motor_health_stats`, `check_for_updates`, `perform_ota_update`
 
 - **Conversation States**:
   - `idle`: Warm white light (255, 244, 229)
@@ -262,6 +273,17 @@ Required in `.env` file (create from template):
 **Hardware**:
 - `LELAMP_PORT` (default: "/dev/ttyACM0")
 - `LELAMP_ID` (default: "lelamp")
+
+**Motor Health Monitoring** (Commercial Features):
+- `LELAMP_MOTOR_HEALTH_CHECK_ENABLED` (default: true)
+- `LELAMP_MOTOR_HEALTH_CHECK_INTERVAL_S` (default: 300.0, 5 minutes)
+- `LELAMP_MOTOR_TEMP_WARNING_C` (default: 65.0, temperature warning threshold in Celsius)
+- `LELAMP_MOTOR_TEMP_CRITICAL_C` (default: 75.0, temperature critical threshold)
+- `LELAMP_MOTOR_VOLTAGE_MIN_V` (default: 11.0, minimum safe voltage)
+- `LELAMP_MOTOR_VOLTAGE_MAX_V` (default: 13.0, maximum safe voltage)
+- `LELAMP_MOTOR_LOAD_WARNING` (default: 0.8, load warning threshold 0-1)
+- `LELAMP_MOTOR_LOAD_STALL` (default: 0.95, stall detection threshold 0-1)
+- `LELAMP_MOTOR_POSITION_ERROR_DEG` (default: 5.0, position error tolerance in degrees)
 
 **LED Matrix Configuration**:
 - `LELAMP_LED_BRIGHTNESS` (default: 25)
