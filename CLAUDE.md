@@ -9,6 +9,13 @@ LeLamp Runtime is a Python-based control system for the LeLamp robotic lamp. It 
 
 ## Development Environment
 
+### Requirements
+
+- **Python**: 3.12+ (required)
+- **Package Manager**: UV (recommended)
+- **Hardware**: Raspberry Pi with Feetech servo motors
+- **OS**: Linux (Raspberry Pi OS) or macOS (for development without hardware)
+
 ### Package Management
 
 This project uses **UV** as the package manager:

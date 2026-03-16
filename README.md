@@ -38,6 +38,7 @@ lelamp_runtime/
 
 ### Prerequisites
 
+- **Python 3.12+** (required)
 - UV package manager
 - Hardware components properly assembled (see main LeLamp documentation)
 
