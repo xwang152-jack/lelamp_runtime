@@ -153,6 +153,7 @@ class LeLamp(Agent):
         vision_service: VisionService | None = None,
         qwen_client: Qwen3VLClient | None = None,
         ota_url: str = "",
+        motor_config = None,  # MotorConfig 实例
     ) -> None:
         super().__init__(
             instructions="""# Role
@@ -196,7 +197,8 @@ You are LeLamp, a sentient robot lamp. You are clumsy, extremely sarcastic, but 
         self.motors_service = MotorsService(
             port=port,
             lamp_id=lamp_id,
-            fps=30
+            fps=30,
+            motor_config=motor_config
         )
         self.rgb_service = RGBService(
             led_count=64,
@@ -899,6 +901,152 @@ You are LeLamp, a sentient robot lamp. You are clumsy, extremely sarcastic, but 
         # Rely on systemd or Docker to restart the container/process
         sys.exit(0)
 
+    # ==================== 舵机健康监控与调参 (Commercial Features) ====================
+
+    @function_tool
+    async def get_motor_health(self, motor_name: str = None) -> str:
+        """
+        获取舵机健康状态(温度、电压、负载等)。
+        Get motor health status (temperature, voltage, load, etc.).
+
+        Args:
+            motor_name: 舵机名称(base_yaw/base_pitch/elbow_pitch/wrist_roll/wrist_pitch),留空则返回所有舵机
+        """
+        if motor_name and motor_name not in SAFE_JOINT_RANGES:
+            return f"无效的舵机名称: {motor_name}。有效名称: {', '.join(SAFE_JOINT_RANGES.keys())}"
+
+        summary = self._motors_service.get_motor_health_summary()
+
+        if "error" in summary:
+            return f"健康监控未启用。请在配置中设置 LELAMP_MOTOR_HEALTH_CHECK_ENABLED=true"
+
+        if motor_name:
+            # 返回单个舵机的详细信息
+            motor_data = summary.get(motor_name)
+            if not motor_data:
+                return f"未找到舵机 {motor_name} 的健康数据"
+
+            latest = motor_data.get("latest")
+            if not latest:
+                return f"舵机 {motor_name} 暂无健康数据(尚未检测)"
+
+            status_emoji = {
+                "healthy": "✅",
+                "warning": "⚠️",
+                "critical": "🔴",
+                "stalled": "🚫"
+            }
+
+            result = f"舵机 {motor_name} 健康状态 {status_emoji.get(latest['status'], '❓')}:\n"
+            result += f"- 状态: {latest['status']}\n"
+            if latest.get('temperature'):
+                result += f"- 温度: {latest['temperature']:.1f}°C\n"
+            if latest.get('voltage'):
+                result += f"- 电压: {latest['voltage']:.1f}V\n"
+            if latest.get('load'):
+                result += f"- 负载: {latest['load']*100:.1f}%\n"
+            if latest.get('position') is not None:
+                result += f"- 位置: {latest['position']:.1f}°\n"
+
+            result += f"\n统计信息:\n"
+            result += f"- 警告次数: {motor_data['warning_count']}\n"
+            result += f"- 危险次数: {motor_data['critical_count']}\n"
+            result += f"- 堵转次数: {motor_data['stall_count']}\n"
+
+            return result
+        else:
+            # 返回所有舵机的摘要
+            result = "所有舵机健康状态:\n\n"
+            for motor, data in summary.items():
+                latest = data.get("latest")
+                if latest:
+                    status_emoji = {
+                        "healthy": "✅",
+                        "warning": "⚠️",
+                        "critical": "🔴",
+                        "stalled": "🚫"
+                    }
+                    result += f"{motor}: {status_emoji.get(latest['status'], '❓')} {latest['status']}"
+                    if latest.get('temperature'):
+                        result += f" (温度: {latest['temperature']:.1f}°C)"
+                    result += "\n"
+                else:
+                    result += f"{motor}: ❓ 暂无数据\n"
+
+            return result
+
+    @function_tool
+    async def tune_motor_pid(
+        self,
+        motor_name: str,
+        p_coefficient: int,
+        i_coefficient: int = 0,
+        d_coefficient: int = 32
+    ) -> str:
+        """
+        远程调整舵机 PID 参数(商用功能,用于优化动作性能)。
+        Tune motor PID coefficients remotely (commercial feature for performance optimization).
+
+        Args:
+            motor_name: 舵机名称(base_yaw/base_pitch/elbow_pitch/wrist_roll/wrist_pitch)
+            p_coefficient: P 系数(比例增益,默认 16,范围 1-32,越大响应越快但可能抖动)
+            i_coefficient: I 系数(积分增益,默认 0,范围 0-32)
+            d_coefficient: D 系数(微分增益,默认 32,范围 0-32,用于减少超调)
+
+        注意: 不当的 PID 参数可能导致舵机抖动或无法稳定,请谨慎调整!
+        """
+        if motor_name not in SAFE_JOINT_RANGES:
+            return f"无效的舵机名称: {motor_name}。有效名称: {', '.join(SAFE_JOINT_RANGES.keys())}"
+
+        # 参数范围验证
+        if not (1 <= p_coefficient <= 32):
+            return "P 系数必须在 1-32 之间"
+        if not (0 <= i_coefficient <= 32):
+            return "I 系数必须在 0-32 之间"
+        if not (0 <= d_coefficient <= 32):
+            return "D 系数必须在 0-32 之间"
+
+        if not self._motors_service.robot:
+            return "舵机服务未连接"
+
+        try:
+            bus = self._motors_service.robot.bus
+
+            # 写入 PID 参数
+            bus.write("P_Coefficient", motor_name, p_coefficient)
+            bus.write("I_Coefficient", motor_name, i_coefficient)
+            bus.write("D_Coefficient", motor_name, d_coefficient)
+
+            logger.info(f"Updated PID for {motor_name}: P={p_coefficient}, I={i_coefficient}, D={d_coefficient}")
+
+            # TODO: 持久化保存配置到文件(下次重启自动应用)
+            # 可以存储到 lelamp/motor_pid_config.json
+
+            return f"✅ 成功更新舵机 {motor_name} 的 PID 参数:\n- P: {p_coefficient}\n- I: {i_coefficient}\n- D: {d_coefficient}\n\n请测试动作是否稳定,如有问题可恢复默认值(P=16, I=0, D=32)"
+
+        except Exception as e:
+            logger.error(f"Failed to tune PID for {motor_name}: {e}")
+            return f"❌ 更新 PID 参数失败: {str(e)}"
+
+    @function_tool
+    async def reset_motor_health_stats(self, motor_name: str = None) -> str:
+        """
+        重置舵机健康统计数据(警告/危险/堵转计数)。
+        Reset motor health statistics (warning/critical/stall counts).
+
+        Args:
+            motor_name: 舵机名称,留空则重置所有舵机
+        """
+        if motor_name and motor_name not in SAFE_JOINT_RANGES:
+            return f"无效的舵机名称: {motor_name}"
+
+        self._motors_service.reset_health_statistics(motor_name)
+
+        if motor_name:
+            return f"✅ 已重置舵机 {motor_name} 的健康统计数据"
+        else:
+            return "✅ 已重置所有舵机的健康统计数据"
+
     # ==================== Data Channel 消息处理 (Web Client v2.0) ====================
 
     async def handle_data_message(self, data: bytes, participant):
@@ -1114,12 +1262,18 @@ async def entrypoint(ctx: JobContext):
         flip=config.camera_flip,
     )
     vision_service.start()
+
+    # 加载电机配置(包含健康监控设置)
+    from lelamp.config import load_motor_config
+    motor_config = load_motor_config()
+
     logger.info(
-        "config ready: lamp_id=%s port=%s vision=%s camera=%s",
+        "config ready: lamp_id=%s port=%s vision=%s camera=%s motor_health_check=%s",
         config.lamp_id,
         config.lamp_port,
         config.vision_enabled,
         config.camera_index_or_path,
+        motor_config.health_check_enabled,
     )
     agent = LeLamp(
         port=config.lamp_port,
@@ -1127,6 +1281,7 @@ async def entrypoint(ctx: JobContext):
         vision_service=vision_service,
         qwen_client=qwen_client,
         ota_url=config.ota_url,
+        motor_config=motor_config,
     )
 
     async def _on_state(state: str) -> None:
