@@ -3,18 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LeLamp 用户端 (User App)</title>
+    <title>LeLamp 用户端 v2.0</title>
     <link rel="stylesheet" href="style.css">
     <!-- LiveKit JS SDK -->
     <script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
 </head>
 <body>
+    <!-- Toast 通知容器 -->
+    <div id="toast-container"></div>
+
     <div class="container">
         <header>
-            <h1>LeLamp User App</h1>
-            <p>通过 Web 连接到您的智能台灯</p>
+            <h1>🪔 LeLamp User App</h1>
+            <p>智能台灯，陪伴成长</p>
         </header>
 
+        <!-- 连接面板 -->
         <section id="connection-panel">
             <div class="form-group">
                 <label for="server-url">LiveKit Server URL</label>
@@ -25,42 +29,236 @@
                 <textarea id="token" placeholder="Paste generated token here" rows="3"></textarea>
                 <small>运行 <code>python3 scripts/generate_client_token.py</code> 获取 Token</small>
             </div>
-            <button id="connect-btn">连接设备 (Connect)</button>
+            <button id="connect-btn" class="btn-primary">
+                <span class="btn-icon">🔗</span>
+                连接设备
+            </button>
         </section>
 
+        <!-- 主控制面板 -->
         <section id="room-panel" class="hidden">
+            <!-- 状态栏 -->
             <div class="status-bar">
-                <span id="connection-status">已连接</span>
-                <button id="disconnect-btn" class="secondary">断开连接</button>
+                <div class="status-info">
+                    <span class="status-dot status-online"></span>
+                    <span id="connection-status">已连接</span>
+                </div>
+                <button id="disconnect-btn" class="btn-secondary">断开连接</button>
             </div>
 
-            <div class="video-grid" id="video-container">
-                <!-- 远程视频流将显示在这里 -->
-                <div class="placeholder">
-                    等待摄像头画面...
+            <!-- 视频预览区 -->
+            <div class="video-section">
+                <div class="video-grid" id="video-container">
+                    <div class="placeholder">
+                        <div class="placeholder-icon">📹</div>
+                        <p>等待摄像头画面...</p>
+                    </div>
+                </div>
+
+                <!-- 隐私仪表盘 -->
+                <div class="privacy-panel">
+                    <div class="privacy-header">
+                        <span class="privacy-icon">🔒</span>
+                        <span>隐私保护</span>
+                    </div>
+                    <div class="privacy-status">
+                        <div class="camera-indicator">
+                            <span class="camera-led" id="camera-led"></span>
+                            <span id="camera-status-text">摄像头已关闭</span>
+                        </div>
+                    </div>
                 </div>
             </div>
 
-            <div class="controls">
-                <h3>控制面板</h3>
-                <div class="button-grid">
-                    <button onclick="sendChat('你好')">👋 打招呼</button>
-                    <button onclick="sendChat('帮我检查作业')">📚 检查作业</button>
-                    <button onclick="sendChat('打开补光灯')">💡 开灯</button>
-                    <button onclick="sendChat('关闭补光灯')">🌑 关灯</button>
+            <!-- Tab 导航 -->
+            <div class="tab-nav">
+                <button class="tab-btn active" data-tab="quick">⚡ 快捷操作</button>
+                <button class="tab-btn" data-tab="vision">📸 视觉助手</button>
+                <button class="tab-btn" data-tab="animation">🎭 动作表情</button>
+                <button class="tab-btn" data-tab="light">💡 灯光魔法</button>
+            </div>
+
+            <!-- Tab 内容 -->
+            <div class="tab-content">
+                <!-- 快捷操作面板 -->
+                <div id="tab-quick" class="tab-pane active">
+                    <div class="panel">
+                        <h3>快捷操作</h3>
+                        <div class="button-grid">
+                            <button class="control-btn" onclick="sendChat('你好')">
+                                <span class="btn-emoji">👋</span>
+                                <span>打招呼</span>
+                            </button>
+                            <button class="control-btn" onclick="sendChat('现在几点了')">
+                                <span class="btn-emoji">⏰</span>
+                                <span>查看时间</span>
+                            </button>
+                            <button class="control-btn" onclick="sendChat('讲个笑话')">
+                                <span class="btn-emoji">😄</span>
+                                <span>讲笑话</span>
+                            </button>
+                            <button class="control-btn" onclick="sendChat('唱首歌')">
+                                <span class="btn-emoji">🎵</span>
+                                <span>唱歌</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 视觉助手面板 -->
+                <div id="tab-vision" class="tab-pane">
+                    <div class="panel">
+                        <h3>📸 视觉助手</h3>
+                        <p class="panel-desc">使用摄像头识别物体、检查作业</p>
+                        <div class="vision-controls">
+                            <button class="control-btn" onclick="captureAndAsk()">
+                                <span class="btn-emoji">🔍</span>
+                                <span>拍照识别</span>
+                            </button>
+                            <button class="control-btn" onclick="checkHomework()">
+                                <span class="btn-emoji">📚</span>
+                                <span>检查作业</span>
+                            </button>
+                            <button class="control-btn" onclick="sendToFeishu()">
+                                <span class="btn-emoji">✈️</span>
+                                <span>推送飞书</span>
+                            </button>
+                        </div>
+
+                        <!-- 视觉结果展示 -->
+                        <div id="vision-result" class="vision-result hidden">
+                            <div class="result-header">
+                                <h4>识别结果</h4>
+                                <button class="btn-close" onclick="closeVisionResult()">✕</button>
+                            </div>
+                            <div class="result-content">
+                                <img id="captured-image" alt="拍摄画面">
+                                <div class="result-text">
+                                    <p id="vision-response"></p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 动作表情面板 -->
+                <div id="tab-animation" class="tab-pane">
+                    <div class="panel">
+                        <h3>🎭 动作表情</h3>
+                        <p class="panel-desc">让台灯做出有趣的动作</p>
+                        <div class="animation-grid">
+                            <button class="anim-btn" onclick="playAnimation('nod')">
+                                <div class="anim-icon">👍</div>
+                                <span>点头</span>
+                            </button>
+                            <button class="anim-btn" onclick="playAnimation('shake')">
+                                <div class="anim-icon">👎</div>
+                                <span>摇头</span>
+                            </button>
+                            <button class="anim-btn" onclick="playAnimation('excited')">
+                                <div class="anim-icon">🎉</div>
+                                <span>兴奋</span>
+                            </button>
+                            <button class="anim-btn" onclick="playAnimation('sleep')">
+                                <div class="anim-icon">😴</div>
+                                <span>睡觉</span>
+                            </button>
+                            <button class="anim-btn" onclick="playAnimation('dance')">
+                                <div class="anim-icon">💃</div>
+                                <span>跳舞</span>
+                            </button>
+                            <button class="anim-btn" onclick="playAnimation('think')">
+                                <div class="anim-icon">🤔</div>
+                                <span>思考</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 灯光魔法面板 -->
+                <div id="tab-light" class="tab-pane">
+                    <div class="panel">
+                        <h3>💡 灯光魔法</h3>
+                        <p class="panel-desc">调整灯光颜色和效果</p>
+
+                        <!-- 颜色选择器 -->
+                        <div class="color-picker-section">
+                            <label for="light-color">选择颜色:</label>
+                            <div class="color-picker-row">
+                                <input type="color" id="light-color" value="#FFB6C1">
+                                <button class="btn-primary" onclick="setCustomColor()">设置</button>
+                            </div>
+                        </div>
+
+                        <!-- 预设颜色 -->
+                        <div class="preset-colors">
+                            <h4>快速颜色</h4>
+                            <div class="color-swatches">
+                                <button class="color-swatch" style="background: #FF6B6B" onclick="setRgbColor(255, 107, 107)" title="暖红"></button>
+                                <button class="color-swatch" style="background: #FFB6C1" onclick="setRgbColor(255, 182, 193)" title="粉红"></button>
+                                <button class="color-swatch" style="background: #FFA500" onclick="setRgbColor(255, 165, 0)" title="橙色"></button>
+                                <button class="color-swatch" style="background: #FFD700" onclick="setRgbColor(255, 215, 0)" title="金黄"></button>
+                                <button class="color-swatch" style="background: #90EE90" onclick="setRgbColor(144, 238, 144)" title="浅绿"></button>
+                                <button class="color-swatch" style="background: #87CEEB" onclick="setRgbColor(135, 206, 235)" title="天蓝"></button>
+                                <button class="color-swatch" style="background: #9370DB" onclick="setRgbColor(147, 112, 219)" title="紫色"></button>
+                                <button class="color-swatch" style="background: #FFFFFF" onclick="setRgbColor(255, 244, 229)" title="暖白"></button>
+                            </div>
+                        </div>
+
+                        <!-- 灯光效果 -->
+                        <div class="effect-section">
+                            <h4>特效动画</h4>
+                            <div class="effect-grid">
+                                <button class="effect-btn" onclick="setRgbEffect('breathing')">
+                                    <span class="effect-icon">💗</span>
+                                    <span>呼吸灯</span>
+                                </button>
+                                <button class="effect-btn" onclick="setRgbEffect('rainbow')">
+                                    <span class="effect-icon">🌈</span>
+                                    <span>彩虹</span>
+                                </button>
+                                <button class="effect-btn" onclick="setRgbEffect('wave')">
+                                    <span class="effect-icon">🌊</span>
+                                    <span>波浪</span>
+                                </button>
+                                <button class="effect-btn" onclick="setRgbEffect('fire')">
+                                    <span class="effect-icon">🔥</span>
+                                    <span>火焰</span>
+                                </button>
+                                <button class="effect-btn" onclick="setRgbEffect('fireworks')">
+                                    <span class="effect-icon">🎆</span>
+                                    <span>烟花</span>
+                                </button>
+                                <button class="effect-btn" onclick="setRgbEffect('starry')">
+                                    <span class="effect-icon">⭐</span>
+                                    <span>星空</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- 关灯按钮 -->
+                        <button class="btn-danger" onclick="sendChat('关闭补光灯')">
+                            🌑 关闭灯光
+                        </button>
+                    </div>
                 </div>
             </div>
 
+            <!-- 聊天对话框 -->
             <div class="chat-box">
-                <h3>实时对话</h3>
+                <div class="chat-header">
+                    <h3>💬 实时对话</h3>
+                    <button class="btn-icon-only" onclick="clearMessages()" title="清空消息">🗑️</button>
+                </div>
                 <div id="messages"></div>
                 <div class="input-row">
                     <input type="text" id="chat-input" placeholder="输入消息...">
-                    <button id="send-btn">发送</button>
+                    <button id="send-btn" class="btn-send">发送</button>
                 </div>
             </div>
         </section>
     </div>
+
     <script src="app.js"></script>
 </body>
 </html>
