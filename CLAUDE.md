@@ -1,6 +1,7 @@
 # CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+使用中文交流。
 
 ## Project Overview
 
@@ -159,14 +160,26 @@ Located in `lelamp/integrations/`:
 
 **Security** (`lelamp/utils/security.py`):
 - Device ID generation (CPU serial on Linux, MAC address fallback)
-- Simple license key generation for authorization
+- HMAC-SHA256 based license key generation with environment variable secret
 - `LELAMP_LICENSE_KEY` environment variable for device authorization
+- `LELAMP_LICENSE_SECRET` environment variable for signing (production required)
+- `LELAMP_DEV_MODE` to bypass license checks in development
+
+**URL Validation** (`lelamp/utils/url_validation.py`):
+- SSRF protection for external API calls
+- HTTPS enforcement
+- Domain whitelist validation
+- Private IP address blocking
+- DNS resolution safety checks
 
 **OTA Updates** (`lelamp/utils/ota.py`):
 - `OTAManager`: Handles over-the-air firmware updates
-- Version checking against remote server
-- Secure download with SHA256 hash verification
+- Version checking with semantic versioning (requires `packaging` library)
+- Secure download with mandatory SHA256 hash verification
+- HTTPS enforcement with SSL certificate verification
+- Automatic rollback on update failure
 - Thread-safe update operations with locking
+- Download progress reporting (with `httpx`)
 - Configured via `LELAMP_OTA_URL` environment variable
 
 ### Main Agent (main.py)
@@ -263,9 +276,15 @@ Required in `.env` file (create from template):
 
 **Commercialization & OTA**:
 - `LELAMP_LICENSE_KEY` (device authorization, see `scripts/generate_client_token.py`)
+- `LELAMP_LICENSE_SECRET` (签名密钥，生产环境必需，务必保密)
+- `LELAMP_DEV_MODE` (开发模式，设置为 1 跳过授权检查)
 - `LELAMP_OTA_URL` (OTA update server endpoint)
 
-⚠️ **Security**: Never commit `.env` file. Use `.env.example` as template. API keys in git history are security vulnerabilities.
+⚠️ **Security**:
+- Never commit `.env` file. Use `.env.example` as template.
+- API keys in git history are security vulnerabilities.
+- `LELAMP_LICENSE_SECRET` must be a strong random string (生产环境必须使用强随机密钥)
+- All external API URLs are validated against domain whitelist to prevent SSRF attacks
 
 ### VAD Configuration
 
@@ -343,6 +362,7 @@ When debugging services:
 - **Lock Types**: Use `threading.Lock` for cross-thread state, `asyncio.Lock` for asyncio-only state
 - **Subprocess**: Always use `asyncio.create_subprocess_exec()` instead of `subprocess.run()` to avoid blocking
 - **Shared State**: The agent (asyncio) and services (threaded) share state - use threading primitives
+- **Critical Section**: All timestamp accesses (`_light_override_until_ts`, `_suppress_motion_until_ts`, `_last_motion_ts`) must be protected by `_timestamps_lock`
 
 ### API Safety
 - **Rate Limiting**: Always use rate limiters for external API calls to prevent cost overruns
@@ -350,13 +370,18 @@ When debugging services:
 - **Input Validation**: Motor commands must validate against `SAFE_JOINT_RANGES`
 - **Error Handling**: Use `@retry_on_error` decorator for resilient API calls with exponential backoff
 - **Fallback Strategies**: Implement `@with_fallback` for graceful degradation when services fail
+- **URL Validation**: All external URLs validated against whitelist to prevent SSRF attacks
 
 ### Security
 - **Environment Variables**: Never commit `.env` file - use `.env.example` template
 - **Git History**: API keys in git history are security vulnerabilities
 - **Token Management**: Use shared `BaiduAuth` for OAuth tokens to avoid code duplication
-- **Device Authorization**: Use `LELAMP_LICENSE_KEY` for device authentication (optional for development)
+- **Device Authorization**: Use `LELAMP_LICENSE_KEY` for device authentication (required in production)
+- **License Secret**: `LELAMP_LICENSE_SECRET` must be strong random string (production required)
 - **Camera Privacy**: Always use `CameraPrivacyManager` for camera access with user consent and LED indicators
+- **HTTPS Only**: OTA updates and external API calls enforce HTTPS with certificate verification
+- **Hash Verification**: OTA updates require mandatory SHA256 verification
+- **SSRF Protection**: External URLs validated against domain whitelist
 
 ### Commercial Features
 

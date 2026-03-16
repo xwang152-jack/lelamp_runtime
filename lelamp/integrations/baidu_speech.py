@@ -296,61 +296,8 @@ class BaiduTTS(tts.TTS):
             self._opts.lan = lan
 
     async def _get_access_token(self, *, conn_options: APIConnectOptions) -> str:
-        if self._access_token and time.time() < self._access_token_expires_at - 60:
-            return self._access_token
-
-        if not self._api_key or not self._secret_key:
-            raise APIError(
-                "Baidu TTS 需要 (api_key, secret_key)",
-                body={"provider": "baidu"},
-                retryable=False,
-            )
-
-        async with self._token_lock:
-            if self._access_token and time.time() < self._access_token_expires_at - 60:
-                return self._access_token
-
-            params = {
-                "grant_type": "client_credentials",
-                "client_id": self._api_key,
-                "client_secret": self._secret_key,
-            }
-            
-            try:
-                async with httpx.AsyncClient(timeout=conn_options.timeout) as client:
-                    resp = await client.get(self._oauth_endpoint, params=params)
-                    resp.raise_for_status()
-                    data = resp.json()
-            except httpx.HTTPStatusError as e:
-                body = None
-                try:
-                    body = e.response.json()
-                except Exception:
-                    pass
-                raise APIError(
-                    f"Baidu OAuth HTTP {e.response.status_code}",
-                    body=body,
-                    retryable=True,
-                ) from e
-            except Exception as e:
-                raise APIError(
-                    "Baidu OAuth 请求失败",
-                    body={"error": str(e)},
-                    retryable=True,
-                ) from e
-
-            access_token = data.get("access_token")
-            expires_in = data.get("expires_in", 0)
-            if not access_token:
-                raise APIError(
-                    "Baidu OAuth 响应缺少 access_token",
-                    body=data,
-                    retryable=False,
-                )
-
-            self._access_token = access_token
-            self._access_token_expires_at = time.time() + float(expires_in or 0)
-            return access_token
+        """使用共享认证管理器获取访问令牌"""
+        return await self._auth.get_access_token(conn_options=conn_options)
 
     def _chunk_by_bytes(self, text: str, *, max_bytes: int) -> list[str]:
         chunks: list[str] = []
