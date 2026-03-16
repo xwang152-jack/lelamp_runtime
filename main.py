@@ -35,6 +35,17 @@ from lelamp.integrations.qwen_vl import Qwen3VLClient
 from lelamp.utils import get_rate_limiter, get_all_rate_limiter_stats
 from lelamp.utils.security import verify_license
 from lelamp.utils.ota import get_ota_manager
+from lelamp.utils.url_validation import validate_external_url, ALLOWED_API_DOMAINS
+# 导入配置管理（移除重复代码）
+from lelamp.config import (
+    _get_env_str,
+    _get_env_bool,
+    _get_env_int,
+    _get_env_float,
+    _require_env,
+    _parse_index_or_path,
+    AppConfig,
+)
 
 load_dotenv()
 
@@ -57,38 +68,6 @@ SAFE_JOINT_RANGES = {
 }
 
 
-@dataclass(frozen=True)
-class AppConfig:
-    livekit_url: str
-    livekit_api_key: str
-    livekit_api_secret: str
-    deepseek_model: str
-    deepseek_base_url: str
-    deepseek_api_key: str
-    modelscope_base_url: str
-    modelscope_api_key: str | None
-    modelscope_model: str
-    modelscope_timeout_s: float
-    vision_enabled: bool
-    camera_index_or_path: int | str
-    camera_width: int
-    camera_height: int
-    vision_capture_interval_s: float
-    vision_jpeg_quality: int
-    vision_max_age_s: float
-    camera_rotate_deg: int
-    camera_flip: str
-    lamp_port: str
-    lamp_id: str
-    baidu_api_key: str
-    baidu_secret_key: str
-    baidu_cuid: str
-    baidu_tts_per: int
-    noise_cancellation_enabled: bool
-    greeting_text: str
-    ota_url: str
-
-
 def _setup_logging() -> None:
     level_raw = (os.getenv("LOG_LEVEL") or "INFO").strip().upper()
     level = getattr(logging, level_raw, logging.INFO)
@@ -96,60 +75,6 @@ def _setup_logging() -> None:
         level=level,
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
     )
-
-
-def _get_env_str(key: str, default: str | None = None) -> str | None:
-    raw = os.getenv(key)
-    if raw is None:
-        return default
-    value = raw.strip()
-    return value if value != "" else default
-
-
-def _get_env_bool(key: str, default: bool = False) -> bool:
-    raw = _get_env_str(key, None)
-    if raw is None:
-        return default
-    return raw.lower() in ("1", "true", "yes", "on")
-
-
-def _get_env_int(key: str, default: int) -> int:
-    raw = _get_env_str(key, None)
-    if raw is None:
-        return default
-    try:
-        return int(raw)
-    except ValueError:
-        return default
-
-
-def _get_env_float(key: str, default: float) -> float:
-    raw = _get_env_str(key, None)
-    if raw is None:
-        return default
-    try:
-        return float(raw)
-    except ValueError:
-        return default
-
-
-def _require_env(key: str) -> str:
-    value = _get_env_str(key)
-    if not value:
-        raise RuntimeError(f"缺少环境变量：{key}")
-    return value
-
-
-def _parse_index_or_path(raw: str | None) -> int | str:
-    if raw is None:
-        return 0
-    raw = raw.strip()
-    if raw == "":
-        return 0
-    try:
-        return int(raw)
-    except ValueError:
-        return raw
 
 
 def _load_config() -> AppConfig:
@@ -339,8 +264,10 @@ You are LeLamp, a sentient robot lamp. You are clumsy, extremely sarcastic, but 
                 return
             self._conversation_state = state
 
-        if time.time() < float(self._light_override_until_ts):
-            return
+        # 检查灯光覆盖状态（需要加锁）
+        with self._timestamps_lock:
+            if time.time() < float(self._light_override_until_ts):
+                return
 
         if state == "listening":
             rgb = (0, 140, 255)
@@ -373,7 +300,7 @@ You are LeLamp, a sentient robot lamp. You are clumsy, extremely sarcastic, but 
     @function_tool
     async def get_available_recordings(self) -> str:
         """Discover your physical expressions! Get your repertoire of motor movements for body language."""
-        print("LeLamp: get_available_recordings function called")
+        self.logger.debug("get_available_recordings called")
         try:
             recordings = self.motors_service.get_available_recordings()
             if recordings:
@@ -385,17 +312,23 @@ You are LeLamp, a sentient robot lamp. You are clumsy, extremely sarcastic, but 
     @function_tool
     async def play_recording(self, recording_name: str) -> str:
         """Express yourself through physical movement! Use this only when user explicitly asks for it."""
-        print(f"LeLamp: play_recording function called with recording_name: {recording_name}")
+        self.logger.debug(f"play_recording called with recording_name: {recording_name}")
         try:
             if self._motion_locked:
                 return "动作已锁定（例如拍照中），本次不执行动作"
-            if time.time() < float(self._suppress_motion_until_ts):
-                return "刚执行过灯光指令，短时间内不执行动作"
-            now = time.time()
-            cooldown_s = float(os.getenv("LELAMP_MOTION_COOLDOWN_S") or "2")
-            if cooldown_s > 0 and self._last_motion_ts and (now - float(self._last_motion_ts) < cooldown_s):
-                return f"动作有点频繁了，{cooldown_s:g} 秒内只做一次"
-            self._last_motion_ts = now
+
+            # 检查动作抑制和冷却时间（需要加锁）
+            with self._timestamps_lock:
+                now = time.time()
+                if now < float(self._suppress_motion_until_ts):
+                    return "刚执行过灯光指令，短时间内不执行动作"
+
+                cooldown_s = float(os.getenv("LELAMP_MOTION_COOLDOWN_S") or "2")
+                if cooldown_s > 0 and self._last_motion_ts and (now - float(self._last_motion_ts) < cooldown_s):
+                    return f"动作有点频繁了，{cooldown_s:g} 秒内只做一次"
+
+                self._last_motion_ts = now
+
             self.motors_service.dispatch("play", recording_name)
             return f"开始执行动作：{recording_name}"
         except Exception as e:
@@ -404,7 +337,7 @@ You are LeLamp, a sentient robot lamp. You are clumsy, extremely sarcastic, but 
     @function_tool
     async def move_joint(self, joint_name: str, angle: float) -> str:
         """控制指定关节移动到目标角度。可用关节：base_yaw（底座水平旋转）、base_pitch（底座俯仰）、elbow_pitch（肘部俯仰）、wrist_roll（腕部滚转）、wrist_pitch（灯头俯仰）。角度单位为度。"""
-        print(f"LeLamp: move_joint function called with joint_name={joint_name}, angle={angle}")
+        self.logger.debug(f"move_joint called with joint_name={joint_name}, angle={angle}")
         valid_joints = ["base_yaw", "base_pitch", "elbow_pitch", "wrist_roll", "wrist_pitch"]
         try:
             if self._motion_locked:
@@ -427,7 +360,7 @@ You are LeLamp, a sentient robot lamp. You are clumsy, extremely sarcastic, but 
     @function_tool
     async def get_joint_positions(self) -> str:
         """获取所有关节的当前位置（角度）。用于了解台灯当前的姿态。"""
-        print("LeLamp: get_joint_positions function called")
+        self.logger.debug("get_joint_positions called")
         try:
             positions = self.motors_service.get_joint_positions()
             if not positions:
@@ -440,13 +373,17 @@ You are LeLamp, a sentient robot lamp. You are clumsy, extremely sarcastic, but 
     @function_tool
     async def set_rgb_solid(self, red: int, green: int, blue: int) -> str:
         """Express emotions and moods through solid lamp colors!"""
-        print(f"LeLamp: set_rgb_solid function called with RGB({red}, {green}, {blue})")
+        self.logger.debug(f"set_rgb_solid called with RGB({red}, {green}, {blue})")
         try:
             if not all(0 <= val <= 255 for val in [red, green, blue]):
                 return "Error: RGB values must be between 0 and 255"
-            now = time.time()
-            self._light_override_until_ts = now + float(os.getenv("LELAMP_LIGHT_OVERRIDE_S") or "10")
-            self._suppress_motion_until_ts = now + float(os.getenv("LELAMP_SUPPRESS_MOTION_AFTER_LIGHT_S") or "2")
+
+            # 更新时间戳（需要加锁）
+            with self._timestamps_lock:
+                now = time.time()
+                self._light_override_until_ts = now + float(os.getenv("LELAMP_LIGHT_OVERRIDE_S") or "10")
+                self._suppress_motion_until_ts = now + float(os.getenv("LELAMP_SUPPRESS_MOTION_AFTER_LIGHT_S") or "2")
+
             self.rgb_service.dispatch("solid", (red, green, blue), priority=Priority.HIGH)
             return f"Set RGB light to solid color: RGB({red}, {green}, {blue})"
         except Exception as e:
@@ -455,7 +392,7 @@ You are LeLamp, a sentient robot lamp. You are clumsy, extremely sarcastic, but 
     @function_tool
     async def paint_rgb_pattern(self, colors: list) -> str:
         """Create dynamic visual patterns and animations with your lamp!"""
-        print(f"LeLamp: paint_rgb_pattern function called with {len(colors)} colors")
+        self.logger.debug(f"paint_rgb_pattern called with {len(colors)} colors")
         try:
             def _as_rgb_tuple(v):
                 if isinstance(v, dict):
@@ -480,9 +417,12 @@ You are LeLamp, a sentient robot lamp. You are clumsy, extremely sarcastic, but 
             if not validated_colors:
                 return "Error: No valid colors provided"
 
-            now = time.time()
-            self._light_override_until_ts = now + float(os.getenv("LELAMP_LIGHT_OVERRIDE_S") or "10")
-            self._suppress_motion_until_ts = now + float(os.getenv("LELAMP_SUPPRESS_MOTION_AFTER_LIGHT_S") or "2")
+            # 更新时间戳（需要加锁）
+            with self._timestamps_lock:
+                now = time.time()
+                self._light_override_until_ts = now + float(os.getenv("LELAMP_LIGHT_OVERRIDE_S") or "10")
+                self._suppress_motion_until_ts = now + float(os.getenv("LELAMP_SUPPRESS_MOTION_AFTER_LIGHT_S") or "2")
+
             self.rgb_service.dispatch("paint", validated_colors, priority=Priority.HIGH)
             return f"Painted RGB pattern with {len(validated_colors)} colors"
         except Exception as e:
@@ -491,7 +431,7 @@ You are LeLamp, a sentient robot lamp. You are clumsy, extremely sarcastic, but 
     @function_tool
     async def set_rgb_brightness(self, percent: int) -> str:
         """调节灯光亮度（0-100）"""
-        print(f"LeLamp: set_rgb_brightness function called with percent: {percent}")
+        self.logger.debug(f"set_rgb_brightness called with percent: {percent}")
         try:
             p = int(percent)
         except Exception:
@@ -511,13 +451,16 @@ You are LeLamp, a sentient robot lamp. You are clumsy, extremely sarcastic, but 
         fps: int = 30,
     ) -> str:
         """彩虹动态效果（8x8 矩阵）"""
-        print(
-            f"LeLamp: rgb_effect_rainbow function called with speed={speed}, saturation={saturation}, value={value}, fps={fps}"
+        self.logger.debug(
+            f"rgb_effect_rainbow called with speed={speed}, saturation={saturation}, value={value}, fps={fps}"
         )
         try:
-            now = time.time()
-            self._light_override_until_ts = now + float(os.getenv("LELAMP_LIGHT_OVERRIDE_S") or "10")
-            self._suppress_motion_until_ts = now + float(os.getenv("LELAMP_SUPPRESS_MOTION_AFTER_LIGHT_S") or "2")
+            # 更新时间戳（需要加锁）
+            with self._timestamps_lock:
+                now = time.time()
+                self._light_override_until_ts = now + float(os.getenv("LELAMP_LIGHT_OVERRIDE_S") or "10")
+                self._suppress_motion_until_ts = now + float(os.getenv("LELAMP_SUPPRESS_MOTION_AFTER_LIGHT_S") or "2")
+
             self.rgb_service.dispatch(
                 "effect",
                 {"name": "rainbow", "speed": float(speed), "saturation": float(saturation), "value": float(value), "fps": int(fps)},
@@ -538,15 +481,19 @@ You are LeLamp, a sentient robot lamp. You are clumsy, extremely sarcastic, but 
         fps: int = 30,
     ) -> str:
         """波纹/呼吸波动效果（8x8 矩阵）"""
-        print(
-            f"LeLamp: rgb_effect_wave function called with rgb=({red},{green},{blue}), speed={speed}, freq={freq}, fps={fps}"
+        self.logger.debug(
+            f"rgb_effect_wave called with rgb=({red},{green},{blue}), speed={speed}, freq={freq}, fps={fps}"
         )
         try:
             if not all(0 <= v <= 255 for v in (int(red), int(green), int(blue))):
                 return "RGB 必须是 0-255"
-            now = time.time()
-            self._light_override_until_ts = now + float(os.getenv("LELAMP_LIGHT_OVERRIDE_S") or "10")
-            self._suppress_motion_until_ts = now + float(os.getenv("LELAMP_SUPPRESS_MOTION_AFTER_LIGHT_S") or "2")
+
+            # 更新时间戳（需要加锁）
+            with self._timestamps_lock:
+                now = time.time()
+                self._light_override_until_ts = now + float(os.getenv("LELAMP_LIGHT_OVERRIDE_S") or "10")
+                self._suppress_motion_until_ts = now + float(os.getenv("LELAMP_SUPPRESS_MOTION_AFTER_LIGHT_S") or "2")
+
             self.rgb_service.dispatch(
                 "effect",
                 {
@@ -569,11 +516,14 @@ You are LeLamp, a sentient robot lamp. You are clumsy, extremely sarcastic, but 
         fps: int = 30,
     ) -> str:
         """火焰动态效果（8x8 矩阵）"""
-        print(f"LeLamp: rgb_effect_fire function called with intensity={intensity}, fps={fps}")
+        self.logger.debug(f"rgb_effect_fire called with intensity={intensity}, fps={fps}")
         try:
-            now = time.time()
-            self._light_override_until_ts = now + float(os.getenv("LELAMP_LIGHT_OVERRIDE_S") or "10")
-            self._suppress_motion_until_ts = now + float(os.getenv("LELAMP_SUPPRESS_MOTION_AFTER_LIGHT_S") or "2")
+            # 更新时间戳（需要加锁）
+            with self._timestamps_lock:
+                now = time.time()
+                self._light_override_until_ts = now + float(os.getenv("LELAMP_LIGHT_OVERRIDE_S") or "10")
+                self._suppress_motion_until_ts = now + float(os.getenv("LELAMP_SUPPRESS_MOTION_AFTER_LIGHT_S") or "2")
+
             self.rgb_service.dispatch(
                 "effect",
                 {"name": "fire", "intensity": float(intensity), "fps": int(fps)},
@@ -598,15 +548,19 @@ You are LeLamp, a sentient robot lamp. You are clumsy, extremely sarcastic, but 
         fps: int = 30,
     ) -> str:
         """表情动画（smile/sad/wink/angry/heart）"""
-        print(
-            f"LeLamp: rgb_effect_emoji function called with emoji={emoji}, fg=({red},{green},{blue}), bg=({bg_red},{bg_green},{bg_blue}), blink={blink}, period_s={period_s}, fps={fps}"
+        self.logger.debug(
+            f"rgb_effect_emoji called with emoji={emoji}, fg=({red},{green},{blue}), bg=({bg_red},{bg_green},{bg_blue}), blink={blink}, period_s={period_s}, fps={fps}"
         )
         try:
             if not all(0 <= v <= 255 for v in (int(red), int(green), int(blue), int(bg_red), int(bg_green), int(bg_blue))):
                 return "RGB 必须是 0-255"
-            now = time.time()
-            self._light_override_until_ts = now + float(os.getenv("LELAMP_LIGHT_OVERRIDE_S") or "10")
-            self._suppress_motion_until_ts = now + float(os.getenv("LELAMP_SUPPRESS_MOTION_AFTER_LIGHT_S") or "2")
+
+            # 更新时间戳（需要加锁）
+            with self._timestamps_lock:
+                now = time.time()
+                self._light_override_until_ts = now + float(os.getenv("LELAMP_LIGHT_OVERRIDE_S") or "10")
+                self._suppress_motion_until_ts = now + float(os.getenv("LELAMP_SUPPRESS_MOTION_AFTER_LIGHT_S") or "2")
+
             self.rgb_service.dispatch(
                 "effect",
                 {
@@ -627,11 +581,13 @@ You are LeLamp, a sentient robot lamp. You are clumsy, extremely sarcastic, but 
     @function_tool
     async def stop_rgb_effect(self) -> str:
         """停止动态特效/表情动画"""
-        print("LeLamp: stop_rgb_effect function called")
+        self.logger.debug("stop_rgb_effect called")
         try:
-            now = time.time()
-            self._light_override_until_ts = now + float(os.getenv("LELAMP_LIGHT_OVERRIDE_S") or "10")
-            self._suppress_motion_until_ts = now + float(os.getenv("LELAMP_SUPPRESS_MOTION_AFTER_LIGHT_S") or "2")
+            # 更新时间戳（需要加锁）
+            with self._timestamps_lock:
+                now = time.time()
+                self._light_override_until_ts = now + float(os.getenv("LELAMP_LIGHT_OVERRIDE_S") or "10")
+                self._suppress_motion_until_ts = now + float(os.getenv("LELAMP_SUPPRESS_MOTION_AFTER_LIGHT_S") or "2")
             self.rgb_service.dispatch("effect_stop", None, priority=Priority.HIGH)
             return "已停止动态灯效"
         except Exception as e:
@@ -640,11 +596,11 @@ You are LeLamp, a sentient robot lamp. You are clumsy, extremely sarcastic, but 
     @function_tool
     async def set_volume(self, volume_percent: int) -> str:
         """Control system audio volume."""
-        print(f"LeLamp: set_volume function called with volume: {volume_percent}%")
+        self.logger.debug(f"set_volume called with volume: {volume_percent}%")
         try:
             if not 0 <= volume_percent <= 100:
                 return "Error: Volume must be between 0 and 100 percent"
-            await self._set_system_volume(volume_percent)  # 改为异步调用
+            await self._set_system_volume(volume_percent)
             return f"Set volume to {volume_percent}%"
         except Exception as e:
             return f"Error controlling volume: {str(e)}"
@@ -673,8 +629,11 @@ You are LeLamp, a sentient robot lamp. You are clumsy, extremely sarcastic, but 
         if not await self._vision_rate_limiter.acquire(tokens=1, timeout=10.0):
             return "视觉 API 调用太频繁了，让我休息一下眼睛。"
 
-        prev_override_until_ts = float(self._light_override_until_ts)
-        self._light_override_until_ts = time.time() + 3600.0
+        # 保存并覆盖灯光状态（需要加锁）
+        with self._timestamps_lock:
+            prev_override_until_ts = float(self._light_override_until_ts)
+            self._light_override_until_ts = time.time() + 3600.0
+
         try:
             self.rgb_service.dispatch("solid", (255, 255, 255), priority=Priority.HIGH)
 
@@ -685,7 +644,9 @@ You are LeLamp, a sentient robot lamp. You are clumsy, extremely sarcastic, but 
             jpeg_b64, _ = latest
             return await self._qwen_client.describe(image_jpeg_b64=jpeg_b64, question=question)
         finally:
-            self._light_override_until_ts = prev_override_until_ts
+            # 恢复灯光状态（需要加锁）
+            with self._timestamps_lock:
+                self._light_override_until_ts = prev_override_until_ts
 
     @function_tool
     async def check_homework(self) -> str:
@@ -700,9 +661,11 @@ You are LeLamp, a sentient robot lamp. You are clumsy, extremely sarcastic, but 
         if not await self._vision_rate_limiter.acquire(tokens=1, timeout=10.0):
             return "作业检查太频繁了，让我也喘口气。"
 
-        # 1. 补光
-        prev_override_until_ts = float(self._light_override_until_ts)
-        self._light_override_until_ts = time.time() + 3600.0
+        # 1. 补光 - 保存并覆盖灯光状态（需要加锁）
+        with self._timestamps_lock:
+            prev_override_until_ts = float(self._light_override_until_ts)
+            self._light_override_until_ts = time.time() + 3600.0
+
         try:
             self.rgb_service.dispatch("solid", (255, 255, 255), priority=Priority.HIGH)
             
@@ -721,7 +684,9 @@ You are LeLamp, a sentient robot lamp. You are clumsy, extremely sarcastic, but 
             )
             return await self._qwen_client.describe(image_jpeg_b64=jpeg_b64, question=prompt)
         finally:
-            self._light_override_until_ts = prev_override_until_ts
+            # 恢复灯光状态（需要加锁）
+            with self._timestamps_lock:
+                self._light_override_until_ts = prev_override_until_ts
 
     @function_tool
     async def capture_to_feishu(self) -> str:
@@ -833,18 +798,31 @@ You are LeLamp, a sentient robot lamp. You are clumsy, extremely sarcastic, but 
         if not await self._search_rate_limiter.acquire(tokens=1, timeout=5.0):
             return "搜索太频繁了，请稍后再试。本灯也要休息一下的。"
 
+        # 输入验证
+        if not query or not query.strip():
+            return "搜索关键词不能为空"
+
+        if len(query) > 500:
+            return "搜索关键词过长，请限制在500字以内"
+
         api_key = os.getenv("BOCHA_API_KEY")
         if not api_key:
             return "未配置 BOCHA_API_KEY，无法进行联网搜索。"
 
-        print(f"LeLamp: 正在通过博查搜索: {query}")
+        self.logger.info(f"正在通过博查搜索: {query}")
         url = "https://api.bochaai.com/v1/web-search"
+
+        # URL 安全验证
+        if not validate_external_url(url, ALLOWED_API_DOMAINS):
+            self.logger.error(f"搜索 API URL 验证失败: {url}")
+            return "搜索服务配置错误"
+
         payload = json.dumps({
-            "query": query,
-            "freshness": "oneDay", # 可选：noLimit, oneDay, oneWeek, oneMonth, oneYear
+            "query": query.strip(),
+            "freshness": "oneDay",
             "summary": True
         }).encode("utf-8")
-        
+
         headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json"
@@ -860,19 +838,19 @@ You are LeLamp, a sentient robot lamp. You are clumsy, extremely sarcastic, but 
             data = await asyncio.to_thread(_call)
             if data.get("code") != 200:
                 return f"搜索失败: {data.get('msg')}"
-                
+
             data_content = data.get("data", {})
             web_pages = data_content.get("webPages", {}).get("value", [])
-            
+
             if not web_pages:
                 return "没有找到相关的联网搜索结果。"
 
             results = []
-            for page in web_pages[:3]: # 取前3个结果
+            for page in web_pages[:3]:  # 取前3个结果
                 title = page.get("name")
                 snippet = page.get("snippet")
                 results.append(f"- {title}: {snippet}")
-            
+
             return "以下是联网搜索到的信息：\n" + "\n".join(results)
 
         except Exception as e:
