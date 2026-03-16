@@ -899,6 +899,192 @@ You are LeLamp, a sentient robot lamp. You are clumsy, extremely sarcastic, but 
         # Rely on systemd or Docker to restart the container/process
         sys.exit(0)
 
+    # ==================== Data Channel 消息处理 (Web Client v2.0) ====================
+
+    async def handle_data_message(self, data: bytes, participant):
+        """
+        处理来自 Web Client 的 Data Channel 消息
+
+        支持的消息类型:
+        1. chat: 文字聊天消息
+        2. command: 控制指令 (动作、灯光等)
+        """
+        try:
+            message_str = data.decode('utf-8')
+            self.logger.debug(f"收到 Data Channel 消息: {message_str}")
+            message = json.loads(message_str)
+
+            msg_type = message.get('type')
+
+            if msg_type == 'chat':
+                # 聊天消息 - 转换为语音输入
+                content = message.get('content', '')
+                if content:
+                    await self.note_user_text(content)
+                    self.logger.info(f"收到文字消息: {content}")
+
+            elif msg_type == 'command':
+                # 控制指令 - 路由到对应的功能
+                action = message.get('action')
+                params = message.get('params', {})
+                self.logger.info(f"执行指令: {action}, 参数: {params}")
+
+                result = await self._execute_command(action, params)
+
+                # 发送执行结果
+                if result:
+                    await self._send_chat_message(result)
+
+            else:
+                self.logger.warning(f"未知消息类型: {msg_type}")
+
+        except json.JSONDecodeError as e:
+            self.logger.error(f"JSON 解析失败: {e}")
+        except Exception as e:
+            self.logger.error(f"处理 Data Channel 消息失败: {e}")
+            await self._send_chat_message(f"指令执行失败: {str(e)}")
+
+    async def _execute_command(self, action: str, params: dict) -> str:
+        """
+        执行 Web Client 发送的控制指令
+
+        支持的指令:
+        - play_recording: 播放录制动画
+        - move_joint: 移动关节
+        - set_rgb_solid: 设置纯色灯光
+        - rgb_effect_*: 启动灯效
+        - stop_rgb_effect: 停止灯效
+        - vision_answer: 视觉问答
+        - check_homework: 检查作业
+        """
+        try:
+            # 播放录制动画
+            if action == 'play_recording':
+                recording_name = params.get('recording_name')
+                if recording_name:
+                    return await self.play_recording(recording_name)
+                return "缺少录制名称参数"
+
+            # 移动关节
+            elif action == 'move_joint':
+                joint_name = params.get('joint_name')
+                angle = params.get('angle')
+                if joint_name and angle is not None:
+                    return await self.move_joint(joint_name, float(angle))
+                return "缺少关节名称或角度参数"
+
+            # 设置纯色灯光
+            elif action == 'set_rgb_solid':
+                r = params.get('r')
+                g = params.get('g')
+                b = params.get('b')
+                if r is not None and g is not None and b is not None:
+                    return await self.set_rgb_solid(int(r), int(g), int(b))
+                return "缺少 RGB 参数"
+
+            # 停止灯效
+            elif action == 'stop_rgb_effect':
+                return await self.stop_rgb_effect()
+
+            # 灯效动画 (rgb_effect_breathing, rgb_effect_rainbow 等)
+            elif action.startswith('rgb_effect_'):
+                effect_name = action.replace('rgb_effect_', '')
+                return await self._execute_rgb_effect(effect_name)
+
+            # 视觉功能
+            elif action == 'vision_answer':
+                question = params.get('question', '这是什么')
+                result = await self.vision_answer(question)
+                # 发送视觉结果 (包含图片)
+                await self._send_vision_result(result)
+                return result
+
+            elif action == 'check_homework':
+                result = await self.check_homework()
+                await self._send_vision_result(result)
+                return result
+
+            else:
+                return f"未知指令: {action}"
+
+        except Exception as e:
+            self.logger.error(f"执行指令失败: {action}, 错误: {e}")
+            return f"执行失败: {str(e)}"
+
+    async def _execute_rgb_effect(self, effect_name: str) -> str:
+        """执行 RGB 灯效"""
+        effect_map = {
+            'breathing': self.rgb_effect_breathing,
+            'rainbow': self.rgb_effect_rainbow,
+            'wave': self.rgb_effect_wave,
+            'fire': self.rgb_effect_fire,
+            'fireworks': self.rgb_effect_fireworks,
+            'starry': self.rgb_effect_starry,
+            'matrix_rain': self.rgb_effect_matrix_rain,
+            'plasma': self.rgb_effect_plasma,
+            'sparkle': self.rgb_effect_sparkle,
+            'gradient': self.rgb_effect_gradient,
+            'pulse': self.rgb_effect_pulse,
+        }
+
+        effect_func = effect_map.get(effect_name)
+        if effect_func:
+            return await effect_func()
+        return f"未知灯效: {effect_name}"
+
+    async def _send_chat_message(self, content: str):
+        """向 Web Client 发送聊天消息"""
+        try:
+            if hasattr(self, 'room') and self.room:
+                message = {
+                    "type": "chat",
+                    "content": content,
+                    "timestamp": time.time()
+                }
+                data = json.dumps(message).encode('utf-8')
+                await self.room.local_participant.publish_data(data)
+                self.logger.debug(f"发送聊天消息: {content}")
+        except Exception as e:
+            self.logger.error(f"发送聊天消息失败: {e}")
+
+    async def _send_vision_result(self, result: str, image_base64: str = None):
+        """向 Web Client 发送视觉结果 (包含图片)"""
+        try:
+            if hasattr(self, 'room') and self.room:
+                # 如果没有提供图片，尝试从 vision_service 获取最新帧
+                if image_base64 is None and self._vision_service:
+                    frame_data = self._vision_service.get_latest_frame()
+                    if frame_data:
+                        image_base64 = base64.b64encode(frame_data).decode('utf-8')
+
+                message = {
+                    "type": "vision_result",
+                    "content": result,
+                    "image_base64": image_base64,
+                    "timestamp": time.time()
+                }
+                data = json.dumps(message).encode('utf-8')
+                await self.room.local_participant.publish_data(data)
+                self.logger.debug(f"发送视觉结果: {result[:100]}...")
+        except Exception as e:
+            self.logger.error(f"发送视觉结果失败: {e}")
+
+    async def _update_camera_status(self, active: bool):
+        """向 Web Client 更新摄像头状态"""
+        try:
+            if hasattr(self, 'room') and self.room:
+                message = {
+                    "type": "camera_status",
+                    "active": active,
+                    "timestamp": time.time()
+                }
+                data = json.dumps(message).encode('utf-8')
+                await self.room.local_participant.publish_data(data)
+                self.logger.debug(f"更新摄像头状态: {'激活' if active else '关闭'}")
+        except Exception as e:
+            self.logger.error(f"更新摄像头状态失败: {e}")
+
+
 async def entrypoint(ctx: JobContext):
     config = _load_config()
     await ctx.connect()
@@ -973,6 +1159,12 @@ async def entrypoint(ctx: JobContext):
         start_kwargs["room_input_options"] = RoomInputOptions(
             noise_cancellation=noise_cancellation.BVC(),
         )
+
+    # 注册 Data Channel 事件监听器 (Web Client v2.0 support)
+    @ctx.room.on("data_received")
+    def on_data_received(data: bytes, participant):
+        """处理来自 Web Client 的 Data Channel 消息"""
+        asyncio.create_task(agent.handle_data_message(data, participant))
 
     try:
         await session.start(
