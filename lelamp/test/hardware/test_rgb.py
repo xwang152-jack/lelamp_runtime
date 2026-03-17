@@ -1,12 +1,15 @@
 import time
 import sys
 import os
+import pytest
 
-sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+# Add parent directory to path to import from lelamp package
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..')))
 
-from service.rgb import RGBService
-from service.base import Priority
+from lelamp.service.rgb import RGBService
+from lelamp.service.base import Priority
 
+@pytest.mark.hardware
 def test_rgb_service():
     print("Testing RGB Service...")
     
