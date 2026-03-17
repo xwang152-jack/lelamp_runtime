@@ -26,6 +26,12 @@ from lelamp.api.models.responses import (
     CommandResponse,
     StatisticsResponse,
 )
+from lelamp.api.routes.websocket import (
+    push_state_update,
+    push_event,
+    push_log,
+    push_notification,
+)
 
 logger = logging.getLogger("lelamp.api.devices")
 
@@ -174,8 +180,9 @@ async def send_device_command(
     command_id = str(uuid.uuid4())
 
     # 创建操作日志
+    log_entry = None
     try:
-        crud.create_operation_log(
+        log_entry = crud.create_operation_log(
             db,
             lamp_id=lamp_id,
             operation_type=command_type,
@@ -189,6 +196,28 @@ async def send_device_command(
         # 不阻止命令发送，只记录错误
 
     logger.info(f"Command {command_id} sent to device {lamp_id}: {command_type}/{action}")
+
+    # 推送操作日志到 WebSocket 订阅者
+    if log_entry:
+        try:
+            await push_log(lamp_id, {
+                "id": log_entry.id,
+                "operation_type": log_entry.operation_type,
+                "action": log_entry.action,
+                "params": log_entry.params,
+                "success": log_entry.success,
+                "timestamp": log_entry.timestamp.isoformat(),
+                "duration_ms": log_entry.duration_ms,
+            })
+
+            # 推送命令事件
+            await push_event(lamp_id, "command_sent", {
+                "command_id": command_id,
+                "action": action,
+                "params": params,
+            })
+        except Exception as e:
+            logger.warning(f"Failed to push WebSocket notification: {e}")
 
     return CommandResponse(
         success=True,
