@@ -7,6 +7,8 @@ from typing import TYPE_CHECKING
 
 from livekit.agents import function_tool
 
+from .utils import validate_rgb_color
+
 if TYPE_CHECKING:
     from lelamp.service.rgb.rgb_service import RGBService
     from lelamp.agent.states import StateManager
@@ -47,8 +49,9 @@ class RGBTools:
         self.logger.debug(f"set_rgb_solid called with RGB({r}, {g}, {b})")
         try:
             # 验证颜色范围
-            if not all(0 <= val <= 255 for val in [r, g, b]):
-                return "错误：RGB 值必须在 0-255 范围内"
+            is_valid, error_msg = validate_rgb_color(r, g, b)
+            if not is_valid:
+                return f"错误：{error_msg}"
 
             # 导入 Priority（延迟导入避免循环依赖）
             from lelamp.service import Priority
@@ -139,8 +142,9 @@ class RGBTools:
         self.logger.debug(f"rgb_effect_breathing called with RGB({r}, {g}, {b})")
         try:
             # 验证颜色范围
-            if not all(0 <= val <= 255 for val in [r, g, b]):
-                return "错误：RGB 值必须在 0-255 范围内"
+            is_valid, error_msg = validate_rgb_color(r, g, b)
+            if not is_valid:
+                return f"错误：{error_msg}"
 
             from lelamp.service import Priority
 

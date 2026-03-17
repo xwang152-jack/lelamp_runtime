@@ -11,6 +11,7 @@ import logging
 import os
 import random
 import sys
+import threading
 import time
 from typing import TYPE_CHECKING, Optional
 
@@ -185,6 +186,9 @@ You are LeLamp, a sentient robot lamp. You are clumsy, extremely sarcastic, but 
         # 用户输入追踪
         self._last_user_text = ""
         self._last_user_text_ts = 0.0
+        # 用于保护 _last_user_text 和 _last_user_text_ts 的锁
+        # 这些变量可能在 asyncio 上下文和线程上下文同时访问
+        self._user_text_lock = threading.Lock()
 
         # 启动动画
         boot_anim_enabled = (os.getenv("LELAMP_BOOT_ANIMATION") or "1").strip().lower() in (
@@ -196,6 +200,9 @@ You are LeLamp, a sentient robot lamp. You are clumsy, extremely sarcastic, but 
 
         # 标记需要设置音量（延迟到有事件循环时）
         self._pending_volume_set = 100
+
+        # 用于运行 amixer 的用户名（可配置）
+        self._amixer_user = os.getenv("LELAMP_AMIXER_USER", "pi")
 
     # ==================== 核心方法 ====================
 
@@ -211,12 +218,17 @@ You are LeLamp, a sentient robot lamp. You are clumsy, extremely sarcastic, but 
 
         Args:
             text: 用户输入的文本
+
+        Note:
+            使用 threading.Lock 保护共享状态，因为这些变量可能被
+            asyncio 上下文和线程上下文同时访问
         """
         # 执行待处理的异步初始化
         await self._initialize_async()
 
-        self._last_user_text = text
-        self._last_user_text_ts = time.time()
+        with self._user_text_lock:
+            self._last_user_text = text
+            self._last_user_text_ts = time.time()
 
     async def set_conversation_state(self, state: str) -> None:
         """
@@ -282,9 +294,9 @@ You are LeLamp, a sentient robot lamp. You are clumsy, extremely sarcastic, but 
             volume_percent: 音量百分比 (0-100)
         """
         try:
-            cmd_line = ["sudo", "-u", "pi", "amixer", "sset", "Line", f"{volume_percent}%"]
-            cmd_line_dac = ["sudo", "-u", "pi", "amixer", "sset", "Line DAC", f"{volume_percent}%"]
-            cmd_line_hp = ["sudo", "-u", "pi", "amixer", "sset", "HP", f"{volume_percent}%"]
+            cmd_line = ["sudo", "-u", self._amixer_user, "amixer", "sset", "Line", f"{volume_percent}%"]
+            cmd_line_dac = ["sudo", "-u", self._amixer_user, "amixer", "sset", "Line DAC", f"{volume_percent}%"]
+            cmd_line_hp = ["sudo", "-u", self._amixer_user, "amixer", "sset", "HP", f"{volume_percent}%"]
 
             for cmd in [cmd_line, cmd_line_dac, cmd_line_hp]:
                 proc = await asyncio.create_subprocess_exec(
