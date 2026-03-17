@@ -9,6 +9,7 @@ import logging
 import os
 import socket
 import sys
+import threading
 import urllib.error
 import urllib.request
 from typing import TYPE_CHECKING, Any, Optional
@@ -17,6 +18,7 @@ from livekit.agents import function_tool
 
 # 从 motor_tools.py 导入 SAFE_JOINT_RANGES
 from lelamp.agent.tools.motor_tools import SAFE_JOINT_RANGES
+from .utils import validate_multiple_rgb_colors
 
 if TYPE_CHECKING:
     from lelamp.service.motors.motors_service import MotorsService
@@ -61,6 +63,9 @@ class SystemTools:
         self.state_manager = state_manager
         self._get_rate_limit_stats = get_rate_limit_stats_func
         self.logger = logging.getLogger("lelamp.agent.tools.system")
+
+        # 用于运行 amixer 的用户名（可配置）
+        self._amixer_user = os.getenv("LELAMP_AMIXER_USER", "pi")
 
     # ==================== 电机相关工具 ====================
 
@@ -265,8 +270,9 @@ class SystemTools:
             f"rgb_effect_wave called with rgb=({red},{green},{blue}), speed={speed}, freq={freq}, fps={fps}"
         )
         try:
-            if not all(0 <= v <= 255 for v in (int(red), int(green), int(blue))):
-                return "RGB 必须是 0-255"
+            is_valid, error_msg = validate_multiple_rgb_colors(red, green, blue)
+            if not is_valid:
+                return error_msg
 
             # 设置灯光覆盖
             self.state_manager.set_light_override(duration_s=self.LIGHT_OVERRIDE_DURATION_S)
@@ -336,8 +342,9 @@ class SystemTools:
             f"rgb_effect_emoji called with emoji={emoji}, fg=({red},{green},{blue}), bg=({bg_red},{bg_green},{bg_blue}), blink={blink}, period_s={period_s}, fps={fps}"
         )
         try:
-            if not all(0 <= v <= 255 for v in (int(red), int(green), int(blue), int(bg_red), int(bg_green), int(bg_blue))):
-                return "RGB 必须是 0-255"
+            is_valid, error_msg = validate_multiple_rgb_colors(red, green, blue, bg_red, bg_green, bg_blue)
+            if not is_valid:
+                return error_msg
 
             # 设置灯光覆盖
             self.state_manager.set_light_override(duration_s=self.LIGHT_OVERRIDE_DURATION_S)
@@ -390,9 +397,10 @@ class SystemTools:
                 return "Error: Volume must be between 0 and 100 percent"
 
             # 使用 amixer 设置音量（异步执行以避免阻塞）
+            # 使用可配置的用户名运行 amixer
             try:
                 process = await asyncio.create_subprocess_exec(
-                    "amixer",
+                    "sudo", "-u", self._amixer_user, "amixer",
                     "-q", "sset", "'Line','Line DAC','HP'", f"{volume_percent}%",
                     stdout=asyncio.subprocess.DEVNULL,
                     stderr=asyncio.subprocess.DEVNULL,
