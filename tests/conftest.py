@@ -27,6 +27,16 @@ def mock_config():
         vision_capture_interval_s=2.5,
         vision_jpeg_quality=92,
         vision_max_age_s=15.0,
+        camera_rotate_deg=0,
+        camera_flip="none",
+        baidu_api_key="test_baidu_key",
+        baidu_secret_key="test_baidu_secret",
+        baidu_cuid="test_cuid",
+        baidu_tts_per=4,
+        lamp_port="/dev/ttyACM0",
+        lamp_id="test_lamp",
+        noise_cancellation_enabled=True,
+        greeting_text="Test greeting",
     )
 
 
