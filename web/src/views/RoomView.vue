@@ -26,14 +26,7 @@
           </div>
         </div>
 
-        <div class="panel">
-          <h3>💡 灯光魔法</h3>
-          <div class="button-grid">
-            <el-button @click="setEffect('breathing')">💗 呼吸灯</el-button>
-            <el-button @click="setEffect('rainbow')">🌈 彩虹</el-button>
-            <el-button @click="setEffect('wave')">🌊 波浪</el-button>
-          </div>
-        </div>
+        <LightPanel />
       </div>
     </div>
 
@@ -67,6 +60,7 @@ import { ElMessage } from 'element-plus'
 import { useLiveKit } from '@/composables/useLiveKit'
 import { useChatStore, useDeviceStore } from '@/stores'
 import PrivacyIndicator from '@/components/common/PrivacyIndicator.vue'
+import LightPanel from '@/components/room/LightPanel.vue'
 
 const router = useRouter()
 const { disconnect, sendCommand, sendChat: sendLiveKitChat } = useLiveKit()
@@ -96,11 +90,6 @@ function sendChat(text: string) {
   sendLiveKitChat(text)
   ElMessage.success(`发送: ${text}`)
   scrollToBottom()
-}
-
-function setEffect(effect: string) {
-  sendCommand(`rgb_effect_${effect}`, {})
-  ElMessage.success(`设置特效: ${effect}`)
 }
 
 function sendMessage() {
