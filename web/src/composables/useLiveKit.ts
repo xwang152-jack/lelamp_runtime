@@ -1,5 +1,4 @@
-import { ref } from 'vue'
-import { Room, RoomEvent, DataPacket_Kind } from 'livekit-client'
+import { Room, RoomEvent } from 'livekit-client'
 import { useConnectionStore, useChatStore, useDeviceStore } from '@/stores'
 import type { DataMessage } from '@/types'
 
@@ -72,7 +71,7 @@ export function useLiveKit() {
     const encoder = new TextEncoder()
     await connectionStore.room.localParticipant.publishData(
       encoder.encode(JSON.stringify(data)),
-      DataPacket_Kind.RELIABLE
+      { reliable: true }
     )
   }
 
@@ -86,7 +85,7 @@ export function useLiveKit() {
     const encoder = new TextEncoder()
     await connectionStore.room.localParticipant.publishData(
       encoder.encode(JSON.stringify(data)),
-      DataPacket_Kind.RELIABLE
+      { reliable: true }
     )
     chatStore.addMessage('user', text)
   }
