@@ -1,0 +1,14 @@
+{
+  "name": "lelamp-runtime-workspace",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm --filter web dev",
+    "build": "pnpm --filter web build",
+    "preview": "pnpm --filter web preview",
+    "lint": "pnpm --filter web lint",
+    "type-check": "pnpm --filter web type-check"
+  },
+  "devDependencies": {
+    "pnpm": "^8.15.0"
+  }
+}
