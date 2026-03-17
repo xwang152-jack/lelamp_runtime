@@ -1,6 +1,9 @@
 <template>
   <div class="status-indicator">
-    <span class="status-dot" :class="statusClass" />
+    <span
+      class="status-dot"
+      :class="statusClass"
+    />
     <span class="status-text">{{ statusText }}</span>
   </div>
 </template>
