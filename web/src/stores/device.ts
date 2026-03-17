@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import type { DeviceState, LightState } from '@/types'
+import type { DeviceState } from '@/types'
 
 export const useDeviceStore = defineStore('device', {
   state: (): DeviceState => ({
