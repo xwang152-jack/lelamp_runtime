@@ -2,10 +2,13 @@
 FastAPI 应用主文件
 """
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import IntegrityError
 import logging
+
+from lelamp.api.routes import api_router
 
 logger = logging.getLogger("lelamp.api")
 
@@ -38,6 +41,9 @@ async def lifespan(app: FastAPI):
 
 app.router.lifespan_context = lifespan
 
+# 包含 API 路由
+app.include_router(api_router)
+
 # 健康检查
 @app.get("/health")
 async def health_check():
@@ -67,6 +73,51 @@ async def broadcast_to_websockets(message: dict):
             await connection.send_json(message)
         except:
             active_connections.remove(connection)
+
+
+# =============================================================================
+# 异常处理器
+# =============================================================================
+
+
+@app.exception_handler(IntegrityError)
+async def handle_integrity_error(request: Request, exc: IntegrityError):
+    """
+    处理数据库完整性错误（重复键、约束违反等）
+    """
+    logger.error(f"Database integrity error: {exc}")
+    return JSONResponse(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        content={
+            "detail": "Database constraint violation",
+            "error": str(exc.orig) if hasattr(exc, 'orig') else str(exc),
+        },
+    )
+
+
+@app.exception_handler(ValueError)
+async def handle_value_error(request: Request, exc: ValueError):
+    """
+    处理值错误（无效数据等）
+    """
+    logger.warning(f"Value error: {exc}")
+    return JSONResponse(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        content={"detail": str(exc)},
+    )
+
+
+@app.exception_handler(Exception)
+async def handle_generic_exception(request: Request, exc: Exception):
+    """
+    处理未捕获的通用异常
+    """
+    logger.error(f"Unhandled exception: {exc}", exc_info=True)
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={"detail": "Internal server error", "error": str(exc)},
+    )
+
 
 # 导出关键组件
 __all__ = ["app", "broadcast_to_websockets"]
