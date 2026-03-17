@@ -110,6 +110,9 @@ class AppConfig:
     noise_cancellation_enabled: bool
     greeting_text: str
 
+    # OTA (Over-The-Air Update)
+    ota_url: str | None
+
 
 @dataclass
 class MotorConfig:
@@ -207,6 +210,9 @@ def load_config() -> AppConfig:
         # Features
         noise_cancellation_enabled=_get_env_bool("LELAMP_NOISE_CANCELLATION", True),
         greeting_text=_get_env_str("LELAMP_GREETING_TEXT", "你好！我是 LeLamp，你的智能台灯。") or "你好！我是 LeLamp，你的智能台灯。",
+
+        # OTA (Over-The-Air Update)
+        ota_url=_get_env_str("LELAMP_OTA_URL", "") or None,
     )
 
 

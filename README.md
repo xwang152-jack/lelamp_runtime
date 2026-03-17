@@ -42,6 +42,13 @@
 - **双向音频**: 语音通话功能
 - **全功能面板**: 视觉、动作、灯光、聊天全覆盖
 
+### 🚀 RESTful API 系统 ⭐ NEW
+- **完整的 REST API**: 9 个端点，完整的 CRUD 操作
+- **实时 WebSocket 推送**: 13 种消息类型，频道订阅
+- **数据持久化**: SQLite/PostgreSQL 支持，4 个 ORM 模型
+- **自动 API 文档**: Swagger UI + ReDoc
+- **99% 测试覆盖率**: 79 个测试全部通过
+
 ### 🔐 企业级功能
 - **设备授权**: License Key 保护
 - **OTA 更新**: 远程固件升级
@@ -211,7 +218,7 @@ uv run python scripts/generate_client_token.py --room lelamp-room --user jack
 # 启动 HTTP 服务器
 python3 -m http.server 8000
 
-# 访问: http://localhost:8000/web_client/
+# 访问: http://localhost:5173
 ```
 
 在 Web Client 中粘贴 LiveKit URL 和 Token，点击"连接设备"即可开始使用！🎉
@@ -519,7 +526,7 @@ LELAMP_OTA_URL=https://api.lelamp.com/ota/check
 
 ### 用户文档
 - 📘 [完整使用指南](./docs/USER_GUIDE.md) - 端到端使用教程
-- 🌐 [Web Client 文档](./web_client/README.md) - Web 界面使用说明
+- 🌐 [Web 前端](./web/) - Vue 3 前端应用
 - ✅ [测试清单](./docs/TESTING_CHECKLIST.md) - 系统化测试流程
 
 ### 产品文档
@@ -551,7 +558,7 @@ lelamp_runtime/
 │   ├── PRODUCT_*.md            # 产品评审文档
 │   └── PYTHON*.md              # Python 升级文档
 │
-├── web_client/                 # Web 客户端
+├── web/                       # Vue 3 前端应用
 │   ├── index.html              # 主页面
 │   ├── style.css               # 样式表
 │   ├── app.js                  # 功能实现

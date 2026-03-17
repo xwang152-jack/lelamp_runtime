@@ -6,15 +6,9 @@
         <p>智能台灯，陪伴成长</p>
       </div>
 
-      <el-form
-        :model="form"
-        label-position="top"
-      >
+      <el-form :model="form" label-position="top">
         <el-form-item label="LiveKit Server URL">
-          <el-input
-            v-model="form.serverUrl"
-            placeholder="wss://your-project.livekit.cloud"
-          />
+          <el-input v-model="form.serverUrl" placeholder="wss://your-project.livekit.cloud" />
         </el-form-item>
 
         <el-form-item label="Access Token">

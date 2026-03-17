@@ -334,7 +334,7 @@ Silero VAD can be customized via environment variables:
 - `lelamp/follower/` & `lelamp/leader/`: Motor control configurations
 - `lelamp/recordings/`: CSV files with motor animation sequences
 - `lelamp/test/`: Hardware testing utilities
-- `web_client/`: Web-based user client for remote control and monitoring
+- `web/`: Vue 3 + TypeScript + Vite 前端应用
 - `scripts/`: Build and token generation utilities for commercial deployment
 - `VERSION`: Current runtime version string (used for OTA updates)
 
@@ -413,13 +413,6 @@ When debugging services:
 - **SSRF Protection**: External URLs validated against domain whitelist
 
 ### Commercial Features
-
-**Web Client** (`web_client/`):
-- Browser-based user interface for remote control and monitoring
-- Real-time video streaming via LiveKit WebRTC
-- Bidirectional audio communication
-- Control panel for lamp functions (lights, motors, vision)
-- Token-based authentication for secure connections
 
 **OTA Updates**:
 - `OTAManager` class handles firmware updates remotely

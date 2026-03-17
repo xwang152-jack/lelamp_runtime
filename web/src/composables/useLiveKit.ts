@@ -23,7 +23,6 @@ export function useLiveKit() {
         connectionStore.setConnectionStatus('disconnected')
         deviceStore.setStatus('offline')
       })
-
       ;(room.on(RoomEvent.TrackSubscribed, (track: any) => {
         console.log('Track subscribed:', track)
       }),
