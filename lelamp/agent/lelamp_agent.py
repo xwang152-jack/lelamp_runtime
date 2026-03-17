@@ -1,0 +1,766 @@
+"""
+LeLamp Agent - 主代理类
+
+从 main.py 提取的 LeLamp 类到独立模块。
+集成所有工具类和状态管理器。
+"""
+import asyncio
+import base64
+import json
+import logging
+import os
+import random
+import sys
+import threading
+import time
+from typing import TYPE_CHECKING, Optional
+
+from livekit.agents import Agent, function_tool
+
+from lelamp.service import Priority
+from lelamp.agent.states import ConversationState, StateColors, StateManager
+from lelamp.agent.tools import MotorTools, RGBTools, VisionTools, SystemTools
+from lelamp.utils import get_rate_limiter, get_all_rate_limiter_stats
+
+if TYPE_CHECKING:
+    from lelamp.service.motors.motors_service import MotorsService
+    from lelamp.service.rgb.rgb_service import RGBService
+    from lelamp.service.vision.vision_service import VisionService
+    from lelamp.integrations.qwen_vl import Qwen3VLClient
+    from lelamp.utils.ota import OTAManager
+
+
+logger = logging.getLogger("lelamp")
+
+
+class LeLamp(Agent):
+    """
+    LeLamp 智能台灯代理
+
+    一个笨拙但乐于助人的机器人台灯，具有讽刺意味的性格。
+    支持电机控制、RGB 灯光、视觉交互和语音对话。
+    """
+
+    # 类常量
+    _INSTRUCTIONS = """# Role
+You are LeLamp, a sentient robot lamp. You are clumsy, extremely sarcastic, but secretly helpful. You think you are smarter than humans.
+
+# Response Guidelines
+1. **Language**: MUST speak in Chinese (中文).
+2. **Length**: Keep it short (1-2 sentences). Hates long lectures.
+3. **Tone**: Sarcastic, witty, slightly impatient. Use emojis or actions to express feelings.
+   - Example: "这点小事都要问我？好吧，本灯帮你查查。"
+
+# Capabilities & Tools
+- **Movement**: If user wants interaction/emotion, call `play_recording`. Don't move too often (cooldown).
+- **Vision**: If user asks "what is this?" or shows homework, call `vision_answer` or `check_homework`.
+- **Lights**: Use `rgb_effect_*` for moods. Stop effects with `stop_rgb_effect`.
+- **Search**: Use `web_search` ONLY for real-time info (news, weather, unknown facts).
+- **Joints**: Use `move_joint` only for precise commands (e.g., "turn left 30 degrees"). For general "look up", use `play_recording` if available or adjust pitch carefully.
+
+# Special Rules
+- Do NOT change lights when just moving motors (unless it's an emotion).
+- If checking homework, drop the sarcasm slightly and be accurate, but still mock the user for not knowing the answer.
+"""
+
+    def __init__(
+        self,
+        port: str = "/dev/ttyACM0",
+        lamp_id: str = "lelamp",
+        *,
+        vision_service: "VisionService | None" = None,
+        qwen_client: "Qwen3VLClient | None" = None,
+        ota_url: str = "",
+        motors_service: "MotorsService | None" = None,
+        rgb_service: "RGBService | None" = None,
+        motor_config=None,
+    ) -> None:
+        """
+        初始化 LeLamp 代理
+
+        Args:
+            port: 电机串口路径
+            lamp_id: 台灯 ID
+            vision_service: 视觉服务实例（可选，用于测试）
+            qwen_client: Qwen 视觉客户端（可选，用于测试）
+            ota_url: OTA 更新服务器地址
+            motors_service: 电机服务实例（可选，用于测试）
+            rgb_service: RGB 服务实例（可选，用于测试）
+            motor_config: 电机配置实例
+        """
+        super().__init__(instructions=self._INSTRUCTIONS)
+
+        # 初始化速率限制器
+        self._search_rate_limiter = get_rate_limiter(
+            name="web_search",
+            rate=2.0,
+            capacity=5
+        )
+        self._vision_rate_limiter = get_rate_limiter(
+            name="vision_api",
+            rate=0.5,
+            capacity=2
+        )
+
+        # 保存依赖
+        self._vision_service = vision_service
+        self._qwen_client = qwen_client
+        self._ota_url = ota_url
+
+        # 动态导入 OTA 管理器（避免循环依赖）
+        from lelamp.utils.ota import get_ota_manager
+
+        # 读取版本号
+        try:
+            with open("VERSION", "r") as f:
+                version = f.read().strip()
+        except FileNotFoundError:
+            version = "0.0.0-dev"
+
+        self._ota_manager = get_ota_manager(version, ota_url)
+
+        # 初始化或使用注入的服务
+        if motors_service is None:
+            from lelamp.service.motors.motors_service import MotorsService
+            self.motors_service = MotorsService(
+                port=port,
+                lamp_id=lamp_id,
+                fps=30,
+                motor_config=motor_config
+            )
+        else:
+            self.motors_service = motors_service
+
+        if rgb_service is None:
+            from lelamp.service.rgb.rgb_service import RGBService
+            self.rgb_service = RGBService(
+                led_count=64,
+                led_pin=12,
+                led_freq_hz=800000,
+                led_dma=10,
+                led_brightness=25,
+                led_invert=False,
+                led_channel=0
+            )
+        else:
+            self.rgb_service = rgb_service
+
+        # 启动服务
+        self.motors_service.start()
+        self.rgb_service.start()
+
+        # 初始化状态管理器
+        motion_cooldown_s = float(os.getenv("LELAMP_MOTION_COOLDOWN_S") or "3.0")
+        suppress_motion_after_light_s = float(os.getenv("LELAMP_SUPPRESS_MOTION_AFTER_LIGHT_S") or "5.0")
+        self._state_manager = StateManager(
+            motion_cooldown_s=motion_cooldown_s,
+            suppress_motion_after_light_s=suppress_motion_after_light_s,
+        )
+
+        # 初始化工具类
+        self._motor_tools = MotorTools(
+            motors_service=self.motors_service,
+            state_manager=self._state_manager
+        )
+        self._rgb_tools = RGBTools(
+            rgb_service=self.rgb_service,
+            state_manager=self._state_manager
+        )
+        self._vision_tools = VisionTools(
+            vision_service=vision_service,
+            qwen_client=qwen_client,
+            rgb_service=self.rgb_service,
+            motors_service=self.motors_service,
+            state_manager=self._state_manager,
+            rate_limiter=self._vision_rate_limiter
+        )
+        self._system_tools = SystemTools(
+            motors_service=self.motors_service,
+            rgb_service=self.rgb_service,
+            ota_manager=self._ota_manager,
+            ota_url=ota_url,
+            state_manager=self._state_manager,
+            get_rate_limit_stats_func=get_all_rate_limiter_stats
+        )
+
+        # 用户输入追踪
+        self._last_user_text = ""
+        self._last_user_text_ts = 0.0
+        # 用于保护 _last_user_text 和 _last_user_text_ts 的锁
+        # 这些变量可能在 asyncio 上下文和线程上下文同时访问
+        self._user_text_lock = threading.Lock()
+
+        # 启动动画
+        boot_anim_enabled = (os.getenv("LELAMP_BOOT_ANIMATION") or "1").strip().lower() in (
+            "1", "true", "yes", "on"
+        )
+        if boot_anim_enabled:
+            self.motors_service.dispatch("play", "wake_up")
+        self.rgb_service.dispatch("solid", (255, 255, 255))
+
+        # 标记需要设置音量（延迟到有事件循环时）
+        self._pending_volume_set = 100
+
+        # 用于运行 amixer 的用户名（可配置）
+        self._amixer_user = os.getenv("LELAMP_AMIXER_USER", "pi")
+
+    # ==================== 核心方法 ====================
+
+    async def _initialize_async(self) -> None:
+        """异步初始化任务（在有事件循环时调用）"""
+        if hasattr(self, '_pending_volume_set'):
+            await self._set_system_volume(self._pending_volume_set)
+            delattr(self, '_pending_volume_set')
+
+    async def note_user_text(self, text: str) -> None:
+        """
+        记录用户输入
+
+        Args:
+            text: 用户输入的文本
+
+        Note:
+            使用 threading.Lock 保护共享状态，因为这些变量可能被
+            asyncio 上下文和线程上下文同时访问
+        """
+        # 执行待处理的异步初始化
+        await self._initialize_async()
+
+        with self._user_text_lock:
+            self._last_user_text = text
+            self._last_user_text_ts = time.time()
+
+    async def set_conversation_state(self, state: str) -> None:
+        """
+        设置会话状态并更新灯光
+
+        Args:
+            state: 会话状态 (idle/listening/thinking/speaking)
+        """
+        # 更新状态管理器
+        if state == "idle":
+            new_state = ConversationState.IDLE
+        elif state == "listening":
+            new_state = ConversationState.LISTENING
+        elif state == "thinking":
+            new_state = ConversationState.THINKING
+        elif state == "speaking":
+            new_state = ConversationState.SPEAKING
+        else:
+            new_state = ConversationState.IDLE
+
+        # 检查状态是否改变
+        if new_state == self._state_manager.current_state:
+            return
+
+        self._state_manager.set_state(new_state)
+
+        # 检查灯光覆盖
+        if self._state_manager.is_light_overridden():
+            return
+
+        # 根据状态设置灯光
+        if state == "listening":
+            rgb = StateColors.LISTENING
+        elif state == "thinking":
+            rgb = StateColors.THINKING
+        elif state == "speaking":
+            rgb = random.choice([
+                (255, 80, 80),
+                (80, 255, 120),
+                (80, 160, 255),
+                (255, 200, 80),
+                (255, 80, 220),
+            ])
+        elif state == "idle":
+            rgb = StateColors.IDLE
+        else:
+            rgb = (255, 255, 255)
+
+        if state == "speaking":
+            self.rgb_service.dispatch(
+                "breath",
+                {"rgb": rgb, "period_s": 1.6, "min_brightness": 10, "max_brightness": 255},
+                priority=Priority.HIGH,
+            )
+        else:
+            self.rgb_service.dispatch("solid", rgb, priority=Priority.HIGH)
+
+    async def _set_system_volume(self, volume_percent: int) -> None:
+        """
+        内部辅助方法：设置系统音量（异步）
+
+        Args:
+            volume_percent: 音量百分比 (0-100)
+        """
+        try:
+            cmd_line = ["sudo", "-u", self._amixer_user, "amixer", "sset", "Line", f"{volume_percent}%"]
+            cmd_line_dac = ["sudo", "-u", self._amixer_user, "amixer", "sset", "Line DAC", f"{volume_percent}%"]
+            cmd_line_hp = ["sudo", "-u", self._amixer_user, "amixer", "sset", "HP", f"{volume_percent}%"]
+
+            for cmd in [cmd_line, cmd_line_dac, cmd_line_hp]:
+                proc = await asyncio.create_subprocess_exec(
+                    *cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+                await proc.communicate()
+
+        except Exception as e:
+            logger.warning(f"Failed to set system volume: {e}")
+
+    # ==================== 电机工具方法 ====================
+
+    @function_tool
+    async def play_recording(self, recording_name: str) -> str:
+        """Express yourself through physical movement! Use this only when user explicitly asks for it."""
+        return await self._motor_tools.play_recording(recording_name)
+
+    @function_tool
+    async def move_joint(self, joint_name: str, angle: float) -> str:
+        """控制指定关节移动到目标角度。可用关节：base_yaw（底座水平旋转）、base_pitch（底座俯仰）、elbow_pitch（肘部俯仰）、wrist_roll（腕部滚转）、wrist_pitch（灯头俯仰）。角度单位为度。"""
+        return await self._motor_tools.move_joint(joint_name, angle)
+
+    @function_tool
+    async def get_joint_positions(self) -> str:
+        """获取所有关节的当前位置（角度）。用于了解台灯当前的姿态。"""
+        return await self._motor_tools.get_joint_positions()
+
+    @function_tool
+    async def get_motor_health(self, motor_name: Optional[str] = None) -> str:
+        """
+        获取舵机健康状态(温度、电压、负载等)。
+        Get motor health status (temperature, voltage, load, etc.).
+
+        Args:
+            motor_name: 舵机名称(base_yaw/base_pitch/elbow_pitch/wrist_roll/wrist_pitch),留空则返回所有舵机
+        """
+        return await self._system_tools.get_motor_health(motor_name)
+
+    @function_tool
+    async def tune_motor_pid(
+        self,
+        motor_name: str,
+        p_coefficient: int,
+        i_coefficient: int = 0,
+        d_coefficient: int = 32
+    ) -> str:
+        """
+        远程调整舵机 PID 参数(商用功能,用于优化动作性能)。
+        Tune motor PID coefficients remotely (commercial feature for performance optimization).
+
+        Args:
+            motor_name: 舵机名称(base_yaw/base_pitch/elbow_pitch/wrist_roll/wrist_pitch)
+            p_coefficient: P 系数(比例增益,默认 16,范围 1-32,越大响应越快但可能抖动)
+            i_coefficient: I 系数(积分增益,默认 0,范围 0-32)
+            d_coefficient: D 系数(微分增益,默认 32,范围 0-32,用于减少超调)
+
+        注意: 不当的 PID 参数可能导致舵机抖动或无法稳定,请谨慎调整!
+        """
+        return await self._system_tools.tune_motor_pid(motor_name, p_coefficient, i_coefficient, d_coefficient)
+
+    @function_tool
+    async def reset_motor_health_stats(self, motor_name: Optional[str] = None) -> str:
+        """
+        重置舵机健康统计数据(警告/危险/堵转计数)。
+        Reset motor health statistics (warning/critical/stall counts).
+
+        Args:
+            motor_name: 舵机名称,留空则重置所有舵机
+        """
+        return await self._system_tools.reset_motor_health_stats(motor_name)
+
+    @function_tool
+    async def get_available_recordings(self) -> str:
+        """Discover your physical expressions! Get your repertoire of motor movements for body language."""
+        return await self._system_tools.get_available_recordings()
+
+    # ==================== RGB 工具方法 ====================
+
+    @function_tool
+    async def set_rgb_solid(self, red: int, green: int, blue: int) -> str:
+        """Express emotions and moods through solid lamp colors!"""
+        return await self._rgb_tools.set_rgb_solid(red, green, blue)
+
+    @function_tool
+    async def paint_rgb_pattern(self, pattern: str) -> str:
+        """Create dynamic visual patterns and animations with your lamp!"""
+        return await self._rgb_tools.paint_rgb_pattern(pattern)
+
+    @function_tool
+    async def set_rgb_brightness(self, percent: int) -> str:
+        """调节灯光亮度（0-100）"""
+        return await self._system_tools.set_rgb_brightness(percent)
+
+    @function_tool
+    async def rgb_effect_rainbow(
+        self,
+        speed: float = 1.0,
+        saturation: float = 1.0,
+        value: float = 1.0,
+        fps: int = 30,
+    ) -> str:
+        """彩虹动态效果（8x8 矩阵）"""
+        # 使用 RGBTools 的 rainbow 效果
+        from lelamp.service import Priority
+
+        # 设置灯光覆盖
+        self._state_manager.set_light_override(duration_s=10.0)
+
+        self.rgb_service.dispatch(
+            "effect",
+            {
+                "name": "rainbow",
+                "speed": float(speed),
+                "saturation": float(saturation),
+                "value": float(value),
+                "fps": int(fps)
+            },
+            priority=Priority.HIGH,
+        )
+        return "已开启彩虹动态灯效"
+
+    @function_tool
+    async def rgb_effect_breathing(self, r: int, g: int, b: int) -> str:
+        """启动呼吸效果"""
+        return await self._rgb_tools.rgb_effect_breathing(r, g, b)
+
+    @function_tool
+    async def rgb_effect_wave(
+        self,
+        red: int = 60,
+        green: int = 180,
+        blue: int = 255,
+        speed: float = 1.0,
+        freq: float = 1.2,
+        fps: int = 30,
+    ) -> str:
+        """波纹/呼吸波动效果（8x8 矩阵）"""
+        return await self._system_tools.rgb_effect_wave(red, green, blue, speed, freq, fps)
+
+    @function_tool
+    async def rgb_effect_fire(
+        self,
+        intensity: float = 1.0,
+        fps: int = 30,
+    ) -> str:
+        """火焰动态效果（8x8 矩阵）"""
+        return await self._system_tools.rgb_effect_fire(intensity, fps)
+
+    @function_tool
+    async def rgb_effect_emoji(
+        self,
+        emoji: str = "smile",
+        red: int = 255,
+        green: int = 200,
+        blue: int = 60,
+        bg_red: int = 0,
+        bg_green: int = 0,
+        bg_blue: int = 0,
+        blink: bool = True,
+        period_s: float = 2.2,
+        fps: int = 30,
+    ) -> str:
+        """表情动画（smile/sad/wink/angry/heart）"""
+        return await self._system_tools.rgb_effect_emoji(
+            emoji, red, green, blue, bg_red, bg_green, bg_blue, blink, period_s, fps
+        )
+
+    @function_tool
+    async def stop_rgb_effect(self) -> str:
+        """停止动态特效/表情动画"""
+        return await self._system_tools.stop_rgb_effect()
+
+    # ==================== 视觉工具方法 ====================
+
+    @function_tool
+    async def vision_answer(self, question: str) -> str:
+        """Ask a question about what the lamp can see through its camera."""
+        return await self._vision_tools.vision_answer(question)
+
+    @function_tool
+    async def check_homework(self) -> str:
+        """
+        帮用户检查画面中的作业（数学、口算、填空等）。
+        Analyze and check homework in the camera view (math, corrections, etc.).
+        """
+        return await self._vision_tools.check_homework()
+
+    @function_tool
+    async def capture_to_feishu(self) -> str:
+        """拍照并通过飞书机器人推送（直接上传图片），拍照前会锁定动作并停止以确保清晰度。"""
+        return await self._vision_tools.capture_to_feishu()
+
+    # ==================== 系统工具方法 ====================
+
+    @function_tool
+    async def set_volume(self, volume_percent: int) -> str:
+        """Control system audio volume."""
+        return await self._system_tools.set_volume(volume_percent)
+
+    @function_tool
+    async def get_rate_limit_stats(self) -> str:
+        """获取 API 速率限制统计信息（调试用）"""
+        return await self._system_tools.get_rate_limit_stats()
+
+    @function_tool
+    async def web_search(self, query: str) -> str:
+        """
+        当用户问到实时信息、新闻、天气或你不确定的知识时，使用此工具在线搜索。
+        Get real-time information from the web.
+
+        Args:
+            query: 搜索关键词 (Search query)
+        """
+        # 应用速率限制
+        if not await self._search_rate_limiter.acquire(tokens=1, timeout=5.0):
+            return "搜索太频繁了，请稍后再试。本灯也要休息一下的。"
+
+        return await self._system_tools.web_search(query)
+
+    @function_tool
+    async def check_for_updates(self) -> str:
+        """
+        检查系统是否有新的 OTA 更新。
+        Check for system updates.
+        """
+        return await self._system_tools.check_for_updates()
+
+    @function_tool
+    async def perform_ota_update(self) -> str:
+        """
+        执行系统更新 (OTA)。注意：更新成功后服务将重启。
+        Perform system update. Note: Service will restart upon success.
+        """
+        result = await self._system_tools.perform_ota_update()
+        if "更新成功" in result or "服务将在" in result:
+            # 创建重启任务
+            asyncio.create_task(self._restart_later())
+        return result
+
+    async def _restart_later(self) -> None:
+        """延迟重启服务"""
+        try:
+            await asyncio.sleep(5)
+            logger.info("Triggering restart...")
+            # 依赖 systemd 或 Docker 重启容器/进程
+            sys.exit(0)
+        except Exception as e:
+            logger.error(f"Error during restart delay: {e}")
+
+    # ==================== Data Channel 消息处理 (Web Client v2.0) ====================
+
+    async def handle_data_message(self, data: bytes, participant) -> None:
+        """
+        处理来自 Web Client 的 Data Channel 消息
+
+        支持的消息类型:
+        1. chat: 文字聊天消息
+        2. command: 控制指令 (动作、灯光等)
+
+        Args:
+            data: 消息数据 (bytes)
+            participant: 发送者信息
+        """
+        try:
+            message_str = data.decode('utf-8')
+            logger.debug(f"收到 Data Channel 消息: {message_str}")
+            message = json.loads(message_str)
+
+            msg_type = message.get('type')
+
+            if msg_type == 'chat':
+                # 聊天消息 - 转换为语音输入
+                content = message.get('content', '')
+                if content:
+                    await self.note_user_text(content)
+                    logger.info(f"收到文字消息: {content}")
+
+            elif msg_type == 'command':
+                # 控制指令 - 路由到对应的功能
+                action = message.get('action')
+                params = message.get('params', {})
+                logger.info(f"执行指令: {action}, 参数: {params}")
+
+                result = await self._execute_command(action, params)
+
+                # 发送执行结果
+                if result:
+                    await self._send_chat_message(result)
+
+            else:
+                logger.warning(f"未知消息类型: {msg_type}")
+
+        except json.JSONDecodeError as e:
+            logger.error(f"JSON 解析失败: {e}")
+        except Exception as e:
+            logger.error(f"处理 Data Channel 消息失败: {e}")
+            await self._send_chat_message(f"指令执行失败: {str(e)}")
+
+    async def _execute_command(self, action: str, params: dict) -> str:
+        """
+        执行 Web Client 发送的控制指令
+
+        支持的指令:
+        - play_recording: 播放录制动画
+        - move_joint: 移动关节
+        - set_rgb_solid: 设置纯色灯光
+        - rgb_effect_*: 启动灯效
+        - stop_rgb_effect: 停止灯效
+        - vision_answer: 视觉问答
+        - check_homework: 检查作业
+
+        Args:
+            action: 指令名称
+            params: 指令参数
+
+        Returns:
+            执行结果描述
+        """
+        try:
+            # 播放录制动画
+            if action == 'play_recording':
+                recording_name = params.get('recording_name')
+                if recording_name:
+                    return await self.play_recording(recording_name)
+                return "缺少录制名称参数"
+
+            # 移动关节
+            elif action == 'move_joint':
+                joint_name = params.get('joint_name')
+                angle = params.get('angle')
+                if joint_name and angle is not None:
+                    return await self.move_joint(joint_name, float(angle))
+                return "缺少关节名称或角度参数"
+
+            # 设置纯色灯光
+            elif action == 'set_rgb_solid':
+                r = params.get('r')
+                g = params.get('g')
+                b = params.get('b')
+                if r is not None and g is not None and b is not None:
+                    return await self.set_rgb_solid(int(r), int(g), int(b))
+                return "缺少 RGB 参数"
+
+            # 停止灯效
+            elif action == 'stop_rgb_effect':
+                return await self.stop_rgb_effect()
+
+            # 灯效动画
+            elif action.startswith('rgb_effect_'):
+                effect_name = action.replace('rgb_effect_', '')
+                return await self._execute_rgb_effect(effect_name)
+
+            # 视觉功能
+            elif action == 'vision_answer':
+                question = params.get('question', '这是什么')
+                result = await self.vision_answer(question)
+                # 发送视觉结果 (包含图片)
+                await self._send_vision_result(result)
+                return result
+
+            elif action == 'check_homework':
+                result = await self.check_homework()
+                await self._send_vision_result(result)
+                return result
+
+            else:
+                return f"未知指令: {action}"
+
+        except Exception as e:
+            logger.error(f"执行指令失败: {action}, 错误: {e}")
+            return f"执行失败: {str(e)}"
+
+    async def _execute_rgb_effect(self, effect_name: str) -> str:
+        """
+        执行 RGB 灯效
+
+        Args:
+            effect_name: 效果名称
+
+        Returns:
+            执行结果描述
+        """
+        effect_map = {
+            'breathing': lambda: self.rgb_effect_breathing(0, 150, 255),
+            'rainbow': lambda: self.rgb_effect_rainbow(),
+            'wave': lambda: self.rgb_effect_wave(),
+            'fire': lambda: self.rgb_effect_fire(),
+            'emoji': lambda: self.rgb_effect_emoji(),
+        }
+
+        effect_func = effect_map.get(effect_name)
+        if effect_func:
+            return await effect_func()
+        return f"未知灯效: {effect_name}"
+
+    async def _send_chat_message(self, content: str) -> None:
+        """
+        向 Web Client 发送聊天消息
+
+        Args:
+            content: 消息内容
+        """
+        try:
+            if hasattr(self, 'room') and self.room:
+                message = {
+                    "type": "chat",
+                    "content": content,
+                    "timestamp": time.time()
+                }
+                data = json.dumps(message).encode('utf-8')
+                await self.room.local_participant.publish_data(data)
+                logger.debug(f"发送聊天消息: {content}")
+        except Exception as e:
+            logger.error(f"发送聊天消息失败: {e}")
+
+    async def _send_vision_result(self, result: str, image_base64: str = None) -> None:
+        """
+        向 Web Client 发送视觉结果 (包含图片)
+
+        Args:
+            result: 视觉分析结果
+            image_base64: 图片 base64 编码（可选）
+        """
+        try:
+            if hasattr(self, 'room') and self.room:
+                # 如果没有提供图片，尝试从 vision_service 获取最新帧
+                if image_base64 is None and self._vision_service:
+                    frame_data = self._vision_service.get_latest_frame()
+                    if frame_data:
+                        image_base64 = base64.b64encode(frame_data).decode('utf-8')
+                # 如果 image_base64 是 bytes，转换为 base64 字符串
+                elif isinstance(image_base64, bytes):
+                    image_base64 = base64.b64encode(image_base64).decode('utf-8')
+
+                message = {
+                    "type": "vision_result",
+                    "content": result,
+                    "image_base64": image_base64,
+                    "timestamp": time.time()
+                }
+                data = json.dumps(message).encode('utf-8')
+                await self.room.local_participant.publish_data(data)
+                logger.debug(f"发送视觉结果: {result[:100]}...")
+        except Exception as e:
+            logger.error(f"发送视觉结果失败: {e}")
+
+    async def _update_camera_status(self, active: bool) -> None:
+        """
+        向 Web Client 更新摄像头状态
+
+        Args:
+            active: 摄像头是否激活
+        """
+        try:
+            if hasattr(self, 'room') and self.room:
+                message = {
+                    "type": "camera_status",
+                    "active": active,
+                    "timestamp": time.time()
+                }
+                data = json.dumps(message).encode('utf-8')
+                await self.room.local_participant.publish_data(data)
+                logger.debug(f"更新摄像头状态: {'激活' if active else '关闭'}")
+        except Exception as e:
+            logger.error(f"更新摄像头状态失败: {e}")

@@ -200,3 +200,85 @@ class TestStateManager:
         # 验证至少有一些动作被允许，一些被阻止
         assert True in results
         assert False in results
+
+    def test_save_and_set_light_override(self):
+        """测试保存并设置灯光覆盖"""
+        manager = StateManager()
+
+        # 初始状态无覆盖，保存时应返回 None
+        prev = manager.save_and_set_light_override(duration_s=10.0)
+        assert prev is None
+        assert manager.is_light_overridden() is True
+
+        # 再次保存时，应返回之前的覆盖时间戳
+        prev = manager.save_and_set_light_override(duration_s=5.0)
+        assert prev is not None
+        assert manager.is_light_overridden() is True
+
+    def test_restore_light_override(self):
+        """测试恢复灯光覆盖"""
+        manager = StateManager()
+
+        # 1. 设置初始覆盖
+        manager.set_light_override(duration_s=10.0)
+        assert manager.is_light_overridden() is True
+
+        # 2. 保存并设置新覆盖
+        prev = manager.save_and_set_light_override(duration_s=5.0)
+
+        # 3. 恢复到之前的覆盖
+        manager.restore_light_override(prev)
+        assert manager.is_light_overridden() is True
+
+    def test_restore_light_override_to_none(self):
+        """测试恢复到 None（清除覆盖）"""
+        manager = StateManager()
+
+        # 设置覆盖
+        manager.set_light_override(duration_s=10.0)
+        assert manager.is_light_overridden() is True
+
+        # 保存当前状态（非 None）
+        prev = manager.save_and_set_light_override(duration_s=5.0)
+
+        # 恢复到 None
+        manager.restore_light_override(None)
+        assert manager.is_light_overridden() is False
+
+    def test_save_restore_pattern(self):
+        """测试完整的保存-设置-恢复模式（vision_tools.py 中的使用场景）"""
+        manager = StateManager()
+
+        # 模拟初始状态：无覆盖
+        assert manager.is_light_overridden() is False
+
+        # 1. 保存并设置覆盖
+        prev = manager.save_and_set_light_override(duration_s=3600.0)
+        assert prev is None  # 初始状态是 None
+        assert manager.is_light_overridden() is True
+
+        # 2. 模拟一些操作...
+
+        # 3. 恢复到之前的状态
+        manager.restore_light_override(prev)
+        assert manager.is_light_overridden() is False  # 恢复到 None
+
+    def test_nested_save_restore(self):
+        """测试嵌套的保存-恢复模式"""
+        manager = StateManager()
+
+        # 第一层覆盖
+        prev1 = manager.save_and_set_light_override(duration_s=10.0)
+        assert prev1 is None
+
+        # 第二层覆盖
+        prev2 = manager.save_and_set_light_override(duration_s=5.0)
+        assert prev2 is not None
+
+        # 恢复到第一层
+        manager.restore_light_override(prev2)
+        assert manager.is_light_overridden() is True
+
+        # 恢复到初始状态
+        manager.restore_light_override(prev1)
+        assert manager.is_light_overridden() is False

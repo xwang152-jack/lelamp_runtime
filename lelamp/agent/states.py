@@ -96,3 +96,28 @@ class StateManager:
         """清除灯光覆盖"""
         with self._timestamps_lock:
             self._light_override_until_ts = None
+
+    def save_and_set_light_override(self, duration_s: float) -> Optional[float]:
+        """
+        保存当前灯光覆盖状态，并设置新的覆盖
+
+        Args:
+            duration_s: 新的覆盖时长（秒）
+
+        Returns:
+            之前覆盖状态的截止时间戳（如果有的话），用于后续恢复
+        """
+        with self._timestamps_lock:
+            prev = self._light_override_until_ts
+            self._light_override_until_ts = time.time() + duration_s
+            return prev
+
+    def restore_light_override(self, saved_value: Optional[float]) -> None:
+        """
+        恢复之前保存的灯光覆盖状态
+
+        Args:
+            saved_value: save_and_set_light_override 返回的值
+        """
+        with self._timestamps_lock:
+            self._light_override_until_ts = saved_value
