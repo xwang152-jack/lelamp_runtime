@@ -5,12 +5,19 @@
         <span class="status-dot online" />
         <span>已连接</span>
       </div>
-      <el-button type="danger" @click="handleDisconnect"> 断开连接 </el-button>
+      <el-button
+        type="danger"
+        @click="handleDisconnect"
+      >
+        断开连接
+      </el-button>
     </div>
 
     <div class="room-content">
       <div class="video-section">
-        <div class="video-placeholder">📹</div>
+        <div class="video-placeholder">
+          📹
+        </div>
         <p>等待摄像头画面...</p>
         <PrivacyIndicator :active="cameraActive" />
       </div>
@@ -19,10 +26,18 @@
         <div class="panel">
           <h3>⚡ 快捷操作</h3>
           <div class="button-grid">
-            <el-button @click="sendChat('你好')"> 👋 打招呼 </el-button>
-            <el-button @click="sendChat('现在几点了')"> ⏰ 查看时间 </el-button>
-            <el-button @click="sendChat('讲个笑话')"> 😄 讲笑话 </el-button>
-            <el-button @click="sendChat('唱首歌')"> 🎵 唱歌 </el-button>
+            <el-button @click="sendChat('你好')">
+              👋 打招呼
+            </el-button>
+            <el-button @click="sendChat('现在几点了')">
+              ⏰ 查看时间
+            </el-button>
+            <el-button @click="sendChat('讲个笑话')">
+              😄 讲笑话
+            </el-button>
+            <el-button @click="sendChat('唱首歌')">
+              🎵 唱歌
+            </el-button>
           </div>
         </div>
 
@@ -32,8 +47,15 @@
 
     <div class="chat-section">
       <h3>💬 实时对话</h3>
-      <div ref="messagesContainer" class="messages">
-        <div v-for="msg in messages" :key="msg.id" :class="['message', msg.sender]">
+      <div
+        ref="messagesContainer"
+        class="messages"
+      >
+        <div
+          v-for="msg in messages"
+          :key="msg.id"
+          :class="['message', msg.sender]"
+        >
           <div class="message-content">
             {{ msg.content }}
           </div>
@@ -41,11 +63,25 @@
             {{ formatTime(msg.timestamp) }}
           </div>
         </div>
-        <div v-if="messages.length === 0" class="empty-hint">开始对话吧...</div>
+        <div
+          v-if="messages.length === 0"
+          class="empty-hint"
+        >
+          开始对话吧...
+        </div>
       </div>
       <div class="input-area">
-        <el-input v-model="inputText" placeholder="输入消息..." @keyup.enter="sendMessage" />
-        <el-button type="primary" @click="sendMessage"> 发送 </el-button>
+        <el-input
+          v-model="inputText"
+          placeholder="输入消息..."
+          @keyup.enter="sendMessage"
+        />
+        <el-button
+          type="primary"
+          @click="sendMessage"
+        >
+          发送
+        </el-button>
       </div>
     </div>
   </div>
@@ -61,7 +97,7 @@ import PrivacyIndicator from '@/components/common/PrivacyIndicator.vue'
 import LightPanel from '@/components/room/LightPanel.vue'
 
 const router = useRouter()
-const { disconnect, sendCommand, sendChat: sendLiveKitChat } = useLiveKit()
+const { disconnect, sendChat: sendLiveKitChat } = useLiveKit()
 const chatStore = useChatStore()
 const deviceStore = useDeviceStore()
 

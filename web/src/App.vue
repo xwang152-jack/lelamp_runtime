@@ -1,5 +1,8 @@
 <template>
-  <div id="app" class="lelamp-app">
+  <div
+    id="app"
+    class="lelamp-app"
+  >
     <router-view />
   </div>
 </template>

@@ -11,7 +11,10 @@ declare module 'vue' {
     ElForm: typeof import('element-plus/es')['ElForm']
     ElFormItem: typeof import('element-plus/es')['ElFormItem']
     ElInput: typeof import('element-plus/es')['ElInput']
+    LightPanel: typeof import('./src/components/room/LightPanel.vue')['default']
+    PrivacyIndicator: typeof import('./src/components/common/PrivacyIndicator.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
+    StatusIndicator: typeof import('./src/components/common/StatusIndicator.vue')['default']
   }
 }
