@@ -2,12 +2,15 @@ import argparse
 import time
 import sys
 import os
+import pytest
 
-sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+# Add parent directory to path to import from lelamp package
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..')))
 
-from service.motors import MotorsService
-from service.base import Priority
+from lelamp.service.motors import MotorsService
+from lelamp.service.base import Priority
 
+@pytest.mark.hardware
 def test_motors_service():
     parser = argparse.ArgumentParser(description="Test Motors Service")
     parser.add_argument('--id', type=str, required=True, help='ID of the lamp')
