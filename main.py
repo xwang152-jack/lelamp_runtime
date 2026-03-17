@@ -11,6 +11,7 @@ import uuid
 import urllib.request
 import threading
 from dataclasses import dataclass
+from pathlib import Path
 from dotenv import load_dotenv
 
 os.environ.setdefault("ORT_LOG_SEVERITY_LEVEL", "3")
@@ -36,6 +37,7 @@ from lelamp.utils import get_rate_limiter, get_all_rate_limiter_stats
 from lelamp.utils.security import verify_license
 from lelamp.utils.ota import get_ota_manager
 from lelamp.utils.url_validation import validate_external_url, ALLOWED_API_DOMAINS
+from lelamp.utils.logging import setup_logging as setup_enhanced_logging
 # 导入配置管理（移除重复代码）
 from lelamp.config import (
     _get_env_str,
@@ -69,11 +71,21 @@ SAFE_JOINT_RANGES = {
 
 
 def _setup_logging() -> None:
+    """配置日志系统，支持文件日志和日志轮转"""
     level_raw = (os.getenv("LOG_LEVEL") or "INFO").strip().upper()
-    level = getattr(logging, level_raw, logging.INFO)
-    logging.basicConfig(
-        level=level,
-        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    log_to_file = _get_env_bool("LELAMP_LOG_TO_FILE", False)
+
+    log_dir = None
+    if log_to_file:
+        log_dir_str = _get_env_str("LELAMP_LOG_DIR", "logs")
+        log_dir = Path(log_dir_str)
+
+    enable_json = _get_env_bool("LELAMP_LOG_JSON", False)
+
+    setup_enhanced_logging(
+        log_level=level_raw,
+        log_dir=log_dir,
+        enable_json=enable_json,
     )
 
 
