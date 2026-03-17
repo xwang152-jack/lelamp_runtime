@@ -21,11 +21,13 @@ if TYPE_CHECKING:
     from lelamp.agent.states import StateManager
 
 
-logger = logging.getLogger("lelamp.agent.tools.vision")
-
-
 class VisionTools:
     """视觉工具类 - 管理视觉问答、作业检查和飞书推送"""
+
+    # 类常量：魔法数字
+    LIGHT_OVERRIDE_DURATION_S = 3600.0
+    FRESH_FRAME_TIMEOUT_S = 5.0
+    MOTION_SETTLE_DELAY_S = 1.5
 
     def __init__(
         self,
@@ -54,7 +56,8 @@ class VisionTools:
         self.state_manager = state_manager
         self._rate_limiter = rate_limiter
         self._motion_locked = False
-        self.logger = logger
+        self._motion_lock = asyncio.Lock()
+        self.logger = logging.getLogger("lelamp.agent.tools.vision")
 
     @function_tool
     async def vision_answer(self, question: str) -> str:
@@ -70,7 +73,9 @@ class VisionTools:
             return "视觉 API 调用太频繁了，让我休息一下眼睛。"
 
         # 保存并覆盖灯光状态
-        prev_override_until_ts = self._save_and_set_light_override(duration_s=3600.0)
+        prev_override_until_ts = self._save_and_set_light_override(
+            duration_s=self.LIGHT_OVERRIDE_DURATION_S
+        )
 
         try:
             from lelamp.service import Priority
@@ -101,7 +106,9 @@ class VisionTools:
             return "作业检查太频繁了，让我也喘口气。"
 
         # 1. 补光 - 保存并覆盖灯光状态
-        prev_override_until_ts = self._save_and_set_light_override(duration_s=3600.0)
+        prev_override_until_ts = self._save_and_set_light_override(
+            duration_s=self.LIGHT_OVERRIDE_DURATION_S
+        )
 
         try:
             from lelamp.service import Priority
@@ -109,7 +116,9 @@ class VisionTools:
             self.rgb_service.dispatch("solid", (255, 255, 255), priority=Priority.HIGH)
 
             # 2. 获取最清晰、最实时的画面
-            latest = await self._vision_service.get_fresh_jpeg_b64(timeout_s=5.0)
+            latest = await self._vision_service.get_fresh_jpeg_b64(
+                timeout_s=self.FRESH_FRAME_TIMEOUT_S
+            )
             if not latest:
                 return "拍照失败，无法看清作业。"
 
@@ -136,11 +145,12 @@ class VisionTools:
             return "视觉能力未初始化。"
 
         # 1. 锁定动作并停止当前所有动作（保持扭矩）
-        self._motion_locked = True
+        async with self._motion_lock:
+            self._motion_locked = True
         from lelamp.service import Priority
 
         self.motors_service.dispatch("stop", None, priority=Priority.CRITICAL)
-        await asyncio.sleep(1.5)  # 等待 1.5 秒让机械臂完全静止
+        await asyncio.sleep(self.MOTION_SETTLE_DELAY_S)  # 等待机械臂完全静止
 
         try:
             # 2. 获取飞书配置
@@ -168,7 +178,9 @@ class VisionTools:
                 return f"获取飞书 Token 失败: {token_resp.get('msg')}"
 
             # 4. 获取当前画面 (确保是机械臂停止后的最新画面)
-            latest = await self._vision_service.get_fresh_jpeg_b64(timeout_s=5.0)
+            latest = await self._vision_service.get_fresh_jpeg_b64(
+                timeout_s=self.FRESH_FRAME_TIMEOUT_S
+            )
             if not latest:
                 return "拍照失败，无可用画面"
             jpeg_b64, _ = latest
@@ -226,7 +238,8 @@ class VisionTools:
             return f"飞书推送过程发生异常: {str(e)}"
         finally:
             # 7. 解锁动作
-            self._motion_locked = False
+            async with self._motion_lock:
+                self._motion_locked = False
 
     def _save_and_set_light_override(self, duration_s: float) -> float:
         """
