@@ -7,9 +7,11 @@ import asyncio
 import json
 import logging
 import os
+import socket
 import sys
+import urllib.error
 import urllib.request
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from livekit.agents import function_tool
 
@@ -20,16 +22,23 @@ if TYPE_CHECKING:
     from lelamp.service.motors.motors_service import MotorsService
     from lelamp.service.rgb.rgb_service import RGBService
     from lelamp.agent.states import StateManager
+    from lelamp.utils.ota import OTAManager
 
 
 class SystemTools:
     """系统工具类 - 管理电机高级功能、RGB 效果扩展、系统控制和 OTA 更新"""
 
+    # 类常量：魔法数字
+    RESTART_DELAY_S = 5
+    SEARCH_QUERY_MAX_LENGTH = 500
+    BRIGHTNESS_OVERRIDE_DURATION_S = 10.0
+    LIGHT_OVERRIDE_DURATION_S = 10.0
+
     def __init__(
         self,
         motors_service: "MotorsService",
         rgb_service: "RGBService",
-        ota_manager,
+        ota_manager: "OTAManager | None",
         ota_url: Optional[str],
         state_manager: "StateManager",
         get_rate_limit_stats_func,
@@ -139,6 +148,83 @@ class SystemTools:
         else:
             return "已重置所有舵机的健康统计数据"
 
+    @function_tool
+    async def get_motor_health(self, motor_name: Optional[str] = None) -> str:
+        """
+        获取舵机健康状态(温度、电压、负载等)
+
+        Args:
+            motor_name: 舵机名称,留空则返回所有舵机
+
+        Returns:
+            健康状态信息字符串
+        """
+        self.logger.debug(f"get_motor_health called with motor_name={motor_name}")
+        try:
+            # 验证舵机名称
+            if motor_name and motor_name not in SAFE_JOINT_RANGES:
+                valid_motors = ", ".join(SAFE_JOINT_RANGES.keys())
+                return f"无效的舵机名称: {motor_name}。有效名称: {valid_motors}"
+
+            # 获取健康摘要
+            summary = self.motors_service.get_motor_health_summary()
+
+            if "error" in summary:
+                return "健康监控未启用。请在配置中设置 LELAMP_MOTOR_HEALTH_CHECK_ENABLED=true"
+
+            # 状态表情符号映射
+            status_emoji = {
+                "healthy": "✅",
+                "warning": "⚠️",
+                "critical": "🔴",
+                "stalled": "🚫"
+            }
+
+            if motor_name:
+                # 返回单个舵机的详细信息
+                motor_data = summary.get(motor_name)
+                if not motor_data:
+                    return f"未找到舵机 {motor_name} 的健康数据"
+
+                latest = motor_data.get("latest")
+                if not latest:
+                    return f"舵机 {motor_name} 暂无健康数据(尚未检测)"
+
+                result = f"舵机 {motor_name} 健康状态 {status_emoji.get(latest['status'], '❓')}:\n"
+                result += f"- 状态: {latest['status']}\n"
+                if latest.get('temperature'):
+                    result += f"- 温度: {latest['temperature']:.1f}°C\n"
+                if latest.get('voltage'):
+                    result += f"- 电压: {latest['voltage']:.1f}V\n"
+                if latest.get('load'):
+                    result += f"- 负载: {latest['load']*100:.1f}%\n"
+                if latest.get('position') is not None:
+                    result += f"- 位置: {latest['position']:.1f}°\n"
+
+                result += "\n统计信息:\n"
+                result += f"- 警告次数: {motor_data['warning_count']}\n"
+                result += f"- 危险次数: {motor_data['critical_count']}\n"
+                result += f"- 堵转次数: {motor_data['stall_count']}\n"
+
+                return result
+            else:
+                # 返回所有舵机的摘要
+                result = "所有舵机健康状态:\n\n"
+                for motor, data in summary.items():
+                    latest = data.get("latest")
+                    if latest:
+                        result += f"{motor}: {status_emoji.get(latest['status'], '❓')} {latest['status']}"
+                        if latest.get('temperature'):
+                            result += f" (温度: {latest['temperature']:.1f}°C)"
+                        result += "\n"
+                    else:
+                        result += f"{motor}: ❓ 暂无数据\n"
+
+                return result
+        except Exception as e:
+            self.logger.error(f"Error getting motor health: {e}")
+            return f"获取健康状态失败：{str(e)}"
+
     # ==================== RGB 效果扩展 ====================
 
     @function_tool
@@ -183,7 +269,7 @@ class SystemTools:
                 return "RGB 必须是 0-255"
 
             # 设置灯光覆盖
-            self.state_manager.set_light_override(duration_s=10.0)
+            self.state_manager.set_light_override(duration_s=self.LIGHT_OVERRIDE_DURATION_S)
 
             from lelamp.service import Priority
 
@@ -215,7 +301,7 @@ class SystemTools:
         self.logger.debug(f"rgb_effect_fire called with intensity={intensity}, fps={fps}")
         try:
             # 设置灯光覆盖
-            self.state_manager.set_light_override(duration_s=10.0)
+            self.state_manager.set_light_override(duration_s=self.LIGHT_OVERRIDE_DURATION_S)
 
             from lelamp.service import Priority
 
@@ -254,7 +340,7 @@ class SystemTools:
                 return "RGB 必须是 0-255"
 
             # 设置灯光覆盖
-            self.state_manager.set_light_override(duration_s=10.0)
+            self.state_manager.set_light_override(duration_s=self.LIGHT_OVERRIDE_DURATION_S)
 
             from lelamp.service import Priority
 
@@ -282,16 +368,13 @@ class SystemTools:
         Stop all running RGB effects/animations.
         """
         self.logger.debug("stop_rgb_effect called")
-        try:
-            # 设置灯光覆盖
-            self.state_manager.set_light_override(duration_s=10.0)
+        # 设置灯光覆盖
+        self.state_manager.set_light_override(duration_s=self.LIGHT_OVERRIDE_DURATION_S)
 
-            from lelamp.service import Priority
+        from lelamp.service import Priority
 
-            self.rgb_service.dispatch("effect_stop", None, priority=Priority.HIGH)
-            return "已停止动态灯效"
-        except Exception as e:
-            return f"停止动态灯效失败：{str(e)}"
+        self.rgb_service.dispatch("effect_stop", None, priority=Priority.HIGH)
+        return "已停止动态灯效"
 
     # ==================== 系统控制 ====================
 
@@ -353,8 +436,8 @@ class SystemTools:
         if not query or not query.strip():
             return "搜索关键词不能为空"
 
-        if len(query) > 500:
-            return "搜索关键词过长，请限制在500字以内"
+        if len(query) > self.SEARCH_QUERY_MAX_LENGTH:
+            return f"搜索关键词过长，请限制在{self.SEARCH_QUERY_MAX_LENGTH}字以内"
 
         api_key = os.getenv("BOCHA_API_KEY")
         if not api_key:
@@ -407,7 +490,17 @@ class SystemTools:
 
             return "以下是联网搜索到的信息：\n" + "\n".join(results)
 
+        except (urllib.error.HTTPError, urllib.error.URLError) as e:
+            self.logger.error(f"Network error during web search: {e}")
+            return "网络连接失败，请稍后重试"
+        except (socket.timeout, asyncio.TimeoutError) as e:
+            self.logger.error(f"Timeout during web search: {e}")
+            return "搜索请求超时，请稍后重试"
+        except (json.JSONDecodeError, KeyError) as e:
+            self.logger.error(f"Data parsing error during web search: {e}")
+            return "搜索结果解析失败"
         except Exception as e:
+            self.logger.error(f"Unexpected error during web search: {e}")
             return f"联网搜索发生异常: {str(e)}"
 
     # ==================== OTA 更新 ====================
@@ -444,11 +537,15 @@ class SystemTools:
         if "更新成功" in result:
             # Schedule a restart
             asyncio.create_task(self._restart_later())
-            return f"{result} 服务将在 5 秒后重启。"
+            return f"{result} 服务将在 {self.RESTART_DELAY_S} 秒后重启。"
         return f"更新失败：{result}"
 
     async def _restart_later(self):
-        await asyncio.sleep(5)
-        self.logger.info("Triggering restart...")
-        # Rely on systemd or Docker to restart the container/process
-        sys.exit(0)
+        """延迟重启服务"""
+        try:
+            await asyncio.sleep(self.RESTART_DELAY_S)
+            self.logger.info("Triggering restart...")
+            # Rely on systemd or Docker to restart the container/process
+            sys.exit(0)
+        except Exception as e:
+            self.logger.error(f"Error during restart delay: {e}")
