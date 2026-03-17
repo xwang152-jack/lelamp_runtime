@@ -118,7 +118,7 @@
   ```
 
 - [ ] 浏览器访问成功
-  - URL: http://localhost:8000/web_client/
+  - URL: http://localhost:5173
   - 页面加载完整
 
 - [ ] UI 显示正常

@@ -329,7 +329,7 @@
 ### 长期（需用户确认）
 
 1. **Phase 3: 前端现代化**
-   - Vue 3 + Vite + Pinia 重写 web_client
+   - Vue 3 + Vite + Pinia 前端应用已完成
    - TypeScript 类型安全
    - 现代化 UI 组件库
 

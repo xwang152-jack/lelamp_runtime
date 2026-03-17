@@ -1,7 +1,7 @@
 # LeLamp 完整使用指南 v2.0
 
-**最后更新**: 2026-03-16
-**适用版本**: LeLamp Runtime v2.0 + Web Client v2.0
+**最后更新**: 2026-03-17
+**适用版本**: LeLamp Runtime v2.0 + Web Frontend (Vue 3) v2.0
 
 ---
 
@@ -183,12 +183,13 @@ uv run python scripts/generate_client_token.py --room lelamp-room --user jack
 # --------------------
 ```
 
-#### Step 6: 打开 Web Client
+#### Step 6: 打开 Web Frontend
 ```bash
-# 启动 HTTP 服务器
-python3 -m http.server 8000
+# 启动前端开发服务器
+cd web
+pnpm dev
 
-# 访问: http://localhost:8000/web_client/
+# 访问: http://localhost:5173
 ```
 
 **在 Web Client 中**:

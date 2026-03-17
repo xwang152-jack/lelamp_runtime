@@ -93,4 +93,4 @@
 ---
 
 > 此文档生成于 LeLamp Runtime 项目开发过程。
-> 关联代码: `web_client/`, `scripts/generate_client_token.py`, `lelamp/utils/ota.py`
+> 关联代码: `web/`, `scripts/generate_client_token.py`, `lelamp/utils/ota.py`
