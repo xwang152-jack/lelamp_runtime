@@ -24,16 +24,15 @@ export function useLiveKit() {
         deviceStore.setStatus('offline')
       })
 
-      room.on(RoomEvent.TrackSubscribed, (track: any) => {
+      ;(room.on(RoomEvent.TrackSubscribed, (track: any) => {
         console.log('Track subscribed:', track)
       }),
-      room.on(RoomEvent.TrackUnsubscribed, (track: any) => {
-        console.log('Track unsubscribed:', track)
-      }),
-
-      room.on(RoomEvent.DataReceived, (payload: Uint8Array) => {
-        handleDataReceived(payload)
-      })
+        room.on(RoomEvent.TrackUnsubscribed, (track: any) => {
+          console.log('Track unsubscribed:', track)
+        }),
+        room.on(RoomEvent.DataReceived, (payload: Uint8Array) => {
+          handleDataReceived(payload)
+        }))
 
       await room.connect(url, token)
       connectionStore.setRoom(room)
@@ -76,10 +75,9 @@ export function useLiveKit() {
 
     const data: DataMessage = { type: 'command', action, params }
     const encoder = new TextEncoder()
-    await connectionStore.room.localParticipant.publishData(
-      encoder.encode(JSON.stringify(data)),
-      { reliable: true }
-    )
+    await connectionStore.room.localParticipant.publishData(encoder.encode(JSON.stringify(data)), {
+      reliable: true
+    })
   }
 
   async function sendChat(text: string) {
@@ -90,10 +88,9 @@ export function useLiveKit() {
 
     const data: DataMessage = { type: 'chat', content: text }
     const encoder = new TextEncoder()
-    await connectionStore.room.localParticipant.publishData(
-      encoder.encode(JSON.stringify(data)),
-      { reliable: true }
-    )
+    await connectionStore.room.localParticipant.publishData(encoder.encode(JSON.stringify(data)), {
+      reliable: true
+    })
     chatStore.addMessage('user', text)
   }
 

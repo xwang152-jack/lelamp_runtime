@@ -4,7 +4,7 @@
       <span>🔒 隐私保护</span>
     </div>
     <div class="camera-status">
-      <span class="camera-led" :class="{ active: isActive }"></span>
+      <span class="camera-led" :class="{ active: isActive }" />
       <span class="status-text">{{ isActive ? '摄像头已开启' : '摄像头已关闭' }}</span>
     </div>
   </div>
@@ -58,7 +58,12 @@ defineProps<Props>()
 }
 
 @keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
 }
 </style>
