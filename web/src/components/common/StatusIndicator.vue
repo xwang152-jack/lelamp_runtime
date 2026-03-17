@@ -1,6 +1,6 @@
 <template>
   <div class="status-indicator">
-    <span class="status-dot" :class="statusClass"></span>
+    <span class="status-dot" :class="statusClass" />
     <span class="status-text">{{ statusText }}</span>
   </div>
 </template>
@@ -59,7 +59,12 @@ const statusText = computed(() => {
 }
 
 @keyframes blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.3; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
 }
 </style>

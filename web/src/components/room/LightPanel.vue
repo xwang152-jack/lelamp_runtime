@@ -6,13 +6,8 @@
     <div class="color-picker-section">
       <label>选择颜色:</label>
       <div class="color-input-row">
-        <input
-          ref="colorInput"
-          type="color"
-          v-model="selectedColor"
-          @change="setCustomColor"
-        />
-        <el-button size="small" @click="setCustomColor">设置</el-button>
+        <input ref="colorInput" v-model="selectedColor" type="color" @change="setCustomColor" />
+        <el-button size="small" @click="setCustomColor"> 设置 </el-button>
       </div>
     </div>
 
@@ -48,9 +43,7 @@
 
     <!-- 关灯 -->
     <div class="actions">
-      <el-button type="danger" size="small" @click="turnOffLight">
-        🌑 关闭灯光
-      </el-button>
+      <el-button type="danger" size="small" @click="turnOffLight"> 🌑 关闭灯光 </el-button>
     </div>
   </div>
 </template>
@@ -148,7 +141,7 @@ function turnOffLight() {
       gap: 8px;
       align-items: center;
 
-      input[type="color"] {
+      input[type='color'] {
         width: 60px;
         height: 32px;
         border: 1px solid #dcdfe6;
