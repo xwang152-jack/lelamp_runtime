@@ -24,6 +24,13 @@ export function useLiveKit() {
         deviceStore.setStatus('offline')
       })
 
+      room.on(RoomEvent.TrackSubscribed, (track: any) => {
+        console.log('Track subscribed:', track)
+      }),
+      room.on(RoomEvent.TrackUnsubscribed, (track: any) => {
+        console.log('Track unsubscribed:', track)
+      }),
+
       room.on(RoomEvent.DataReceived, (payload: Uint8Array) => {
         handleDataReceived(payload)
       })

@@ -12,6 +12,7 @@
       <div class="video-section">
         <div class="video-placeholder">📹</div>
         <p>等待摄像头画面...</p>
+        <PrivacyIndicator :active="cameraActive" />
       </div>
 
       <div class="control-section">
@@ -38,7 +39,19 @@
 
     <div class="chat-section">
       <h3>💬 实时对话</h3>
-      <div class="messages"></div>
+      <div ref="messagesContainer" class="messages">
+        <div
+          v-for="msg in messages"
+          :key="msg.id"
+          :class="['message', msg.sender]"
+        >
+          <div class="message-content">{{ msg.content }}</div>
+          <div class="message-time">{{ formatTime(msg.timestamp) }}</div>
+        </div>
+        <div v-if="messages.length === 0" class="empty-hint">
+          开始对话吧...
+        </div>
+      </div>
       <div class="input-area">
         <el-input v-model="inputText" @keyup.enter="sendMessage" placeholder="输入消息..." />
         <el-button type="primary" @click="sendMessage">发送</el-button>
@@ -48,17 +61,31 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useLiveKit } from '@/composables/useLiveKit'
-import { useChatStore } from '@/stores'
+import { useChatStore, useDeviceStore } from '@/stores'
+import PrivacyIndicator from '@/components/common/PrivacyIndicator.vue'
 
 const router = useRouter()
-const { disconnect, sendCommand } = useLiveKit()
+const { disconnect, sendCommand, sendChat: sendLiveKitChat } = useLiveKit()
 const chatStore = useChatStore()
+const deviceStore = useDeviceStore()
 
 const inputText = ref('')
+const messagesContainer = ref<HTMLElement>()
+
+const messages = computed(() => chatStore.messages)
+const cameraActive = computed(() => deviceStore.cameraActive)
+
+function scrollToBottom() {
+  nextTick(() => {
+    if (messagesContainer.value) {
+      messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
+    }
+  })
+}
 
 async function handleDisconnect() {
   await disconnect()
@@ -66,8 +93,9 @@ async function handleDisconnect() {
 }
 
 function sendChat(text: string) {
-  chatStore.addMessage('user', text)
+  sendLiveKitChat(text)
   ElMessage.success(`发送: ${text}`)
+  scrollToBottom()
 }
 
 function setEffect(effect: string) {
@@ -80,6 +108,19 @@ function sendMessage() {
   sendChat(inputText.value)
   inputText.value = ''
 }
+
+function formatTime(timestamp: number): string {
+  const date = new Date(timestamp)
+  return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+}
+
+onMounted(() => {
+  scrollToBottom()
+})
+
+watch(() => chatStore.messages, () => {
+  scrollToBottom()
+}, { deep: true })
 </script>
 
 <style lang="scss" scoped>
@@ -174,6 +215,53 @@ function sendMessage() {
     height: 150px;
     overflow-y: auto;
     margin-bottom: 12px;
+    padding: 12px;
+    background: #f5f7fa;
+    border-radius: 8px;
+
+    .message {
+      margin-bottom: 12px;
+
+      .message-content {
+        padding: 8px 12px;
+        border-radius: 8px;
+        max-width: 70%;
+        word-break: break-word;
+      }
+
+      .message-time {
+        font-size: 11px;
+        color: #999;
+        margin-top: 4px;
+      }
+
+      &.user {
+        text-align: right;
+
+        .message-content {
+          background: var(--lelamp-brand);
+          color: white;
+          margin-left: auto;
+        }
+      }
+
+      &.agent {
+        text-align: left;
+
+        .message-content {
+          background: white;
+          color: #333;
+          box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+        }
+      }
+    }
+
+    .empty-hint {
+      text-align: center;
+      color: #999;
+      font-size: 14px;
+      padding: 40px 0;
+    }
   }
 
   .input-area {
