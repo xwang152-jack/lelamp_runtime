@@ -38,3 +38,19 @@ vision = [
     "opencv-python>=4.9.0,<5.0.0; sys_platform != 'linux'",
     "opencv-python-headless>=4.9.0,<5.0.0; sys_platform == 'linux'",
 ]
+dev = [
+    "pytest>=8.0.0,<9.0.0",
+    "pytest-cov>=4.1.0,<5.0.0",
+    "pytest-asyncio>=0.23.0,<1.0.0",
+    "pytest-mock>=3.12.0,<4.0.0",
+    "ruff>=0.3.0,<1.0.0",
+]
+
+[build-system]
+requires = ["setuptools>=68.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["lelamp*"]
+exclude = ["tests*", "tools*", "scripts*", "web_client*"]
