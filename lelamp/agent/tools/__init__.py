@@ -8,8 +8,8 @@ from .system_tools import SystemTools
 
 __all__ = [
     "MotorTools",
+    "SAFE_JOINT_RANGES",
     "RGBTools",
     "VisionTools",
     "SystemTools",
-    "SAFE_JOINT_RANGES",
 ]
