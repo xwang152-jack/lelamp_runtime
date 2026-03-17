@@ -215,7 +215,7 @@ class TestSystemToolsRGB:
     async def test_rgb_effect_wave_invalid_rgb(self, system_tools, rgb_service):
         """测试波纹效果的无效 RGB 值"""
         result = await system_tools.rgb_effect_wave(300, 180, 255, 1.0, 1.2, 30)
-        assert "RGB 必须是" in result
+        assert "RGB 值必须在" in result
         rgb_service.dispatch.assert_not_called()
 
     @pytest.mark.asyncio
@@ -247,7 +247,7 @@ class TestSystemToolsRGB:
     async def test_rgb_effect_emoji_invalid_rgb(self, system_tools, rgb_service):
         """测试表情效果的无效 RGB 值"""
         result = await system_tools.rgb_effect_emoji("smile", 300, 200, 60, 0, 0, 0, True, 2.2, 30)
-        assert "RGB 必须是" in result
+        assert "RGB 值必须在" in result
         rgb_service.dispatch.assert_not_called()
 
     @pytest.mark.asyncio
