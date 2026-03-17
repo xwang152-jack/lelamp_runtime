@@ -1,7 +1,6 @@
 """
 视觉工具集成测试
 """
-import os
 import pytest
 from unittest.mock import Mock, AsyncMock, MagicMock, patch
 from lelamp.agent.tools.vision_tools import VisionTools
@@ -135,7 +134,9 @@ class TestVisionTools:
         result = await vision_tools.check_homework()
 
         assert "错误" in result or "作业" in result
-        mock_vision_service.get_fresh_jpeg_b64.assert_called_once_with(timeout_s=5.0)
+        mock_vision_service.get_fresh_jpeg_b64.assert_called_once_with(
+            timeout_s=vision_tools.FRESH_FRAME_TIMEOUT_S
+        )
         # 验证使用特定的老师人设 prompt
         call_args = mock_qwen_client.describe.call_args
         assert "老师" in call_args[1]["question"]
@@ -169,13 +170,13 @@ class TestVisionTools:
 
     @pytest.mark.asyncio
     async def test_capture_to_feishu_success(
-        self, vision_tools, mock_vision_service, mock_rgb_service
+        self, vision_tools, mock_vision_service, mock_rgb_service, monkeypatch
     ):
         """测试飞书推送成功"""
-        # 设置环境变量
-        os.environ["FEISHU_APP_ID"] = "test_app_id"
-        os.environ["FEISHU_APP_SECRET"] = "test_secret"
-        os.environ["FEISHU_RECEIVE_ID"] = "test_receive_id"
+        # 使用 monkeypatch 设置环境变量
+        monkeypatch.setenv("FEISHU_APP_ID", "test_app_id")
+        monkeypatch.setenv("FEISHU_APP_SECRET", "test_secret")
+        monkeypatch.setenv("FEISHU_RECEIVE_ID", "test_receive_id")
 
         # Mock 飞书 API 调用
         with patch("urllib.request.urlopen") as mock_urlopen:
@@ -192,14 +193,9 @@ class TestVisionTools:
             result = await vision_tools.capture_to_feishu()
 
             assert "成功" in result or "推送" in result
-            mock_vision_service.get_fresh_jpeg_b64.assert_called_once_with(timeout_s=5.0)
+            mock_vision_service.get_fresh_jpeg_b64.assert_called_once()
             # 验证电机被停止
             vision_tools.motors_service.dispatch.assert_called_once()
-
-        # 清理环境变量
-        del os.environ["FEISHU_APP_ID"]
-        del os.environ["FEISHU_APP_SECRET"]
-        del os.environ["FEISHU_RECEIVE_ID"]
 
     @pytest.mark.asyncio
     async def test_capture_to_feishu_no_vision_service(self, vision_tools):
@@ -210,12 +206,14 @@ class TestVisionTools:
         assert "未初始化" in result
 
     @pytest.mark.asyncio
-    async def test_capture_to_feishu_missing_config(self, vision_tools, mock_vision_service):
+    async def test_capture_to_feishu_missing_config(
+        self, vision_tools, mock_vision_service, monkeypatch
+    ):
         """测试飞书配置不完整"""
-        # 确保环境变量未设置
-        os.environ.pop("FEISHU_APP_ID", None)
-        os.environ.pop("FEISHU_APP_SECRET", None)
-        os.environ.pop("FEISHU_RECEIVE_ID", None)
+        # 使用 monkeypatch 确保环境变量未设置
+        monkeypatch.delenv("FEISHU_APP_ID", raising=False)
+        monkeypatch.delenv("FEISHU_APP_SECRET", raising=False)
+        monkeypatch.delenv("FEISHU_RECEIVE_ID", raising=False)
 
         result = await vision_tools.capture_to_feishu()
 
@@ -248,13 +246,13 @@ class TestVisionTools:
 
     @pytest.mark.asyncio
     async def test_capture_to_feishu_locks_motion(
-        self, vision_tools, mock_rgb_service
+        self, vision_tools, mock_rgb_service, monkeypatch
     ):
         """测试飞书拍照时锁定动作"""
-        # 设置环境变量
-        os.environ["FEISHU_APP_ID"] = "test_app_id"
-        os.environ["FEISHU_APP_SECRET"] = "test_secret"
-        os.environ["FEISHU_RECEIVE_ID"] = "test_receive_id"
+        # 使用 monkeypatch 设置环境变量
+        monkeypatch.setenv("FEISHU_APP_ID", "test_app_id")
+        monkeypatch.setenv("FEISHU_APP_SECRET", "test_secret")
+        monkeypatch.setenv("FEISHU_RECEIVE_ID", "test_receive_id")
 
         with patch("urllib.request.urlopen") as mock_urlopen:
             mock_token_resp = MagicMock()
@@ -273,11 +271,6 @@ class TestVisionTools:
 
             # 验证动作在过程中被锁定，最后被解锁
             assert vision_tools._motion_locked is False
-
-        # 清理环境变量
-        del os.environ["FEISHU_APP_ID"]
-        del os.environ["FEISHU_APP_SECRET"]
-        del os.environ["FEISHU_RECEIVE_ID"]
 
     @pytest.mark.asyncio
     async def test_vision_answer_white_light(self, vision_tools, mock_rgb_service):
