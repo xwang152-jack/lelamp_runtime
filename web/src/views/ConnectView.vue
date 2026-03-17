@@ -8,7 +8,21 @@
 
       <el-form :model="form" label-position="top">
         <el-form-item label="LiveKit Server URL">
-          <el-input v-model="form.serverUrl" placeholder="wss://your-project.livekit.cloud" />
+          <el-input
+            v-model="form.serverUrl"
+            placeholder="wss://your-project.livekit.cloud"
+            clearable
+          >
+            <template #prefix>
+              <span class="input-icon">🌐</span>
+            </template>
+          </el-input>
+          <div v-if="isUrlPreConfigured" class="hint success">
+            ✅ URL 已预配置，可直接使用或修改
+          </div>
+          <div v-else class="hint warning">
+            ⚠️ 请在 web/.env.development 中配置 VITE_LIVEKIT_URL
+          </div>
         </el-form-item>
 
         <el-form-item label="Access Token">
@@ -17,9 +31,10 @@
             type="textarea"
             :rows="4"
             placeholder="粘贴生成的 Token..."
+            clearable
           />
           <div class="hint">
-            运行 <code>python3 scripts/generate_client_token.py</code> 获取 Token
+            💡 运行 <code>./quick_start.sh</code> 快速生成 Token
           </div>
         </el-form-item>
 
@@ -40,7 +55,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
+import { ref, reactive, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useLiveKit } from '@/composables/useLiveKit'
@@ -49,8 +64,15 @@ const router = useRouter()
 const { connect } = useLiveKit()
 
 const loading = ref(false)
+
+// 检查 URL 是否已预配置
+const preConfiguredUrl = import.meta.env.VITE_LIVEKIT_URL || ''
+const isUrlPreConfigured = computed(() => {
+  return preConfiguredUrl && preConfiguredUrl !== 'wss://your-livekit-url.livekit.cloud'
+})
+
 const form = reactive({
-  serverUrl: import.meta.env.VITE_LIVEKIT_URL || '',
+  serverUrl: preConfiguredUrl,
   token: ''
 })
 
@@ -118,5 +140,25 @@ async function handleConnect() {
     border-radius: 4px;
     font-family: 'Courier New', monospace;
   }
+
+  &.success {
+    color: #67c23a;
+    background: #f0f9ff;
+    padding: 8px;
+    border-radius: 4px;
+    border-left: 3px solid #67c23a;
+  }
+
+  &.warning {
+    color: #e6a23c;
+    background: #fef9f0;
+    padding: 8px;
+    border-radius: 4px;
+    border-left: 3px solid #e6a23c;
+  }
+}
+
+.input-icon {
+  font-size: 16px;
 }
 </style>
