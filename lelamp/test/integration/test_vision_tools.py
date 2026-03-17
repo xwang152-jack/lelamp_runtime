@@ -225,15 +225,17 @@ class TestVisionTools:
     @pytest.mark.asyncio
     async def test_light_override_behavior(self, vision_tools, state_manager):
         """测试灯光覆盖行为"""
-        # vision_answer 应该修改灯光覆盖
-        initial_value = state_manager._light_override_until_ts
+        # vision_answer 应该正确处理灯光覆盖
+        # 初始状态：无覆盖
+        initial_overridden = state_manager.is_light_overridden()
+        assert initial_overridden is False
 
         await vision_tools.vision_answer("测试")
 
-        # 验证灯光覆盖被修改（设置为新的长时间覆盖）
-        assert state_manager._light_override_until_ts != initial_value
-        # 验证最终被恢复（回到原来的值或接近）
-        # 由于测试运行很快，恢复的值应该接近初始值
+        # 验证最终被恢复到初始状态（无覆盖）
+        # finally 块会恢复之前的覆盖状态
+        final_overridden = state_manager.is_light_overridden()
+        assert final_overridden is False
 
     @pytest.mark.asyncio
     async def test_check_homework_uses_fresh_frame(self, vision_tools, mock_vision_service):

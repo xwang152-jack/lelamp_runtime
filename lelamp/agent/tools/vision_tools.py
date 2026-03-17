@@ -238,14 +238,7 @@ class VisionTools:
         Returns:
             之前的覆盖时间戳
         """
-        # 使用 state_manager 的内部方法来保存和设置
-        # 由于需要访问私有成员，我们通过 state_manager 的公共接口
-        with self.state_manager._timestamps_lock:
-            prev = self.state_manager._light_override_until_ts
-            # 如果是 None，使用 0.0 作为默认值
-            prev_override_until_ts = float(prev) if prev is not None else 0.0
-            self.state_manager._light_override_until_ts = time.time() + duration_s
-            return prev_override_until_ts
+        return self.state_manager.save_and_set_light_override(duration_s)
 
     def _restore_light_override(self, prev_override_until_ts: float) -> None:
         """
@@ -254,5 +247,4 @@ class VisionTools:
         Args:
             prev_override_until_ts: 之前保存的覆盖时间戳
         """
-        with self.state_manager._timestamps_lock:
-            self.state_manager._light_override_until_ts = prev_override_until_ts
+        self.state_manager.restore_light_override(prev_override_until_ts)
