@@ -4,8 +4,12 @@
 """
 
 import os
+from dotenv import load_dotenv
 from dataclasses import dataclass
 from typing import Any
+
+# 加载 .env 文件
+load_dotenv()
 
 
 def _get_env_str(key: str, default: str | None = None) -> str | None:
