@@ -161,10 +161,6 @@ watch(
     gap: 8px;
   }
 }
-      }
-    }
-  }
-}
 
 .room-content {
   display: grid;
