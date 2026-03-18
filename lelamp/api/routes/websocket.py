@@ -3,13 +3,14 @@ WebSocket 路由 - 实时设备状态推送
 
 提供 WebSocket 连接管理、消息广播、实时推送等功能。
 """
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query, status
 from typing import Dict, Set, Optional
 import asyncio
 import logging
 from datetime import datetime
 from openai import AsyncOpenAI
 from lelamp.config import load_config
+from lelamp.api.services.auth_service import AuthService
 
 from lelamp.api.models.websocket import (
     WSPing,
@@ -73,12 +74,14 @@ class ConnectionManager:
         logger.info(f"WebSocket 连接建立: {lamp_id} (总连接数: {self.get_connection_count(lamp_id)})")
 
         # 发送连接确认
-        await websocket.send_json({
+        connection_msg = {
             "type": "connected",
             "lamp_id": lamp_id,
             "server_time": datetime.utcnow().isoformat(),
             "message": "WebSocket connection established"
-        })
+        }
+
+        await websocket.send_json(connection_msg)
 
     async def disconnect(self, websocket: WebSocket, lamp_id: str) -> None:
         """
@@ -271,7 +274,8 @@ manager = ConnectionManager()
 @router.websocket("/{lamp_id}")
 async def websocket_endpoint(
     websocket: WebSocket,
-    lamp_id: str
+    lamp_id: str,
+    token: Optional[str] = Query(None)
 ):
     """
     WebSocket 实时推送端点
@@ -281,6 +285,7 @@ async def websocket_endpoint(
     - 接收操作日志和事件通知
     - 发送设备命令
     - 心跳检测
+    - JWT 认证 (通过查询参数传递 token)
 
     消息类型：
     - 客户端 -> 服务端:
@@ -300,7 +305,21 @@ async def websocket_endpoint(
     Args:
         websocket: WebSocket 连接
         lamp_id: 设备 ID
+        token: JWT 认证令牌 (可选,用于识别用户)
     """
+    # 验证 JWT token (可选)
+    user_info = None
+    if token:
+        payload = AuthService.verify_token(token, "access")
+        if payload:
+            user_info = {
+                "username": payload.get("sub"),
+                "user_id": payload.get("user_id")
+            }
+            logger.info(f"WebSocket 用户认证成功: {user_info['username']}")
+        else:
+            logger.warning("WebSocket token 无效,但允许匿名连接")
+
     await manager.connect(websocket, lamp_id)
 
     try:
@@ -482,7 +501,7 @@ async def websocket_endpoint(
 
 
     except WebSocketDisconnect:
-        logger.info(f"WebSocket 正常断开: {lamp_id}")
+        logger.info(f"WebSocket 正常断开: {lamp_id}, user: {user_info['username'] if user_info else 'anonymous'}")
     except Exception as e:
         logger.error(f"WebSocket 错误 ({lamp_id}): {e}", exc_info=True)
     finally:
