@@ -12,7 +12,7 @@
           {{ wifiStatus?.ssid || '-' }}
         </el-descriptions-item>
         <el-descriptions-item label="信号强度">
-          <template v-if="wifiStatus?.signal_strength !== null">
+          <template v-if="wifiStatus && wifiStatus.signal_strength !== null">
             <el-progress
               :percentage="wifiStatus.signal_strength"
               :color="getSignalColor(wifiStatus.signal_strength)"

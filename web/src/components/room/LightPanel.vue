@@ -51,7 +51,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { useLiveKit } from '@/composables/useLiveKit'
+import { useWebSocket } from '@/composables/useWebSocket'
 
 interface PresetColor {
   name: string
@@ -59,7 +59,7 @@ interface PresetColor {
   rgb: { r: number; g: number; b: number }
 }
 
-const { sendCommand, sendChat } = useLiveKit()
+const { sendCommand, sendChat } = useWebSocket()
 
 const colorInput = ref<HTMLInputElement>()
 const selectedColor = ref('#FFB6C1')

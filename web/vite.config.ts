@@ -46,7 +46,6 @@ export default defineConfig(({ mode }) => {
       rollupOptions: {
         output: {
           manualChunks: {
-            livekit: ['livekit-client'],
             'element-plus': ['element-plus'],
             'vue-vendor': ['vue', 'vue-router', 'pinia']
           }

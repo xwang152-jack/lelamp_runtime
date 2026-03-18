@@ -1,11 +1,10 @@
 import { defineStore } from 'pinia'
-import type { Room } from 'livekit-client'
 import type { ConnectionState, ConnectionStatus } from '@/types'
 
 export const useConnectionStore = defineStore('connection', {
   state: (): ConnectionState => ({
     isConnected: false,
-    room: null,
+    ws: null,
     serverUrl: '',
     token: '',
     connectionStatus: 'disconnected'
@@ -17,8 +16,8 @@ export const useConnectionStore = defineStore('connection', {
       this.isConnected = status === 'connected'
     },
 
-    setRoom(room: Room | null) {
-      this.room = room
+    setWebSocket(ws: WebSocket | null) {
+      this.ws = ws
     },
 
     setCredentials(url: string, token: string) {
@@ -27,7 +26,10 @@ export const useConnectionStore = defineStore('connection', {
     },
 
     disconnect() {
-      this.room = null
+      if (this.ws) {
+        this.ws.close()
+        this.ws = null
+      }
       this.isConnected = false
       this.connectionStatus = 'disconnected'
       this.serverUrl = ''

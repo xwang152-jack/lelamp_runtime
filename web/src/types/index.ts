@@ -1,2 +1,2 @@
-export * from './livekit'
+export * from './connection'
 export * from './device'
