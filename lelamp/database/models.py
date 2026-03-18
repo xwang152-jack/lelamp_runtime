@@ -22,6 +22,9 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from lelamp.database.base import Base
 
+# Import authentication models
+from lelamp.database.models_auth import User, DeviceBinding, RefreshToken
+
 
 class Conversation(Base):
     """
