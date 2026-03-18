@@ -100,8 +100,8 @@ async function handleSave() {
 
   try {
     const updates: any = {
-      deepseek_model: form.value.deepseek_model || undefined,
-      deepseek_base_url: form.value.deepseek_base_url || undefined,
+      deepseek_model: form.value.deepseek_model,
+      deepseek_base_url: form.value.deepseek_base_url,
     }
 
     // 只有输入了新密钥才更新

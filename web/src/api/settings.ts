@@ -14,8 +14,23 @@ import type {
   SettingsFields,
 } from '@/types/settings'
 
-// API 基础 URL，从环境变量或默认值获取
-const API_BASE = import.meta.env.VITE_API_BASE_URL || ''
+import { useConnectionStore } from '@/stores/connection'
+
+/**
+ * 获取当前的 API 基础 URL
+ */
+function getApiBase(): string {
+  const store = useConnectionStore()
+  let url = store.serverUrl || import.meta.env.VITE_API_BASE_URL || ''
+  if (url.endsWith('/')) {
+    url = url.slice(0, -1)
+  }
+  // 如果 url 以 /api 结尾，去掉它，因为下面的请求路径都带了 /api
+  if (url.endsWith('/api')) {
+    url = url.slice(0, -4)
+  }
+  return url
+}
 
 /**
  * 获取请求配置
@@ -61,7 +76,7 @@ async function handleResponse<T>(response: Response): Promise<T> {
  * 获取 WiFi 状态
  */
 export async function getWiFiStatus(): Promise<WiFiStatus> {
-  const response = await fetch(`${API_BASE}/api/system/wifi/status`, getFetchConfig())
+  const response = await fetch(`${getApiBase()}/api/system/wifi/status`, getFetchConfig())
   return handleResponse<WiFiStatus>(response)
 }
 
@@ -69,7 +84,7 @@ export async function getWiFiStatus(): Promise<WiFiStatus> {
  * 扫描 WiFi 网络
  */
 export async function scanWiFiNetworks(): Promise<WiFiScanResponse> {
-  const response = await fetch(`${API_BASE}/api/system/wifi/scan`, getFetchConfig())
+  const response = await fetch(`${getApiBase()}/api/system/wifi/scan`, getFetchConfig())
   return handleResponse<WiFiScanResponse>(response)
 }
 
@@ -77,7 +92,7 @@ export async function scanWiFiNetworks(): Promise<WiFiScanResponse> {
  * 连接 WiFi
  */
 export async function connectWiFi(request: WiFiConnectRequest): Promise<{ success: boolean; message: string; ssid: string }> {
-  const response = await fetch(`${API_BASE}/api/system/wifi/connect`, getFetchConfig('POST', request))
+  const response = await fetch(`${getApiBase()}/api/system/wifi/connect`, getFetchConfig('POST', request))
   return handleResponse(response)
 }
 
@@ -85,7 +100,7 @@ export async function connectWiFi(request: WiFiConnectRequest): Promise<{ succes
  * 断开 WiFi
  */
 export async function disconnectWiFi(): Promise<{ success: boolean; message: string }> {
-  const response = await fetch(`${API_BASE}/api/system/wifi/disconnect`, getFetchConfig('DELETE'))
+  const response = await fetch(`${getApiBase()}/api/system/wifi/disconnect`, getFetchConfig('DELETE'))
   return handleResponse(response)
 }
 
@@ -97,7 +112,7 @@ export async function disconnectWiFi(): Promise<{ success: boolean; message: str
  * 获取应用设置
  */
 export async function getSettings(lampId: string): Promise<AppSettings> {
-  const response = await fetch(`${API_BASE}/api/settings/?lamp_id=${encodeURIComponent(lampId)}`, getFetchConfig())
+  const response = await fetch(`${getApiBase()}/api/settings/?lamp_id=${encodeURIComponent(lampId)}`, getFetchConfig())
   return handleResponse<AppSettings>(response)
 }
 
@@ -106,7 +121,7 @@ export async function getSettings(lampId: string): Promise<AppSettings> {
  */
 export async function updateSettings(lampId: string, updates: SettingsUpdate): Promise<AppSettings> {
   const response = await fetch(
-    `${API_BASE}/api/settings/?lamp_id=${encodeURIComponent(lampId)}`,
+    `${getApiBase()}/api/settings/?lamp_id=${encodeURIComponent(lampId)}`,
     getFetchConfig('PUT', updates)
   )
   return handleResponse<AppSettings>(response)
@@ -117,7 +132,7 @@ export async function updateSettings(lampId: string, updates: SettingsUpdate): P
  */
 export async function resetSettings(lampId: string): Promise<{ success: boolean; message: string }> {
   const response = await fetch(
-    `${API_BASE}/api/settings/reset?lamp_id=${encodeURIComponent(lampId)}`,
+    `${getApiBase()}/api/settings/reset?lamp_id=${encodeURIComponent(lampId)}`,
     getFetchConfig('POST')
   )
   return handleResponse(response)
@@ -127,7 +142,7 @@ export async function resetSettings(lampId: string): Promise<{ success: boolean;
  * 获取设置字段元数据
  */
 export async function getSettingsFields(): Promise<SettingsFields> {
-  const response = await fetch(`${API_BASE}/api/settings/fields`, getFetchConfig())
+  const response = await fetch(`${getApiBase()}/api/settings/fields`, getFetchConfig())
   return handleResponse<SettingsFields>(response)
 }
 
@@ -139,7 +154,7 @@ export async function getSettingsFields(): Promise<SettingsFields> {
  * 获取系统信息
  */
 export async function getSystemInfo(): Promise<SystemInfo> {
-  const response = await fetch(`${API_BASE}/api/system/info`, getFetchConfig())
+  const response = await fetch(`${getApiBase()}/api/system/info`, getFetchConfig())
   return handleResponse<SystemInfo>(response)
 }
 
@@ -147,7 +162,7 @@ export async function getSystemInfo(): Promise<SystemInfo> {
  * 触发服务重启
  */
 export async function triggerRestart(request: RestartRequest = {}): Promise<RestartResponse> {
-  const response = await fetch(`${API_BASE}/api/system/restart`, getFetchConfig('POST', request))
+  const response = await fetch(`${getApiBase()}/api/system/restart`, getFetchConfig('POST', request))
   return handleResponse<RestartResponse>(response)
 }
 
@@ -155,6 +170,6 @@ export async function triggerRestart(request: RestartRequest = {}): Promise<Rest
  * 取消计划的重启
  */
 export async function cancelRestart(): Promise<{ success: boolean; message: string }> {
-  const response = await fetch(`${API_BASE}/api/system/restart/cancel`, getFetchConfig('POST'))
+  const response = await fetch(`${getApiBase()}/api/system/restart/cancel`, getFetchConfig('POST'))
   return handleResponse(response)
 }
