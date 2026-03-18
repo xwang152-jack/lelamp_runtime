@@ -90,18 +90,18 @@ function setCustomColor() {
   const g = parseInt(hex.slice(3, 5), 16)
   const b = parseInt(hex.slice(5, 7), 16)
   sendCommand('set_rgb_solid', { r, g, b })
-  ElMessage.success('设置颜色')
+  // 不再立即显示成功消息，等待后端响应
 }
 
 function setPresetColor(color: PresetColor) {
   sendCommand('set_rgb_solid', color.rgb)
   selectedColor.value = color.hex
-  ElMessage.success(`设置颜色: ${color.name}`)
+  // 不再立即显示成功消息
 }
 
 function setEffect(effect: string) {
   sendCommand(`rgb_effect_${effect}`, {})
-  ElMessage.success(`设置特效: ${effect}`)
+  // 不再立即显示成功消息
 }
 
 function turnOffLight() {

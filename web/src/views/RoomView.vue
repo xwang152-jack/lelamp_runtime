@@ -2,8 +2,8 @@
   <div class="room-view">
     <div class="room-header">
       <div class="status">
-        <span class="status-dot online" />
-        <span>已连接</span>
+        <span :class="['status-dot', connectionStatusClass]" />
+        <span>{{ connectionStatusText }}</span>
       </div>
       <div class="header-actions">
         <el-button @click="handleSettings">
@@ -57,17 +57,39 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Setting } from '@element-plus/icons-vue'
 import { useWebSocket } from '@/composables/useWebSocket'
-import { useChatStore } from '@/stores'
+import { useChatStore, useConnectionStore } from '@/stores'
 import LightPanel from '@/components/room/LightPanel.vue'
 
 const router = useRouter()
 const { disconnect, sendChat: sendWSChat } = useWebSocket()
 const chatStore = useChatStore()
+const connectionStore = useConnectionStore()
 
 const inputText = ref('')
 const messagesContainer = ref<HTMLElement>()
 
 const messages = computed(() => chatStore.messages)
+
+// 连接状态显示
+const connectionStatusClass = computed(() => {
+  switch (connectionStore.connectionStatus) {
+    case 'connected': return 'online'
+    case 'connecting': return 'connecting'
+    case 'disconnected': return 'offline'
+    case 'error': return 'error'
+    default: return 'offline'
+  }
+})
+
+const connectionStatusText = computed(() => {
+  switch (connectionStore.connectionStatus) {
+    case 'connected': return '已连接'
+    case 'connecting': return '连接中...'
+    case 'disconnected': return '未连接'
+    case 'error': return '连接错误'
+    default: return '未知状态'
+  }
+})
 
 function scrollToBottom() {
   nextTick(() => {
@@ -88,7 +110,7 @@ function handleSettings() {
 
 function sendChatAction(text: string) {
   sendWSChat(text)
-  ElMessage.success(`发送: ${text}`)
+  // 不再显示虚假成功消息，等待后端响应
   scrollToBottom()
 }
 

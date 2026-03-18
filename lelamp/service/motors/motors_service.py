@@ -32,6 +32,7 @@ class MotorsService(ServiceBase):
         self._health_check_thread: threading.Thread = None
         self._health_check_stop = threading.Event()
         self._last_target_positions: dict[str, float] = {}  # 记录最后的目标位置
+        self._bus_lock = threading.Lock()  # 串口访问互斥锁
 
         self.logger.info(f"Motors service initialized with recording cache enabled")
 
@@ -97,21 +98,23 @@ class MotorsService(ServiceBase):
             return
 
         try:
-            # Get current positions of all joints first
-            obs = self.robot.get_observation()
-            action = {}
-            for key, value in obs.items():
-                if key.endswith(".pos"):
-                    action[key] = value
+            with self._bus_lock:
+                # Get current positions of all joints first
+                obs = self.robot.get_observation()
+                action = {}
+                for key, value in obs.items():
+                    if key.endswith(".pos"):
+                        action[key] = value
 
-            # Update only the target joint
-            action[f"{joint_name}.pos"] = float(angle)
+                # Update only the target joint
+                action[f"{joint_name}.pos"] = float(angle)
 
-            # 记录目标位置(用于健康监控)
-            self._last_target_positions[joint_name] = float(angle)
+                # 记录目标位置(用于健康监控)
+                self._last_target_positions[joint_name] = float(angle)
 
-            # Send full action with all joints
-            self.robot.send_action(action)
+                # Send full action with all joints
+                self.robot.send_action(action)
+            
             self.logger.info(f"Moved joint {joint_name} to {angle} degrees")
         except Exception as e:
             self.logger.error(f"Error moving joint {joint_name}: {e}")
@@ -123,7 +126,8 @@ class MotorsService(ServiceBase):
             return {}
         
         try:
-            obs = self.robot.get_observation()
+            with self._bus_lock:
+                obs = self.robot.get_observation()
             # Extract joint positions (remove ".pos" suffix from keys)
             positions = {}
             for key, value in obs.items():
@@ -192,7 +196,9 @@ class MotorsService(ServiceBase):
                 
                 # Extract action data (exclude timestamp column)
                 action = {key: float(value) for key, value in row.items() if key != 'timestamp'}
-                self.robot.send_action(action)
+                
+                with self._bus_lock:
+                    self.robot.send_action(action)
                 
                 # Use time.sleep instead of busy_wait to avoid blocking other threads
                 sleep_time = 1.0 / self.fps - (time.perf_counter() - t0)
@@ -261,9 +267,10 @@ class MotorsService(ServiceBase):
         while not self._health_check_stop.is_set():
             try:
                 # 检查所有舵机健康状态
-                health_results = self.health_monitor.check_all_motors_health(
-                    target_positions=self._last_target_positions
-                )
+                with self._bus_lock:
+                    health_results = self.health_monitor.check_all_motors_health(
+                        target_positions=self._last_target_positions
+                    )
 
                 # 检查是否有异常状态
                 for motor_name, health_data in health_results.items():
@@ -308,8 +315,9 @@ class MotorsService(ServiceBase):
         """检测指定舵机是否堵转"""
         if not self.health_monitor:
             return False
-
-        return self.health_monitor.detect_stall(motor_name)
+        
+        with self._bus_lock:
+            return self.health_monitor.detect_stall(motor_name)
 
     def reset_health_statistics(self, motor_name: str = None):
         """重置健康统计数据"""

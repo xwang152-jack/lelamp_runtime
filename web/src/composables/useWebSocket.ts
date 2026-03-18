@@ -1,5 +1,6 @@
 import { useConnectionStore, useChatStore, useDeviceStore } from '@/stores'
 import type { DataMessage } from '@/types'
+import { ElMessage } from 'element-plus'
 
 export function useWebSocket() {
   const connectionStore = useConnectionStore()
@@ -85,6 +86,21 @@ export function useWebSocket() {
         case 'connected':
           console.log('Backend connection confirmed:', data)
           break
+        case 'command_result':
+          // 处理命令执行结果
+          console.log('Command result:', data)
+          if (data.success) {
+            ElMessage.success({
+              message: `命令执行成功: ${data.action}`,
+              duration: 2000
+            })
+          } else {
+            ElMessage.error({
+              message: `命令执行失败: ${data.error || '未知错误'}`,
+              duration: 3000
+            })
+          }
+          break
       }
     } catch (error) {
       console.error('Failed to parse data:', error)
@@ -93,12 +109,15 @@ export function useWebSocket() {
 
   async function sendCommand(action: string, params: Record<string, any> = {}) {
     if (!connectionStore.ws || connectionStore.ws.readyState !== WebSocket.OPEN) {
-      console.warn('WebSocket not connected')
-      return
+      console.warn('WebSocket not connected, cannot send command:', action, params)
+      ElMessage.warning('设备未连接，请先连接设备')
+      return false
     }
 
     const data = { type: 'command', action, params }
+    console.log('Sending command:', data)
     connectionStore.ws.send(JSON.stringify(data))
+    return true
   }
 
   async function sendChat(text: string) {
