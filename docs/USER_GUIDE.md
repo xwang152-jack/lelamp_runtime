@@ -1,9 +1,15 @@
-# LeLamp 完整使用指南 v2.1
+# LeLamp 完整使用指南 v2.2
 
 **最后更新**: 2026-03-18
-**适用版本**: LeLamp Runtime v2.1 + Web Frontend (Vue 3) v2.1
+**适用版本**: LeLamp Runtime v2.2 + Web Frontend (Vue 3) v2.2
 
-**v2.1 新增**:
+**v2.2 新增**:
+- ✨ 开箱即用 AP 模式配置 - 无需技术背景即可配置 WiFi
+- ✨ 自动设置检测 - 首次启动自动进入配置模式
+- ✨ 设置向导界面 - 5 步引导式配置流程
+- ✨ Captive Portal 支持 - 连接热点后自动弹出配置页面
+
+**v2.1 功能**:
 - ✨ Web 设置页面 - 无需 SSH 即可配置系统
 - ✨ WiFi 网络配置 - 扫描、连接、断开 WiFi
 - ✨ 配置管理 API - RESTful API 用于系统配置
@@ -472,7 +478,86 @@ FEISHU_RECEIVE_ID=oc_xxxxxxxxxxxxxxxxxxxxxxxx
 1. 语音: "拍照发送到飞书"
 2. 或在 Web Client 点击 "✈️ 推送飞书"
 
-### 3. 动作表情
+### 3. 首次开箱配置（AP 模式）
+
+> **适用场景**: 商业产品用户首次使用，或设备重置后
+
+LeLamp 支持开箱即用配置，无需 SSH 或命令行操作：
+
+#### 3.1 自动进入设置模式
+
+当设备首次启动或检测到未配置 WiFi 时：
+
+1. **自动启动 AP 热点** `LeLamp-Setup`
+   - 密码: `lelamp123`
+   - IP 地址: `192.168.4.1`
+
+2. **LED 指示灯** 呈蓝色闪烁
+
+3. **用户手机/电脑连接热点**
+
+4. **浏览器自动弹出** 配置页面（或访问 `http://192.168.4.1/setup`）
+
+#### 3.2 设置向导流程
+
+```
+步骤 1: 欢迎页面
+       ↓
+步骤 2: 扫描并选择 WiFi 网络
+       ↓
+步骤 3: 输入 WiFi 密码
+       ↓
+步骤 4: 连接验证
+       ↓
+步骤 5: 配置完成，设备自动重启
+```
+
+#### 3.3 手动触发设置模式
+
+如果需要重新配置 WiFi：
+
+**方法 1: Web 界面**
+```bash
+# 在设置页面点击 "重新配置" 或 "重置网络"
+```
+
+**方法 2: API 调用**
+```bash
+curl -X POST http://localhost:8000/api/setup/reset
+```
+
+#### 3.4 设置模式 API 端点
+
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/api/setup/status` | GET | 获取设置状态 |
+| `/api/setup/ap/start` | POST | 启动 AP 模式 |
+| `/api/setup/ap/stop` | POST | 停止 AP 模式 |
+| `/api/setup/complete` | POST | 完成配置并重启 |
+| `/api/setup/reset` | POST | 重置配置 |
+| `/api/setup/ap/clients` | GET | 获取已连接的客户端 |
+
+#### 3.5 配置状态文件
+
+```bash
+# 状态文件位置
+/var/lib/lelamp/setup_status.json
+
+# 查看状态
+cat /var/lib/lelamp/setup_status.json
+```
+
+```json
+{
+  "setup_completed": true,
+  "setup_completed_at": "2026-03-18T12:00:00",
+  "wifi_ssid": "MyHomeWiFi",
+  "last_mode": "client",
+  "last_updated": "2026-03-18T12:00:00"
+}
+```
+
+### 4. 动作表情
 
 #### 预设动作列表
 
