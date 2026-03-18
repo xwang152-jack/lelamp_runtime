@@ -1,0 +1,22 @@
+[Unit]
+Description=LeLamp Setup Mode Service
+Documentation=https://github.com/xwang152-jack/lelamp_runtime
+After=network.target
+Before=lelamp-api.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/lelamp-first-boot
+User=root
+Group=root
+
+# 安全设置
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/lelamp /var/log/lelamp
+
+[Install]
+WantedBy=multi-user.target
