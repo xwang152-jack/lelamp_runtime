@@ -143,6 +143,26 @@ async def lifespan(app: FastAPI):
         rgb_service.start()
         app.state.rgb_service = rgb_service
 
+    # 初始化 LeLamp Agent
+    try:
+        from lelamp.agent.lelamp_agent import LeLamp
+        agent = LeLamp(
+            port="/dev/ttyACM0",
+            lamp_id="lelamp",
+            motors_service=app.state.motors_service,
+            rgb_service=app.state.rgb_service,
+        )
+        
+        async def broadcast_callback(msg):
+            await manager.broadcast_to_device("lelamp", msg)
+            
+        agent.send_message_callback = broadcast_callback
+        app.state.agent = agent
+        logger.info("LeLamp Agent initialized")
+    except Exception as e:
+        logger.error(f"LeLamp Agent init failed: {e}", exc_info=True)
+        app.state.agent = None
+
     # 启动后台状态轮询任务
     polling_task = asyncio.create_task(state_polling_task())
 

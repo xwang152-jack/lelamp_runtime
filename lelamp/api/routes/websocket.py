@@ -360,71 +360,87 @@ async def websocket_endpoint(
                 
                 rgb_service = getattr(websocket.app.state, "rgb_service", None)
                 motors_service = getattr(websocket.app.state, "motors_service", None)
+                agent = getattr(websocket.app.state, "agent", None)
                 
-                if action == "set_rgb_solid" and rgb_service:
-                    r = params.get("r", 0)
-                    g = params.get("g", 0)
-                    b = params.get("b", 0)
-                    rgb_service.dispatch("solid", (r, g, b))
-                elif action.startswith("rgb_effect_") and rgb_service:
-                    effect_name = action.replace("rgb_effect_", "")
-                    rgb_service.dispatch("effect", {"name": effect_name})
-                elif action == "stop_rgb_effect" and rgb_service:
-                    rgb_service.dispatch("clear", None)
-                elif action == "move_joint" and motors_service:
-                    joint_name = params.get("joint_name")
-                    angle = params.get("angle")
-                    if joint_name and angle is not None:
-                        motors_service.dispatch("move_joint", {"joint": joint_name, "angle": float(angle)})
-                elif action == "play_recording" and motors_service:
-                    recording_name = params.get("recording_name")
-                    if recording_name:
-                        motors_service.dispatch("play", recording_name)
-                elif action == "chat":
+                if action == "chat":
                     text = params.get("text", "")
                     logger.info(f"收到聊天消息: {text}")
                     
                     # 异步调用 DeepSeek API 进行回复
                     async def process_chat(message_text: str):
                         try:
+                            if agent:
+                                await agent.set_conversation_state("thinking")
+
                             config = load_config()
                             # 简单的测试回复，如果不配置 api key 的话
                             if not config.deepseek_api_key or config.deepseek_api_key == "dummy":
+                                reply_text = f"收到你的消息：{message_text}。请在配置中设置 DEEPSEEK_API_KEY 以启用智能回复。"
+                            else:
+                                client = AsyncOpenAI(
+                                    api_key=config.deepseek_api_key,
+                                    base_url=config.deepseek_base_url
+                                )
+                                
+                                response = await client.chat.completions.create(
+                                    model=config.deepseek_model,
+                                    messages=[
+                                        {"role": "system", "content": "你是一个名为 LeLamp 的智能台灯机器人，性格带点讽刺但乐于助人，请用简短的中文回复。"},
+                                        {"role": "user", "content": message_text}
+                                    ],
+                                    max_tokens=150
+                                )
+                                
+                                reply_text = response.choices[0].message.content
+                                
+                            if agent:
+                                await agent._send_chat_message(reply_text)
+                                await agent.set_conversation_state("speaking")
+                                await asyncio.sleep(2.0)  # 简单模拟说话时间
+                                await agent.set_conversation_state("idle")
+                            else:
                                 await websocket.send_json({
                                     "type": "chat",
-                                    "content": f"收到你的消息：{message_text}。请在配置中设置 DEEPSEEK_API_KEY 以启用智能回复。"
+                                    "content": reply_text
                                 })
-                                return
-
-                            client = AsyncOpenAI(
-                                api_key=config.deepseek_api_key,
-                                base_url=config.deepseek_base_url
-                            )
-                            
-                            response = await client.chat.completions.create(
-                                model=config.deepseek_model,
-                                messages=[
-                                    {"role": "system", "content": "你是一个名为 LeLamp 的智能台灯机器人，性格带点讽刺但乐于助人，请用简短的中文回复。"},
-                                    {"role": "user", "content": message_text}
-                                ],
-                                max_tokens=150
-                            )
-                            
-                            reply_text = response.choices[0].message.content
-                            
-                            await websocket.send_json({
-                                "type": "chat",
-                                "content": reply_text
-                            })
                             
                         except Exception as e:
                             logger.error(f"调用大模型失败: {e}")
-                            await websocket.send_json({
-                                "type": "chat",
-                                "content": "抱歉，我的大脑暂时断线了。"
-                            })
+                            if agent:
+                                await agent._send_chat_message("抱歉，我的大脑暂时断线了。")
+                                await agent.set_conversation_state("idle")
+                            else:
+                                await websocket.send_json({
+                                    "type": "chat",
+                                    "content": "抱歉，我的大脑暂时断线了。"
+                                })
                             
                     asyncio.create_task(process_chat(text))
+                else:
+                    # 对于非聊天的其他指令，优先交给核心大脑 (Agent) 处理
+                    if agent:
+                        asyncio.create_task(agent._execute_command(action, params))
+                    else:
+                        # 降级处理：如果没有 Agent，直接调用硬件服务
+                        if action == "set_rgb_solid" and rgb_service:
+                            r = params.get("r", 0)
+                            g = params.get("g", 0)
+                            b = params.get("b", 0)
+                            rgb_service.dispatch("solid", (r, g, b))
+                        elif action.startswith("rgb_effect_") and rgb_service:
+                            effect_name = action.replace("rgb_effect_", "")
+                            rgb_service.dispatch("effect", {"name": effect_name})
+                        elif action == "stop_rgb_effect" and rgb_service:
+                            rgb_service.dispatch("clear", None)
+                        elif action == "move_joint" and motors_service:
+                            joint_name = params.get("joint_name")
+                            angle = params.get("angle")
+                            if joint_name and angle is not None:
+                                motors_service.dispatch("move_joint", {"joint": joint_name, "angle": float(angle)})
+                        elif action == "play_recording" and motors_service:
+                            recording_name = params.get("recording_name")
+                            if recording_name:
+                                motors_service.dispatch("play", recording_name)
 
 
     except WebSocketDisconnect:

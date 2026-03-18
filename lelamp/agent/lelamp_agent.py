@@ -745,14 +745,13 @@ You are LeLamp, a sentient robot lamp. You are clumsy, extremely sarcastic, but 
             content: 消息内容
         """
         try:
-            if hasattr(self, 'room') and self.room:
+            if hasattr(self, 'send_message_callback') and self.send_message_callback:
                 message = {
                     "type": "chat",
                     "content": content,
                     "timestamp": time.time()
                 }
-                data = json.dumps(message).encode('utf-8')
-                await self.room.local_participant.publish_data(data)
+                await self.send_message_callback(message)
                 logger.debug(f"发送聊天消息: {content}")
         except Exception as e:
             logger.error(f"发送聊天消息失败: {e}")
@@ -766,7 +765,7 @@ You are LeLamp, a sentient robot lamp. You are clumsy, extremely sarcastic, but 
             image_base64: 图片 base64 编码（可选）
         """
         try:
-            if hasattr(self, 'room') and self.room:
+            if hasattr(self, 'send_message_callback') and self.send_message_callback:
                 # 如果没有提供图片，尝试从 vision_service 获取最新帧
                 if image_base64 is None and self._vision_service:
                     frame_data = self._vision_service.get_latest_frame()
@@ -782,8 +781,7 @@ You are LeLamp, a sentient robot lamp. You are clumsy, extremely sarcastic, but 
                     "image_base64": image_base64,
                     "timestamp": time.time()
                 }
-                data = json.dumps(message).encode('utf-8')
-                await self.room.local_participant.publish_data(data)
+                await self.send_message_callback(message)
                 logger.debug(f"发送视觉结果: {result[:100]}...")
         except Exception as e:
             logger.error(f"发送视觉结果失败: {e}")
@@ -796,14 +794,13 @@ You are LeLamp, a sentient robot lamp. You are clumsy, extremely sarcastic, but 
             active: 摄像头是否激活
         """
         try:
-            if hasattr(self, 'room') and self.room:
+            if hasattr(self, 'send_message_callback') and self.send_message_callback:
                 message = {
                     "type": "camera_status",
                     "active": active,
                     "timestamp": time.time()
                 }
-                data = json.dumps(message).encode('utf-8')
-                await self.room.local_participant.publish_data(data)
-                logger.debug(f"更新摄像头状态: {'激活' if active else '关闭'}")
+                await self.send_message_callback(message)
+                logger.debug(f"更新摄像头状态: {active}")
         except Exception as e:
             logger.error(f"更新摄像头状态失败: {e}")
