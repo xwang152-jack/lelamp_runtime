@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 from typing import Optional, Dict
 import jwt
 import bcrypt
+import uuid
 from sqlalchemy.orm import Session
 from lelamp.database.models_auth import User, DeviceBinding, RefreshToken
 
@@ -51,10 +52,12 @@ class AuthService:
     def create_refresh_token(user_id: int, db: Session) -> str:
         """创建刷新令牌"""
         expire = datetime.utcnow() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+        jti = str(uuid.uuid4())  # JWT ID: 唯一标识符
         token_data = {
             "user_id": user_id,
             "exp": expire,
-            "type": "refresh"
+            "type": "refresh",
+            "jti": jti
         }
         token = jwt.encode(token_data, SECRET_KEY, algorithm=ALGORITHM)
 
