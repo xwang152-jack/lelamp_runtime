@@ -111,14 +111,19 @@ class WiFiManager:
                         parts.append(current)
 
                     # 解析各个字段
-                    if len(parts) >= 4:
+                    # 实际格式: SSID:BSSID:SIGNAL:SECURITY:FREQ
+                    if len(parts) >= 5:
                         ssid = parts[0] if parts[0] else "-- Hidden Network --"
                         bssid = parts[1] if len(parts) > 1 else ""
-                        security = parts[2] if len(parts) > 2 else "open"
-                        freq_str = parts[3] if len(parts) > 3 else ""
+                        signal_str = parts[2] if len(parts) > 2 else ""
+                        security = parts[3] if len(parts) > 3 else "open"
+                        freq_str = parts[4] if len(parts) > 4 else ""
 
-                        # 信号强度：当前nmcli版本不提供，使用默认值
-                        signal = 50  # 默认中等信号强度
+                        # 解析信号强度
+                        try:
+                            signal = int(float(signal_str)) if signal_str else 50
+                        except (ValueError, IndexError):
+                            signal = 50
 
                         # 解析频率
                         try:
@@ -200,35 +205,47 @@ class WiFiManager:
             dns_servers = []
 
             if connected and device:
-                # 获取IP地址
-                cmd = ["sudo", self._nmcli_path, "-t", "-f", "IP4.ADDRESS", "device", "show", device]
+                # 获取完整的设备信息
+                cmd = ["sudo", self._nmcli_path, "-t", "device", "show", device]
                 process = await asyncio.create_subprocess_exec(
                     *cmd,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE
                 )
                 stdout, _ = await process.communicate()
-                for line in stdout.decode().strip().split('\n'):
-                    if line and not line.startswith('IP4.ADDRESS'):
-                        ip_data = line.split(':')[0]
-                        if ip_data and ip_data != '':
-                            ip_address = ip_data.split('/')[0]
-                            break
 
-                # 获取网关
-                cmd = ["sudo", self._nmcli_path, "-t", "-f", "IP4.GATEWAY", "device", "show", device]
-                process = await asyncio.create_subprocess_exec(
-                    *cmd,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE
-                )
-                stdout, _ = await process.communicate()
                 for line in stdout.decode().strip().split('\n'):
-                    if line and not line.startswith('IP4.GATEWAY'):
-                        gateway = line.split(':')[0]
-                        if gateway and gateway != '':
-                            break
-                        gateway = None
+                    if not line:
+                        continue
+
+                    # 解析IP地址
+                    if line.startswith('IP4.ADDRESS['):
+                        # 格式: IP4.ADDRESS[1]:192.168.0.104/24
+                        try:
+                            addr_part = line.split(':')[1]
+                            if addr_part:
+                                ip_address = addr_part.split('/')[0]
+                                break
+                        except (IndexError, ValueError):
+                            pass
+
+                    # 解析网关
+                    elif line.startswith('IP4.GATEWAY:'):
+                        # 格式: IP4.GATEWAY:192.168.0.1
+                        try:
+                            gateway = line.split(':')[1].strip()
+                        except IndexError:
+                            pass
+
+                    # 解析DNS
+                    elif line.startswith('IP4.DNS['):
+                        # 格式: IP4.DNS[1]:192.168.1.1
+                        try:
+                            dns = line.split(':')[1].strip()
+                            if dns:
+                                dns_servers.append(dns)
+                        except IndexError:
+                            pass
 
             return {
                 "connected": connected,
