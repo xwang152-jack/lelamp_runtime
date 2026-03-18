@@ -50,7 +50,7 @@ const { connect } = useWebSocket()
 const loading = ref(false)
 
 const form = reactive({
-  serverUrl: 'http://localhost:8000'
+  serverUrl: `${window.location.protocol}//${window.location.hostname}:8000`
 })
 
 async function handleConnect() {
