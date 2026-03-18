@@ -29,11 +29,34 @@ uv sync --extra hardware
 
 # Install with vision support
 uv sync --extra vision
+
+# Install with API support (FastAPI, database)
+uv sync --extra api
+
+# Install with development tools (pytest, ruff)
+uv sync --extra dev
+
+# Install all extras
+uv sync --extra hardware --extra vision --extra api --extra dev
 ```
 
 **Important**: For LFS (Git Large File Storage) issues, use:
 ```bash
 GIT_LFS_SKIP_SMUDGE=1 uv sync
+```
+
+**Project Dependencies** (from `pyproject.toml`):
+- **Core**: `feetech-servo-sdk`, `lerobot`, `livekit`, `livekit-agents`
+- **Audio**: `pyaudio`, `sounddevice`, `pvporcupine`, `pvrecorder`
+- **Vision**: `opencv-python`, `mediapipe` (platform-specific)
+- **Hardware**: `rpi-ws281x`, `adafruit-circuitpython-neopixel` (Linux only)
+- **API**: `fastapi`, `uvicorn`, `pydantic`, `sqlalchemy`, `aiosqlite`
+- **Utilities**: `httpx`, `python-dotenv`, `numpy`, `packaging`
+
+**Note**: The `lerobot` package is installed from GitHub source:
+```toml
+[tool.uv.sources]
+lerobot = { git = "https://github.com/huggingface/lerobot" }
 ```
 
 ### Running Tests
@@ -50,6 +73,35 @@ uv run -m lelamp.test.test_audio
 
 # Test motors
 uv run -m lelamp.test.test_motors --id <lamp_id> --port <port>
+
+# Run API tests (if test suite exists)
+uv run pytest lelamp/api/tests/
+
+# Run with coverage
+uv run pytest --cov=lelamp --cov-report=html
+```
+
+### API & Database Commands
+
+```bash
+# Start FastAPI server (development)
+uv run uvicorn lelamp.api.app:app --host 0.0.0.0 --port 8000 --reload
+
+# Start FastAPI server (production with workers)
+.venv/bin/python -m uvicorn lelamp.api.app:app --host 0.0.0.0 --port 8000 --workers 4
+
+# Initialize database
+uv run python -c "
+from lelamp.database.session import engine
+from lelamp.database.models import Base
+Base.metadata.create_all(bind=engine)
+print('Database initialized')
+"
+
+# Access API documentation
+# Swagger UI: http://localhost:8000/docs
+# ReDoc: http://localhost:8000/redoc
+# Health check: http://localhost:8000/health
 ```
 
 ### Common Development Commands
@@ -75,6 +127,45 @@ sudo uv run main.py console
 ```
 
 ## Architecture
+
+### Project Structure Overview
+
+```
+lelamp_runtime/
+├── main.py                      # Entry point for LiveKit agent
+├── pyproject.toml              # UV package manager configuration
+├── CLAUDE.md                   # This file - developer guide
+├── README.md                   # User documentation
+├── VERSION                     # Runtime version for OTA updates
+│
+├── lelamp/                     # Core package
+│   ├── agent/                  # NEW: Agent architecture
+│   │   ├── lelamp_agent.py     # Main LeLamp Agent class
+│   │   ├── states.py           # Conversation state management
+│   │   └── tools/              # Function tools (motor, rgb, vision, system)
+│   ├── api/                    # NEW: FastAPI REST API & WebSocket
+│   │   ├── app.py              # FastAPI application
+│   │   ├── routes/             # API route handlers
+│   │   ├── models/             # Pydantic models for API
+│   │   └── services/           # API business logic (WiFi, AP manager, etc.)
+│   ├── database/               # NEW: Database layer
+│   │   ├── models.py           # SQLAlchemy ORM models
+│   │   ├── crud.py             # Database operations
+│   │   └── session.py          # Database session management
+│   ├── config.py               # Configuration management
+│   ├── service/                # Service architecture
+│   │   ├── base.py             # Service base class
+│   │   ├── motors/             # Motor service with health monitoring
+│   │   ├── rgb.py              # RGB LED service
+│   │   └── vision/             # Vision service with privacy
+│   ├── integrations/           # External AI services
+│   ├── utils/                  # Utilities (rate limiting, security, OTA)
+│   ├── cache/                  # Response caching
+│   └── recordings/             # Motor animation CSV files
+│
+├── web/                        # Vue 3 frontend (deprecated)
+└── scripts/                    # Build and deployment scripts
+```
 
 ### Configuration Management
 
@@ -199,9 +290,52 @@ Located in `lelamp/integrations/`:
 - Download progress reporting (with `httpx`)
 - Configured via `LELAMP_OTA_URL` environment variable
 
-### Main Agent (main.py)
+### Agent Architecture (`lelamp/agent/`)
 
-The `LeLamp` class extends `Agent` from LiveKit:
+**Modular Agent Design**: The agent logic has been refactored into separate modules:
+
+- `lelamp_agent.py`: Main `LeLamp` class extending LiveKit's `Agent`
+  - Personality: Sarcastic, clumsy robot lamp responding in Chinese
+  - Conversation state management with LED color indicators
+  - Cooldown and override systems for motion and lighting
+
+- `states.py`: State management for conversation flow
+  - `ConversationState`: Enum (IDLE, LISTENING, THINKING, SPEAKING)
+  - `StateManager`: Thread-safe state transitions with callbacks
+  - `StateColors`: Maps conversation states to RGB colors
+
+- `tools/`: Function tools organized by domain
+  - `motor_tools.py`: Motor control and health monitoring
+  - `rgb_tools.py`: LED effects and color control
+  - `vision_tools.py`: Camera capture and vision AI
+  - `system_tools.py`: System utilities (volume, web search, OTA)
+
+### API & Database Layer (`lelamp/api/` & `lelamp/database/`)
+
+**RESTful API System**:
+- FastAPI application with auto-generated OpenAPI docs (`/docs`, `/redoc`)
+- 9 REST endpoints for device management, settings, and history
+- WebSocket support for real-time state updates (`/api/ws/{lamp_id}`)
+- CORS enabled for web client integration
+- 13 WebSocket message types for event pushing
+
+**Database Models** (`lelamp/database/models.py`):
+- `Conversation`: Chat history with messages, duration, and AI responses
+- `OperationLog`: System operation tracking with success/failure status
+- `DeviceState`: Device state snapshots for monitoring
+- `UserSettings`: User preferences and configuration storage
+
+**API Services** (`lelamp/api/services/`):
+- `wifi_manager.py`: WiFi network scanning and connection management
+- `ap_manager.py`: Access point mode for onboarding
+- `config_sync.py`: Configuration synchronization between services
+- `onboarding.py`: First-time setup wizard logic
+
+### Legacy Main Agent (main.py)
+
+**Entry Point**: `main.py` now serves as the bootstrap for the LiveKit agent:
+
+The `LeLamp` class (imported from `lelamp.agent.lelamp_agent`) extends `Agent` from LiveKit:
 
 - **Personality**: Sarcastic, clumsy robot lamp that responds in Chinese
 - **Function Tools**: All agent capabilities exposed as `@function_tool` decorators:
@@ -303,6 +437,15 @@ Required in `.env` file (create from template):
 - `LELAMP_STT_INPUT_GAIN` (default: 3.0)
 - `LOG_LEVEL` (default: "INFO")
 
+**API & Database Configuration**:
+- `LELAMP_API_HOST` (default: "0.0.0.0")
+- `LELAMP_API_PORT` (default: 8000)
+- `LELAMP_API_WORKERS` (default: 1, set to 4+ for production)
+- `LELAMP_DB_URL` (default: "sqlite:///lelamp.db", use PostgreSQL for production)
+- `LELAMP_LOG_TO_FILE` (default: false)
+- `LELAMP_LOG_DIR` (default: "logs")
+- `LELAMP_LOG_JSON` (default: false)
+
 **Commercialization & OTA**:
 - `LELAMP_LICENSE_KEY` (device authorization, see `scripts/generate_client_token.py`)
 - `LELAMP_LICENSE_SECRET` (签名密钥，生产环境必需，务必保密)
@@ -325,7 +468,9 @@ Silero VAD can be customized via environment variables:
 
 ## Code Organization
 
-- `main.py`: Main entry point, agent definition, LiveKit integration
+### Core Application
+- `main.py`: Bootstrap entry point for LiveKit agent
+- `lelamp/agent/`: Agent architecture with modular tools
 - `lelamp/config.py`: Centralized configuration management with type-safe loading
 - `lelamp/service/`: Service architecture (base, motors, RGB, vision, privacy)
 - `lelamp/integrations/`: External AI service clients (Baidu, Qwen VL) with unified error handling
@@ -334,7 +479,20 @@ Silero VAD can be customized via environment variables:
 - `lelamp/follower/` & `lelamp/leader/`: Motor control configurations
 - `lelamp/recordings/`: CSV files with motor animation sequences
 - `lelamp/test/`: Hardware testing utilities
-- `web/`: Vue 3 + TypeScript + Vite 前端应用
+
+### API & Database
+- `lelamp/api/`: FastAPI REST API and WebSocket server
+  - `app.py`: FastAPI application setup
+  - `routes/`: API route handlers (devices, settings, system, websocket)
+  - `models/`: Pydantic request/response models
+  - `services/`: Business logic (WiFi manager, AP manager, config sync)
+- `lelamp/database/`: Database layer with SQLAlchemy ORM
+  - `models.py`: Conversation, OperationLog, DeviceState, UserSettings
+  - `crud.py`: Database CRUD operations
+  - `session.py`: Database session management
+
+### Frontend & Deployment
+- `web/`: Vue 3 + TypeScript + Vite frontend (deprecated, see web_client)
 - `scripts/`: Build and token generation utilities for commercial deployment
 - `VERSION`: Current runtime version string (used for OTA updates)
 
@@ -353,18 +511,28 @@ Silero VAD can be customized via environment variables:
 
 ## Development Workflow
 
+### Agent Development
+
 When adding new motor animations:
 1. Record movement with `uv run -m lelamp.record --id <lamp_id> --port <port> --name <name>`
 2. CSV file saved to `lelamp/recordings/<name>.csv`
 3. Call via agent tool: `play_recording("<name>")`
 4. Recordings are cached in memory after first load for 10x faster replay
 
-When modifying agent behavior:
-- Use `lelamp/config.py` to add new configuration variables with type-safe loading
-- Edit the `instructions` parameter in `LeLamp.__init__()` for personality changes
-- Add new `@function_tool` methods for new capabilities
-- Services communicate via `dispatch(event_type, payload, priority)`
-- Camera privacy: VisionService automatically controls privacy LED when capturing
+### API Development
+
+When adding new API endpoints:
+1. Create route handler in `lelamp/api/routes/`
+2. Define Pydantic models in `lelamp/api/models/`
+3. Implement business logic in `lelamp/api/services/`
+4. Add WebSocket message types if real-time updates needed
+5. Test using auto-generated docs at `/docs` (Swagger UI)
+
+When adding database models:
+1. Define model in `lelamp/database/models.py`
+2. Add CRUD operations in `lelamp/database/crud.py`
+3. Create migration or use `Base.metadata.create_all()` for development
+4. Support both SQLite (dev) and PostgreSQL (production) via environment variables
 
 When adding API integrations:
 - Use unified error handling from `lelamp/integrations/exceptions.py`
@@ -385,7 +553,35 @@ When debugging services:
 - Service state available via `is_running` and `has_pending_event` properties
 - Use `wait_until_idle(timeout)` before service shutdown
 
+When debugging API issues:
+- Check API logs: `tail -f logs/lelamp.api.log` (if file logging enabled)
+- Test endpoints using Swagger UI at `http://localhost:8000/docs`
+- Monitor WebSocket messages using browser dev tools or WebSocket clients
+- Check database state: `sqlite3 lelamp.db "SELECT * FROM conversations ORDER BY timestamp DESC LIMIT 10"`
+- Verify CORS configuration if web client can't connect
+
+When debugging agent issues:
+- Enable DEBUG logging for detailed conversation flow
+- Check rate limiter stats: `get_all_rate_limiter_stats()`
+- Monitor motor health: `motors_service.get_motor_health_summary()`
+- Test vision independently: call `vision_answer()` tool directly
+- Verify service event queues: check for dropped events in logs
+
 ## Important Implementation Notes
+
+### Architecture Patterns
+
+**Agent Modularity**: The agent code is split across multiple modules:
+- `lelamp/agent/lelamp_agent.py`: Main agent class
+- `lelamp/agent/tools/`: Function tools grouped by domain
+- `lelamp/agent/states.py`: State management
+- This modularity makes it easier to add new capabilities and maintain code
+
+**API Layer Separation**:
+- Routes: HTTP endpoint handlers
+- Services: Business logic (WiFi, AP manager, etc.)
+- Models: Pydantic schemas for validation
+- Database: ORM models and CRUD operations
 
 ### Threading Concurrency
 - **Lock Types**: Use `threading.Lock` for cross-thread state, `asyncio.Lock` for asyncio-only state
@@ -414,6 +610,20 @@ When debugging services:
 
 ### Commercial Features
 
+**Motor Health Monitoring** (`lelamp/service/motors/health_monitor.py`):
+- Real-time monitoring of temperature, voltage, load, and position errors
+- Health states: HEALTHY, WARNING, CRITICAL, STALLED
+- Background health check thread (default 5min intervals)
+- Automatic protective actions (stop playback on stall/critical)
+- Health history tracking and statistics
+- Access via: `get_motor_health_summary()` and `tune_motor_pid()`
+
+**WiFi Management** (`lelamp/api/services/wifi_manager.py`):
+- WiFi network scanning and connection management
+- AP (Access Point) mode for onboarding new devices
+- Network configuration persistence
+- Integration with system network manager (NetworkManager on Linux)
+
 **OTA Updates**:
 - `OTAManager` class handles firmware updates remotely
 - Version checking via `LELAMP_OTA_URL` endpoint
@@ -434,3 +644,5 @@ When debugging services:
 - **CSV Recordings**: Cached in memory after first load (10x speedup)
 - **Event Queues**: Priority-based with configurable max size to prevent event loss
 - **TTL Cache**: Auto-expires and uses LRU eviction
+- **Database**: Indexed queries on lamp_id and timestamp for fast lookups
+- **WebSocket**: Real-time state updates without polling overhead
