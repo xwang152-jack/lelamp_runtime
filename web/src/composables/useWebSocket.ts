@@ -11,7 +11,10 @@ export function useWebSocket() {
       connectionStore.setConnectionStatus('connecting')
       connectionStore.setCredentials(url, '') // No token needed for simple WS
 
-      const wsUrl = `${url.replace(/^http/, 'ws')}/ws/${lampId}`
+      const baseUrl = url.endsWith('/') ? url.slice(0, -1) : url
+      const wsUrl = baseUrl.endsWith('/api')
+        ? `${baseUrl.replace(/^http/, 'ws')}/ws/${lampId}`
+        : `${baseUrl.replace(/^http/, 'ws')}/api/ws/${lampId}`
       const ws = new WebSocket(wsUrl)
 
       ws.onopen = () => {
