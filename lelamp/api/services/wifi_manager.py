@@ -168,8 +168,8 @@ class WiFiManager:
             - dns_servers: DNS 服务器列表
         """
         try:
-            # 获取连接状态
-            cmd = [self._nmcli_path, "-t", "-f", "ACTIVE,SSID,SIGNAL", "connection", "show"]
+            # 获取连接状态（需要sudo权限）
+            cmd = ["sudo", self._nmcli_path, "-t", "-f", "ACTIVE,NAME,DEVICE", "connection", "show"]
 
             process = await asyncio.create_subprocess_exec(
                 *cmd,
@@ -182,24 +182,26 @@ class WiFiManager:
             connected = False
             ssid = None
             signal = None
+            device = None
 
             for line in stdout.decode().strip().split('\n'):
                 if not line:
                     continue
                 parts = line.split(':')
-                if len(parts) >= 3 and parts[0] == 'yes':
+                if len(parts) >= 3 and parts[0] == 'yes' and parts[2] == 'wlan0':
                     connected = True
                     ssid = parts[1]
-                    try:
-                        signal = int(float(parts[2]))
-                    except (ValueError, IndexError):
-                        signal = None
+                    device = parts[2]
                     break
 
             # 获取 IP 地址
             ip_address = None
-            if connected:
-                cmd = [self._nmcli_path, "-t", "-f", "IP4.ADDRESS", "device", "show", "wlan0"]
+            gateway = None
+            dns_servers = []
+
+            if connected and device:
+                # 获取IP地址
+                cmd = ["sudo", self._nmcli_path, "-t", "-f", "IP4.ADDRESS", "device", "show", device]
                 process = await asyncio.create_subprocess_exec(
                     *cmd,
                     stdout=asyncio.subprocess.PIPE,
@@ -207,11 +209,26 @@ class WiFiManager:
                 )
                 stdout, _ = await process.communicate()
                 for line in stdout.decode().strip().split('\n'):
-                    if 'IP4.ADDRESS' in line:
-                        parts = line.split(':')
-                        if len(parts) > 1:
-                            ip_address = parts[1].split('/')[0]
+                    if line and not line.startswith('IP4.ADDRESS'):
+                        ip_data = line.split(':')[0]
+                        if ip_data and ip_data != '':
+                            ip_address = ip_data.split('/')[0]
                             break
+
+                # 获取网关
+                cmd = ["sudo", self._nmcli_path, "-t", "-f", "IP4.GATEWAY", "device", "show", device]
+                process = await asyncio.create_subprocess_exec(
+                    *cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+                stdout, _ = await process.communicate()
+                for line in stdout.decode().strip().split('\n'):
+                    if line and not line.startswith('IP4.GATEWAY'):
+                        gateway = line.split(':')[0]
+                        if gateway and gateway != '':
+                            break
+                        gateway = None
 
             return {
                 "connected": connected,
