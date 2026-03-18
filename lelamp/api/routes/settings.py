@@ -56,7 +56,7 @@ async def get_settings(
 @router.put("/", response_model=AppSettingsResponse)
 async def update_settings(
     lamp_id: str = Query(..., description="设备 ID"),
-    request: AppSettingsUpdateRequest = None,
+    request: AppSettingsUpdateRequest,
     db: Session = Depends(get_db)
 ) -> AppSettingsResponse:
     """
@@ -67,22 +67,15 @@ async def update_settings(
 
     Args:
         lamp_id: 设备 ID
-        request: 配置更新请求（可选，使用请求体传递）
+        request: 配置更新请求（使用请求体传递）
         db: 数据库会话
 
     Returns:
         AppSettingsResponse: 更新后的配置
     """
     try:
-        # 获取请求体中的更新数据
-        if request is None:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="请求体不能为空"
-            )
-
-        # 将 Pydantic 模型转换为字典，排除 None 值
-        updates = request.model_dump(exclude_unset=True)
+        # 将 Pydantic 模型转换为字典，排除 None 值和未设置的字段
+        updates = request.model_dump(exclude_unset=True, exclude_none=True)
 
         if not updates:
             raise HTTPException(
