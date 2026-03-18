@@ -4,9 +4,11 @@ FastAPI 应用主文件
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
+from starlette.middleware.base import BaseHTTPMiddleware
 import logging
 import asyncio
 from typing import Dict
@@ -52,7 +54,46 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Reset"],
 )
+
+
+# =============================================================================
+# 安全头中间件
+# =============================================================================
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """
+    添加安全响应头的中间件
+
+    添加常见的安全头以防止 XSS、点击劫持等攻击
+    """
+
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+
+        # 添加安全头
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+
+        # 内容安全策略 (可根据实际需要调整)
+        response.headers["Content-Security-Policy"] = "default-src 'self'"
+
+        # 推荐安全实践
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+
+        return response
+
+
+# 添加安全头中间件
+app.add_middleware(SecurityHeadersMiddleware)
+
+# 添加 GZip 压缩中间件
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 
 # =============================================================================
