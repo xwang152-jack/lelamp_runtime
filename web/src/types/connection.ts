@@ -9,7 +9,7 @@ export interface ConnectionState {
 }
 
 export interface DataMessage {
-  type: 'chat' | 'command' | 'camera_status' | 'vision_result' | 'connected' | 'state_update' | 'event' | 'log' | 'notification'
+  type: 'chat' | 'command' | 'camera_status' | 'vision_result' | 'connected' | 'state_update' | 'event' | 'log' | 'notification' | 'command_result' | 'subscription_confirmed' | 'error' | 'pong'
   content?: string
   action?: string
   params?: Record<string, any>
@@ -19,4 +19,10 @@ export interface DataMessage {
   server_time?: string
   message?: string
   data?: any
+  success?: boolean
+  result?: any
+  error?: string
+  timestamp?: string
+  channels?: string[]
+  code?: string
 }

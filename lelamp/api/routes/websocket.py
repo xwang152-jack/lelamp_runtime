@@ -307,10 +307,12 @@ async def websocket_endpoint(
         while True:
             # 接收客户端消息
             data = await websocket.receive_json()
+            logger.info(f"收到WebSocket消息: {data}")
 
             # 验证消息格式
             message = validate_client_message(data)
             if message is None:
+                logger.warning(f"消息验证失败: type={data.get('type')}, data={data}")
                 await websocket.send_json(
                     WSError(
                         message=f"无效的消息类型: {data.get('type')}",
@@ -418,29 +420,58 @@ async def websocket_endpoint(
                     asyncio.create_task(process_chat(text))
                 else:
                     # 对于非聊天的其他指令，优先交给核心大脑 (Agent) 处理
-                    if agent:
-                        asyncio.create_task(agent._execute_command(action, params))
-                    else:
-                        # 降级处理：如果没有 Agent，直接调用硬件服务
-                        if action == "set_rgb_solid" and rgb_service:
-                            r = params.get("r", 0)
-                            g = params.get("g", 0)
-                            b = params.get("b", 0)
-                            rgb_service.dispatch("solid", (r, g, b))
-                        elif action.startswith("rgb_effect_") and rgb_service:
-                            effect_name = action.replace("rgb_effect_", "")
-                            rgb_service.dispatch("effect", {"name": effect_name})
-                        elif action == "stop_rgb_effect" and rgb_service:
-                            rgb_service.dispatch("clear", None)
-                        elif action == "move_joint" and motors_service:
-                            joint_name = params.get("joint_name")
-                            angle = params.get("angle")
-                            if joint_name and angle is not None:
-                                motors_service.dispatch("move_joint", {"joint": joint_name, "angle": float(angle)})
-                        elif action == "play_recording" and motors_service:
-                            recording_name = params.get("recording_name")
-                            if recording_name:
-                                motors_service.dispatch("play", recording_name)
+                    try:
+                        success = False
+                        result = None
+                        error_message = None
+
+                        logger.info(f"处理命令: action={action}, params={params}")
+                        logger.info(f"服务状态: agent={agent is not None}, rgb_service={rgb_service is not None}, motors_service={motors_service is not None}")
+
+                        if agent:
+                            # 使用 Agent 处理命令
+                            # 注意：这里需要等待命令执行完成
+                            if hasattr(agent, '_execute_command'):
+                                logger.info("使用 Agent 执行命令")
+                                # 异步执行命令并等待结果
+                                command_result = await agent._execute_command(action, params)
+                                success = True
+                                result = command_result
+                                logger.info(f"Agent 命令执行完成: {command_result}")
+                            else:
+                                error_message = "Agent 不支持命令执行"
+                                logger.warning(error_message)
+                        else:
+                            # 降级处理：如果没有 Agent，直接调用硬件服务
+                            logger.info("使用降级处理执行命令")
+                            success = await execute_fallback_command(action, params, rgb_service, motors_service)
+                            if not success:
+                                error_message = "命令执行失败或不支持"
+                                logger.warning(f"降级处理失败: {error_message}")
+                            else:
+                                logger.info("降级处理成功")
+
+                        # 发送执行结果反馈
+                        response = {
+                            "type": "command_result",
+                            "action": action,
+                            "success": success,
+                            "result": result,
+                            "error": error_message,
+                            "timestamp": datetime.utcnow().isoformat()
+                        }
+                        await websocket.send_json(response)
+                        logger.info(f"已发送命令执行结果: {success}")
+
+                    except Exception as e:
+                        logger.error(f"命令执行异常: {e}", exc_info=True)
+                        await websocket.send_json({
+                            "type": "command_result",
+                            "action": action,
+                            "success": False,
+                            "error": str(e),
+                            "timestamp": datetime.utcnow().isoformat()
+                        })
 
 
     except WebSocketDisconnect:
@@ -454,6 +485,58 @@ async def websocket_endpoint(
 # =============================================================================
 # 辅助函数
 # =============================================================================
+
+
+async def execute_fallback_command(action: str, params: dict, rgb_service, motors_service) -> bool:
+    """
+    降级命令执行 - 当 Agent 不可用时直接操作硬件
+
+    Args:
+        action: 命令动作
+        params: 命令参数
+        rgb_service: RGB 服务实例
+        motors_service: 电机服务实例
+
+    Returns:
+        bool: 命令是否成功执行
+    """
+    try:
+        if action == "set_rgb_solid" and rgb_service:
+            r = params.get("r", 0)
+            g = params.get("g", 0)
+            b = params.get("b", 0)
+            rgb_service.dispatch("solid", (r, g, b))
+            return True
+
+        elif action.startswith("rgb_effect_") and rgb_service:
+            effect_name = action.replace("rgb_effect_", "")
+            rgb_service.dispatch("effect", {"name": effect_name})
+            return True
+
+        elif action == "stop_rgb_effect" and rgb_service:
+            rgb_service.dispatch("clear", None)
+            return True
+
+        elif action == "move_joint" and motors_service:
+            joint_name = params.get("joint_name")
+            angle = params.get("angle")
+            if joint_name and angle is not None:
+                motors_service.dispatch("move_joint", {"joint": joint_name, "angle": float(angle)})
+                return True
+
+        elif action == "play_recording" and motors_service:
+            recording_name = params.get("recording_name")
+            if recording_name:
+                motors_service.dispatch("play", recording_name)
+                return True
+
+        # 不支持的命令
+        logger.warning(f"降级处理不支持命令: {action}")
+        return False
+
+    except Exception as e:
+        logger.error(f"降级命令执行失败: {e}", exc_info=True)
+        return False
 
 
 async def push_state_update(lamp_id: str, state_data: dict) -> int:
