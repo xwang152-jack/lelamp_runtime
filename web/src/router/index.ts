@@ -40,23 +40,32 @@ const router = createRouter({
 router.beforeEach(async (to, _from, next) => {
   document.title = `${to.meta.title || 'LeLamp'} - LeLamp Web`
 
-  // 检测是否需要进入设置模式
-  // 如果访问 /connect 但设备未配置，重定向到 /setup
-  if (to.path === '/connect') {
-    try {
-      const API_BASE = import.meta.env.VITE_API_BASE_URL || ''
-      const response = await fetch(`${API_BASE}/api/setup/status`)
-      if (response.ok) {
-        const data = await response.json()
-        if (data.needs_setup || data.is_ap_mode) {
+  // 检查设备配置状态
+  try {
+    const API_BASE = import.meta.env.VITE_API_BASE_URL || ''
+    const response = await fetch(`${API_BASE}/api/system/setup/status`)
+    
+    if (response.ok) {
+      const data = await response.json()
+      
+      // 如果设备在 AP 模式或需要设置
+      if (data.is_ap_mode || data.needs_setup) {
+        // 如果当前不在设置页面,跳转到设置页面
+        if (to.path !== '/setup') {
           next({ path: '/setup', replace: true })
           return
         }
+      } 
+      // 如果设备已配置且当前在根路径或连接页面
+      else if (data.is_configured && (to.path === '/' || to.path === '/connect')) {
+        // 跳过连接页面,直接进入控制台
+        next({ path: '/room', replace: true })
+        return
       }
-    } catch (error) {
-      // API 不可用时继续正常流程
-      console.warn('Failed to check setup status:', error)
     }
+  } catch (error) {
+    // API 不可用时继续正常流程
+    console.warn('Failed to check setup status:', error)
   }
 
   next()
