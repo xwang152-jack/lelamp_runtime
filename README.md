@@ -8,6 +8,8 @@
 [![License](https://img.shields.io/badge/license-See%20LeLamp%20Repo-green.svg)](https://github.com/humancomputerlab/LeLamp)
 [![UV](https://img.shields.io/badge/package%20manager-UV-orange.svg)](https://github.com/astral-sh/uv)
 
+> 📖 **新用户?** 查看 [用户使用指南](USER_GUIDE.md) | **开发部署?** 查看 [部署指南](DEPLOYMENT_GUIDE.md)
+
 ---
 
 ## ✨ 主要特性
@@ -196,7 +198,20 @@ uv run -m lelamp.setup_motors --id lelamp --port /dev/ttyACM0
 sudo uv run -m lelamp.calibrate --id lelamp --port /dev/ttyACM0
 ```
 
-#### 6. 启动 LeLamp Agent
+#### 6. 初始化数据库 (可选，用于设置界面)
+```bash
+# 创建数据库表
+uv run python -c "
+from lelamp.database.session import engine
+from lelamp.database.models import Base
+Base.metadata.create_all(bind=engine)
+print('✅ 数据库初始化完成')
+"
+```
+
+**注意**: 如果不使用 Web 设置界面，可以跳过此步骤。
+
+#### 7. 启动 LeLamp Agent
 ```bash
 sudo uv run main.py console
 ```
@@ -210,18 +225,36 @@ INFO:root:VisionService started
 INFO:livekit:Connected to LiveKit
 ```
 
-#### 7. 启动 Web Client
+#### 7. 启动 API 服务器
 ```bash
-# 生成访问 Token
-uv run python scripts/generate_client_token.py --room lelamp-room --user jack
+# 方式1: 使用 UV (推荐)
+uv run uvicorn lelamp.api.app:app --host 0.0.0.0 --port 8000 --reload
 
-# 启动 HTTP 服务器
-python3 -m http.server 8000
+# 方式2: 直接使用 Python
+.venv/bin/python -m uvicorn lelamp.api.app:app --host 0.0.0.0 --port 8000
+
+# 生产环境 (多进程)
+.venv/bin/python -m uvicorn lelamp.api.app:app --host 0.0.0.0 --port 8000 --workers 4
+```
+
+**API 端点**:
+- 健康检查: `http://localhost:8000/health`
+- API 文档: `http://localhost:8000/docs`
+- WebSocket: `ws://localhost:8000/api/ws/{lamp_id}`
+
+#### 8. 启动 Web Client
+```bash
+# 开发模式 (热更新)
+cd web
+npm run dev
+
+# 生产构建
+npm run build
 
 # 访问: http://localhost:5173
 ```
 
-在 Web Client 中粘贴 LiveKit URL 和 Token，点击"连接设备"即可开始使用！🎉
+在 Web Client 中输入服务器地址 `http://localhost:8000`，点击"连接设备"即可开始使用！🎉
 
 ---
 
@@ -524,8 +557,13 @@ LELAMP_OTA_URL=https://api.lelamp.com/ota/check
 
 ## 📖 文档
 
-### 用户文档
-- 📘 [完整使用指南](./docs/USER_GUIDE.md) - 端到端使用教程
+### 🌟 **新用户文档**
+- 📘 [用户使用指南](USER_GUIDE.md) - 完整的用户使用教程
+- 🚀 [部署指南](DEPLOYMENT_GUIDE.md) - 详细的部署和配置说明
+- 🔧 [设置快速参考](SETTINGS_QUICK_REFERENCE.md) - 设置界面快速参考
+
+### 开发文档
+- 🔧 [开发者指南](CLAUDE.md) - 代码架构和开发规范
 - 🌐 [Web 前端](./web/) - Vue 3 前端应用
 - ✅ [测试清单](./docs/TESTING_CHECKLIST.md) - 系统化测试流程
 
@@ -535,9 +573,9 @@ LELAMP_OTA_URL=https://api.lelamp.com/ota/check
 - 🗺️ [技术实现路线图](./docs/PRODUCT_IMPLEMENTATION_ROADMAP.md) - 开发规划
 
 ### 技术文档
-- 🔧 [开发者指南](./CLAUDE.md) - 代码架构和开发规范
 - 🐍 [Python 升级指南](./docs/PYTHON312_UPGRADE.md) - Python 3.12 升级
 - 📦 [依赖管理](./pyproject.toml) - 项目配置
+- 🔐 [安全指南](./docs/SECURITY_GUIDE.md) - 安全最佳实践
 
 ---
 
