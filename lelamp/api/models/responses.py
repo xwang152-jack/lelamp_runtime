@@ -203,5 +203,43 @@ class SystemInfoResponse(BaseModel):
     wifi_available: bool
 
 
+# ============================================================================
+# 设置模式响应模型 (Setup Mode / Onboarding)
+# ============================================================================
+
+class SetupStatusResponse(BaseModel):
+    """设置状态响应"""
+    is_configured: bool  # 是否已完成配置
+    configured_wifi: Optional[str]  # 配置的 WiFi SSID
+    current_mode: str  # 当前模式 (ap/client/unknown)
+    needs_setup: bool  # 是否需要进入设置模式
+    can_exit_setup: bool  # 是否可以退出设置模式
+    is_ap_mode: bool  # 是否当前在 AP 模式
+    connected_clients: List[Dict[str, Any]]  # AP 模式下已连接的客户端
+
+
+class APModeStartResponse(BaseModel):
+    """AP 模式启动响应"""
+    success: bool
+    message: str
+    ssid: str  # 热点 SSID
+    password: str  # 热点密码
+    ip_address: str  # AP IP 地址
+
+
+class SetupCompleteResponse(BaseModel):
+    """配置完成响应"""
+    success: bool
+    message: str
+    restart_at: str  # ISO 格式重启时间
+    delay_seconds: int  # 延迟秒数
+
+
+class APClientsResponse(BaseModel):
+    """AP 客户端列表响应"""
+    clients: List[Dict[str, Any]]
+    total: int
+
+
 # 更新前向引用
 DeviceListResponse.model_rebuild()
