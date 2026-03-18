@@ -10,7 +10,12 @@
     "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts --fix",
     "lint:fix": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts --fix",
     "format": "prettier --write src/",
-    "type-check": "vue-tsc --noEmit"
+    "type-check": "vue-tsc --noEmit",
+    "test": "playwright test",
+    "test:ui": "playwright test --ui",
+    "test:debug": "playwright test --debug",
+    "test:headed": "playwright test --headed",
+    "test:report": "playwright show-report"
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.1",
@@ -22,6 +27,7 @@
     "vue-router": "^4.2.5"
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.2",
     "@typescript-eslint/eslint-plugin": "^7.1.1",
     "@typescript-eslint/parser": "^7.1.1",
     "@vitejs/plugin-vue": "^5.0.4",
