@@ -435,9 +435,16 @@ async def websocket_endpoint(
                                 logger.info("使用 Agent 执行命令")
                                 # 异步执行命令并等待结果
                                 command_result = await agent._execute_command(action, params)
-                                success = True
-                                result = command_result
-                                logger.info(f"Agent 命令执行完成: {command_result}")
+
+                                # 检查命令结果是否包含错误信息
+                                if command_result and ("失败" in command_result or "错误" in command_result or "未知指令" in command_result):
+                                    success = False
+                                    error_message = command_result
+                                    logger.warning(f"Agent 命令执行失败: {command_result}")
+                                else:
+                                    success = True
+                                    result = command_result
+                                    logger.info(f"Agent 命令执行完成: {command_result}")
                             else:
                                 error_message = "Agent 不支持命令执行"
                                 logger.warning(error_message)

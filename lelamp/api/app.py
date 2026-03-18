@@ -162,10 +162,10 @@ async def lifespan(app: FastAPI):
             motors_service=app.state.motors_service,
             rgb_service=app.state.rgb_service,
         )
-        
+
         async def broadcast_callback(msg):
             await manager.broadcast_to_device("lelamp", msg)
-            
+
         agent.send_message_callback = broadcast_callback
         app.state.agent = agent
         logger.info("LeLamp Agent initialized")
