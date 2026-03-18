@@ -56,10 +56,11 @@ class WiFiManager:
             try:
                 # 使用 nmcli 扫描网络
                 # -t: terse 格式, -f: 指定字段
+                # 注意：nmcli 的实际输出格式可能因版本而异
                 cmd = [
                     "sudo", self._nmcli_path, "-t", "-f",
                     "SSID,BSSID,SIGNAL,SECURITY,FREQ",
-                    "device", "wifi", "list"
+                    "device", "wifi", "list", "--rescan", "yes"
                 ]
 
                 process = await asyncio.create_subprocess_exec(
@@ -85,15 +86,28 @@ class WiFiManager:
                         continue
 
                     parts = line.split(':')
-                    if len(parts) >= 5:
+                    # 适应不同的nmcli输出格式
+                    # 格式1: SSID,BSSID,SIGNAL,SECURITY,FREQ (标准格式)
+                    # 格式2: SSID:BSSID:SECURITY:FREQ (实际格式，缺少SIGNAL)
+                    if len(parts) >= 4:
                         ssid = parts[0] or "-- Hidden Network --"
                         bssid = parts[1]
-                        signal = int(float(parts[2])) if parts[2] else 0  # 信号质量
-                        security = parts[3] if parts[3] else "open"
+
+                        # 判断是哪种格式
+                        if len(parts) >= 5 and parts[2] and parts[2].replace('.','').isdigit():
+                            # 标准格式: SSID,BSSID,SIGNAL,SECURITY,FREQ
+                            signal = int(float(parts[2])) if parts[2] else 50
+                            security = parts[3] if parts[3] else "open"
+                            freq_part = parts[4] if len(parts) > 4 else ""
+                        else:
+                            # 简化格式: SSID:BSSID:SECURITY:FREQ (没有信号强度)
+                            signal = 50  # 默认信号强度
+                            security = parts[2] if parts[2] else "open"
+                            freq_part = parts[3] if len(parts) > 3 else ""
 
                         # 解析频率
                         try:
-                            freq_mhz = int(parts[4].replace(' MHz', '')) if parts[4] else 2400
+                            freq_mhz = int(freq_part.replace(' MHz', '').replace(' MHz','')) if freq_part else 2400
                             frequency = "5GHz" if freq_mhz > 4000 else "2.4GHz"
                         except (ValueError, IndexError):
                             frequency = "2.4GHz"
