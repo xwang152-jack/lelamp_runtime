@@ -85,30 +85,48 @@ class WiFiManager:
                     if not line:
                         continue
 
+                    # 处理nmcli输出中的转义字符
+                    line = line.replace('\\:', ':')  # 修复MAC地址中的转义冒号
                     parts = line.split(':')
+
                     # 适应不同的nmcli输出格式
-                    # 格式1: SSID,BSSID,SIGNAL,SECURITY,FREQ (标准格式)
-                    # 格式2: SSID:BSSID:SECURITY:FREQ (实际格式，缺少SIGNAL)
+                    # 实际观察到的格式: SSID:BSSID:SECURITY:FREQ (没有信号字段)
                     if len(parts) >= 4:
                         ssid = parts[0] or "-- Hidden Network --"
                         bssid = parts[1]
 
-                        # 判断是哪种格式
-                        if len(parts) >= 5 and parts[2] and parts[2].replace('.','').isdigit():
-                            # 标准格式: SSID,BSSID,SIGNAL,SECURITY,FREQ
-                            signal = int(float(parts[2])) if parts[2] else 50
-                            security = parts[3] if parts[3] else "open"
-                            freq_part = parts[4] if len(parts) > 4 else ""
+                        # 尝试解析信号强度（如果存在）
+                        signal = 50  # 默认信号强度
+                        security = "open"
+                        freq_part = ""
+
+                        # 根据字段数量判断格式
+                        if len(parts) >= 5:
+                            # 可能是标准格式: SSID,BSSID,SIGNAL,SECURITY,FREQ
+                            if parts[2] and parts[2].replace('.','').replace('-','').isdigit():
+                                try:
+                                    signal = int(float(parts[2]))
+                                except (ValueError, IndexError):
+                                    signal = 50
+                                security = parts[3] if len(parts) > 3 else "open"
+                                freq_part = parts[4] if len(parts) > 4 else ""
+                            else:
+                                # 简化格式: SSID:BSSID:SECURITY:FREQ
+                                security = parts[2] if parts[2] else "open"
+                                freq_part = parts[3] if len(parts) > 3 else ""
                         else:
-                            # 简化格式: SSID:BSSID:SECURITY:FREQ (没有信号强度)
-                            signal = 50  # 默认信号强度
+                            # 简化格式: SSID:BSSID:SECURITY:FREQ
                             security = parts[2] if parts[2] else "open"
                             freq_part = parts[3] if len(parts) > 3 else ""
 
                         # 解析频率
                         try:
-                            freq_mhz = int(freq_part.replace(' MHz', '').replace(' MHz','')) if freq_part else 2400
-                            frequency = "5GHz" if freq_mhz > 4000 else "2.4GHz"
+                            freq_clean = freq_part.replace(' MHz', '').replace(' MHz','').strip()
+                            if freq_clean:
+                                freq_mhz = int(freq_clean)
+                                frequency = "5GHz" if freq_mhz > 4000 else "2.4GHz"
+                            else:
+                                frequency = "2.4GHz"
                         except (ValueError, IndexError):
                             frequency = "2.4GHz"
 
