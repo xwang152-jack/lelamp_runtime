@@ -172,15 +172,15 @@ SAFE_JOINT_RANGES = {
 def load_config() -> AppConfig:
     """加载应用配置"""
     return AppConfig(
-        # LiveKit
-        livekit_url=_require_env("LIVEKIT_URL"),
-        livekit_api_key=_require_env("LIVEKIT_API_KEY"),
-        livekit_api_secret=_require_env("LIVEKIT_API_SECRET"),
+        # LiveKit (不再强制要求)
+        livekit_url=_get_env_str("LIVEKIT_URL", ""),
+        livekit_api_key=_get_env_str("LIVEKIT_API_KEY", ""),
+        livekit_api_secret=_get_env_str("LIVEKIT_API_SECRET", ""),
 
         # LLM
         deepseek_model=_get_env_str("DEEPSEEK_MODEL", "deepseek-chat") or "deepseek-chat",
         deepseek_base_url=_get_env_str("DEEPSEEK_BASE_URL", "https://api.deepseek.com") or "https://api.deepseek.com",
-        deepseek_api_key=_require_env("DEEPSEEK_API_KEY"),
+        deepseek_api_key=_get_env_str("DEEPSEEK_API_KEY", "dummy"),
 
         # Vision
         modelscope_base_url=_get_env_str("MODELSCOPE_BASE_URL", "https://api-inference.modelscope.cn/v1") or "https://api-inference.modelscope.cn/v1",

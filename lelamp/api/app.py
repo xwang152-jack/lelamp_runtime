@@ -2,7 +2,7 @@
 FastAPI 应用主文件
 """
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, status
+from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
@@ -17,8 +17,8 @@ from lelamp.database import crud
 from lelamp.api.routes.websocket import (
     manager,
     push_state_update,
-    push_notification,
 )
+from lelamp.config import load_motor_config
 
 logger = logging.getLogger("lelamp.api")
 
@@ -115,6 +115,34 @@ async def lifespan(app: FastAPI):
     # 启动时执行
     logger.info("LeLamp API 启动")
 
+    # 初始化硬件服务
+    try:
+        from lelamp.service.motors.motors_service import MotorsService
+        motor_config = load_motor_config()
+        motors_service = MotorsService(port="/dev/ttyACM0", lamp_id="lelamp", motor_config=motor_config)
+        motors_service.start()
+        app.state.motors_service = motors_service
+        logger.info("MotorsService started")
+    except Exception as e:
+        logger.error(f"MotorsService start failed: {e}, fallback to NoOpMotorsService")
+        from lelamp.service.motors.noop_motors_service import NoOpMotorsService
+        motors_service = NoOpMotorsService()
+        motors_service.start()
+        app.state.motors_service = motors_service
+
+    try:
+        from lelamp.service.rgb.rgb_service import RGBService
+        rgb_service = RGBService()
+        rgb_service.start()
+        app.state.rgb_service = rgb_service
+        logger.info("RGBService started")
+    except Exception as e:
+        logger.error(f"RGBService start failed: {e}, fallback to NoOpRGBService")
+        from lelamp.service.rgb.noop_rgb_service import NoOpRGBService
+        rgb_service = NoOpRGBService()
+        rgb_service.start()
+        app.state.rgb_service = rgb_service
+
     # 启动后台状态轮询任务
     polling_task = asyncio.create_task(state_polling_task())
 
@@ -129,6 +157,12 @@ async def lifespan(app: FastAPI):
         await polling_task
     except asyncio.CancelledError:
         pass
+
+    # 停止硬件服务
+    if getattr(app.state, "motors_service", None):
+        app.state.motors_service.stop()
+    if getattr(app.state, "rgb_service", None):
+        app.state.rgb_service.stop()
 
 
 app.router.lifespan_context = lifespan
