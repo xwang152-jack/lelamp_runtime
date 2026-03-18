@@ -5,7 +5,13 @@
         <span class="status-dot online" />
         <span>已连接</span>
       </div>
-      <el-button type="danger" @click="handleDisconnect"> 断开连接 </el-button>
+      <div class="header-actions">
+        <el-button @click="handleSettings">
+          <el-icon><Setting /></el-icon>
+          设置
+        </el-button>
+        <el-button type="danger" @click="handleDisconnect"> 断开连接 </el-button>
+      </div>
     </div>
 
     <div class="room-content">
@@ -55,6 +61,7 @@
 import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import { Setting } from '@element-plus/icons-vue'
 import { useLiveKit } from '@/composables/useLiveKit'
 import { useChatStore, useDeviceStore } from '@/stores'
 import PrivacyIndicator from '@/components/common/PrivacyIndicator.vue'
@@ -82,6 +89,10 @@ function scrollToBottom() {
 async function handleDisconnect() {
   await disconnect()
   router.push('/connect')
+}
+
+function handleSettings() {
+  router.push('/settings')
 }
 
 function sendChat(text: string) {
@@ -141,6 +152,15 @@ watch(
       border-radius: 50%;
       &.online {
         background: var(--color-success);
+      }
+    }
+  }
+
+  .header-actions {
+    display: flex;
+    gap: 8px;
+  }
+}
       }
     }
   }

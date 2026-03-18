@@ -1,7 +1,13 @@
-# LeLamp 完整使用指南 v2.0
+# LeLamp 完整使用指南 v2.1
 
-**最后更新**: 2026-03-17
-**适用版本**: LeLamp Runtime v2.0 + Web Frontend (Vue 3) v2.0
+**最后更新**: 2026-03-18
+**适用版本**: LeLamp Runtime v2.1 + Web Frontend (Vue 3) v2.1
+
+**v2.1 新增**:
+- ✨ Web 设置页面 - 无需 SSH 即可配置系统
+- ✨ WiFi 网络配置 - 扫描、连接、断开 WiFi
+- ✨ 配置管理 API - RESTful API 用于系统配置
+- ✨ 服务热重启 - 通过 Web 界面重启服务
 
 ---
 
@@ -31,9 +37,11 @@
 │  │  - 双向语音                                          │   │
 │  │  - 控制面板                                          │   │
 │  │  - 实时对话                                          │   │
+│  │  - 系统设置 (新增)                                   │   │
 │  └──────────────────┬──────────────────────────────────┘   │
 └─────────────────────┼──────────────────────────────────────┘
                       │ WebSocket + WebRTC
+                      │ HTTP/REST API (新增)
                       │
                       ↓
 ┌─────────────────────────────────────────────────────────────┐
@@ -48,11 +56,19 @@
 │          Raspberry Pi (LeLamp Runtime)                      │
 │                                                             │
 │  ┌─────────────────────────────────────────────────────┐   │
-│  │  LeLamp Agent (main.py)                             │   │
-│  │  - DeepSeek LLM                                      │   │
-│  │  - Qwen VL (视觉识别)                                │   │
-│  │  - Baidu Speech (STT/TTS)                            │   │
-│  │  - LiveKit Agents SDK                                │   │
+│  │  FastAPI Server (新增)                              │   │
+│  │  - /api/system/* (WiFi、重启、系统信息)               │   │
+│  │  - /api/settings/* (配置管理)                        │   │
+│  │  - /api/devices/* (设备控制)                         │   │
+│  │  - /api/history/* (历史记录)                         │   │
+│  └──────────────────┬──────────────────────────────────┘   │
+│                     │                                        │
+│  ┌──────────────────┴─────────────────────────────────────┐ │
+│  │  LeLamp Agent (main.py)                             │ │
+│  │  - DeepSeek LLM                                      │ │
+│  │  - Qwen VL (视觉识别)                                │ │
+│  │  - Baidu Speech (STT/TTS)                            │ │
+│  │  - LiveKit Agents SDK                                │ │
 │  └─────────┬───────────────────────────────────────────┘   │
 │            │                                                 │
 │  ┌─────────┴───────────────────────────────────────────┐   │
@@ -90,6 +106,21 @@
 - `command`: 控制指令 (动作/灯光)
 - `vision_result`: 视觉识别结果
 - `camera_status`: 摄像头状态
+
+#### 3. REST API (配置管理 - 新增)
+- **协议**: HTTP/HTTPS
+- **数据格式**: JSON
+- **认证**: (可扩展) Token 认证
+
+**API 端点**:
+- `GET /api/system/wifi/status` - 获取 WiFi 状态
+- `GET /api/system/wifi/scan` - 扫描可用网络
+- `POST /api/system/wifi/connect` - 连接 WiFi
+- `DELETE /api/system/wifi/disconnect` - 断开 WiFi
+- `GET /api/settings` - 获取系统配置
+- `PUT /api/settings` - 更新系统配置
+- `POST /api/system/restart` - 重启服务
+- `GET /api/system/info` - 获取系统信息
 
 ---
 
@@ -168,6 +199,23 @@ INFO:root:VisionService started
 INFO:livekit:Connected to LiveKit
 ```
 
+#### Step 4.5: 启动 API 服务器 (可选 - 用于 Web 设置)
+```bash
+# 在另一个终端窗口
+cd ~/lelamp_runtime
+uv run python -m uvicorn lelamp.api.app:app --host 0.0.0.0 --port 8000
+```
+
+**预期输出**:
+```
+INFO:     Started server process [xxxxx]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000
+```
+
+**说明**: API 服务器提供 Web 设置页面所需的后端接口，包括 WiFi 配置和系统设置管理。
+
 #### Step 5: 生成 Web Client Token
 ```bash
 # 在另一个终端窗口
@@ -192,11 +240,22 @@ pnpm dev
 # 访问: http://localhost:5173
 ```
 
+**前端环境变量配置** (可选):
+```bash
+# web/.env.development
+VITE_LIVEKIT_URL=ws://your-livekit-server:7880
+VITE_API_BASE_URL=http://your-raspberry-pi:8000  # API 服务器地址
+```
+
 **在 Web Client 中**:
 1. 粘贴 LiveKit Server URL
 2. 粘贴生成的 Token
 3. 点击 "连接设备"
 4. 开始使用！🎉
+
+**访问设置页面**:
+- 连接后点击右上角 "设置" 按钮
+- 或直接访问 `http://localhost:5173/settings`
 
 ---
 
@@ -527,7 +586,72 @@ BOCHA_API_KEY=your_bocha_api_key
 
 ### 6. 系统管理
 
-#### 6.1 音量控制
+#### 6.1 Web 设置页面
+
+**新增功能**: 通过 Web 前端进行系统配置，无需编辑 `.env` 文件或 SSH 到树莓派。
+
+**访问方式**:
+1. 在 Web 控制台点击右上角 "设置" 按钮
+2. 或直接访问 `http://your-web-client-url/settings`
+
+**设置分类**:
+
+| 分类 | 功能 | 说明 |
+|------|------|------|
+| 📶 WiFi 网络 | 扫描/连接 WiFi | 无线网络配置 |
+| 🤖 LLM 模型 | DeepSeek 配置 | API Key、模型名称、API 地址 |
+| 👁️ 视觉识别 | ModelScope 配置 | API Key、模型、超时设置 |
+| 📹 摄像头 | 分辨率/旋转/翻转 | 图像参数调整 |
+| 🎤 语音配置 | TTS 音调/语速 | 百度语音参数 |
+| ⚙️ 硬件配置 | LED 亮度/串口/设备 ID | 硬件参数设置 |
+| 🎭 行为配置 | 问候语/噪音消除/冷却时间 | 行为模式调整 |
+| 🎨 界面设置 | 主题/语言/通知/音量 | UI 偏好设置 |
+
+**配置流程**:
+1. 在设置页面修改参数
+2. 点击 "保存配置"
+3. 点击 "立即重启" 使配置生效
+4. 服务重启后自动应用新配置
+
+**注意事项**:
+- ⚠️ 配置修改后需要重启服务才能生效
+- ⚠️ WiFi 连接时请勿断开当前网络，否则无法访问设置页面
+- 🔒 API Key 显示时会自动隐藏 (如 `sk-***abc123`)
+
+#### 6.2 WiFi 配置详解
+
+**扫描网络**:
+1. 进入 "WiFi 网络" 设置页
+2. 点击 "扫描网络" 按钮
+3. 等待扫描完成，显示附近可用网络
+
+**连接新网络**:
+1. 在网络列表中找到目标网络
+2. 点击 "连接" 按钮
+3. 如果需要密码，输入 WiFi 密码
+4. 等待连接成功
+
+**网络信息**:
+- **信号强度**: 0-100%，颜色区分 (绿色=强，黄色=中，红色=弱)
+- **加密方式**: WPA2/WPA3/WEP/open
+- **频段**: 2.4GHz 或 5GHz
+
+**断开连接**:
+- 点击 "断开连接" 按钮可断开当前 WiFi
+
+#### 6.3 服务重启
+
+**重启方式**:
+1. 在设置页面修改配置后，顶部会显示警告提示
+2. 点击 "立即重启" 按钮
+3. 确认重启操作
+4. 服务将在 3 秒后自动重启
+
+**重启后**:
+- Web 客户端会自动跳转到连接页面
+- 重新连接后新配置即生效
+
+#### 6.4 音量控制
 ```
 用户: "把音量调到 80"
 台灯: "好的，已设置音量为 80%"
@@ -1007,7 +1131,7 @@ timestamp,base_yaw.pos,base_pitch.pos,elbow_pitch.pos,wrist_roll.pos,wrist_pitch
 
 ---
 
-**文档版本**: v2.0
-**最后更新**: 2026-03-16
+**文档版本**: v2.1
+**最后更新**: 2026-03-18
 **作者**: Claude (Technical Writer Mode)
 **许可证**: 参见主项目许可证

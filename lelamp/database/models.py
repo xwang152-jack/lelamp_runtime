@@ -11,6 +11,7 @@ from datetime import datetime
 
 from sqlalchemy import (
     Boolean,
+    Float,
     Integer,
     String,
     DateTime,
@@ -149,16 +150,48 @@ class DeviceState(Base):
 
 class UserSettings(Base):
     """
-    User settings model for storing user preferences.
+    User settings model for storing user preferences and application configuration.
 
     Attributes:
         id: Primary key
         lamp_id: Device identifier (unique, indexed)
+
+        # UI Settings
         theme: UI theme (light/dark)
         language: Language setting (zh/en)
         notifications_enabled: Whether notifications are enabled
-        brightness_level: LED brightness level (0-100)
-        volume_level: System volume level (0-100)
+
+        # LLM Configuration
+        deepseek_model: DeepSeek model name
+        deepseek_base_url: DeepSeek API base URL
+        deepseek_api_key: DeepSeek API key (encrypted)
+
+        # Vision Configuration
+        vision_enabled: Whether vision service is enabled
+        modelscope_model: ModelScope vision model name
+        modelscope_api_key: ModelScope API key (encrypted)
+        modelscope_timeout_s: ModelScope API timeout in seconds
+
+        # Camera Configuration
+        camera_width: Camera resolution width
+        camera_height: Camera resolution height
+        camera_rotate_deg: Camera rotation angle in degrees
+        camera_flip: Camera flip mode (none/horizontal/vertical/both)
+
+        # Speech Configuration
+        baidu_tts_per: Baidu TTS pitch/edition rate
+
+        # Hardware Configuration
+        led_brightness: LED brightness level (0-100)
+        lamp_port: Serial port for lamp communication
+        lamp_id: Lamp device ID
+
+        # Behavior Configuration
+        greeting_text: Startup greeting text
+        noise_cancellation: Whether noise cancellation is enabled
+        motion_cooldown_s: Motion cooldown in seconds
+
+        # Timestamps
         created_at: Settings creation timestamp
         updated_at: Settings last update timestamp
     """
@@ -169,6 +202,8 @@ class UserSettings(Base):
     lamp_id: Mapped[str] = mapped_column(
         String(50), unique=True, nullable=False, index=True
     )
+
+    # UI Settings
     theme: Mapped[str] = mapped_column(String(20), default="light", nullable=False)
     language: Mapped[str] = mapped_column(String(10), default="zh", nullable=False)
     notifications_enabled: Mapped[bool] = mapped_column(
@@ -178,6 +213,62 @@ class UserSettings(Base):
         Integer, default=25, nullable=False
     )
     volume_level: Mapped[int] = mapped_column(Integer, default=50, nullable=False)
+
+    # LLM Configuration
+    deepseek_model: Mapped[str | None] = mapped_column(
+        String(100), nullable=True, default=None
+    )
+    deepseek_base_url: Mapped[str | None] = mapped_column(
+        String(200), nullable=True, default=None
+    )
+    deepseek_api_key: Mapped[str | None] = mapped_column(
+        String(200), nullable=True, default=None
+    )
+
+    # Vision Configuration
+    vision_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    modelscope_model: Mapped[str | None] = mapped_column(
+        String(200), nullable=True, default=None
+    )
+    modelscope_api_key: Mapped[str | None] = mapped_column(
+        String(200), nullable=True, default=None
+    )
+    modelscope_timeout_s: Mapped[float] = mapped_column(
+        Float, default=60.0, nullable=False
+    )
+
+    # Camera Configuration
+    camera_width: Mapped[int] = mapped_column(Integer, default=1024, nullable=False)
+    camera_height: Mapped[int] = mapped_column(Integer, default=768, nullable=False)
+    camera_rotate_deg: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    camera_flip: Mapped[str] = mapped_column(
+        String(20), default="none", nullable=False
+    )
+
+    # Speech Configuration
+    baidu_tts_per: Mapped[int] = mapped_column(Integer, default=4, nullable=False)
+
+    # Hardware Configuration
+    led_brightness: Mapped[int] = mapped_column(Integer, default=25, nullable=False)
+    lamp_port: Mapped[str] = mapped_column(
+        String(50), default="/dev/ttyACM0", nullable=False
+    )
+    lamp_id: Mapped[str] = mapped_column(
+        String(50), default="lelamp", nullable=False
+    )
+
+    # Behavior Configuration
+    greeting_text: Mapped[str | None] = mapped_column(
+        String(500), nullable=True, default=None
+    )
+    noise_cancellation: Mapped[bool] = mapped_column(
+        Boolean, default=True, nullable=False
+    )
+    motion_cooldown_s: Mapped[float] = mapped_column(
+        Float, default=2.0, nullable=False
+    )
+
+    # Timestamps
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, nullable=False
     )
