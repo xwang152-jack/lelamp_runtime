@@ -855,10 +855,10 @@ INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
 cd ~/lelamp_runtime/web
 
 # 安装前端依赖（首次运行）
-npm install
+pnpm install
 
-# 启动开发服务器
-npm run dev
+# 启动开发服务器（允许局域网访问）
+pnpm dev --host 0.0.0.0 --port 5173
 ```
 
 **预期输出**:
@@ -866,12 +866,12 @@ npm run dev
   VITE v5.x.x  ready in xxx ms
 
   ➜  Local:   http://localhost:5173/
-  ➜  Network: use --host to expose
+  ➜  Network: http://<树莓派IP>:5173/
 ```
 
 ### 5.5 连接 Web 客户端
 
-1. 在浏览器中打开 `http://localhost:5173`（或您的树莓派 IP 地址）
+1. 在浏览器中打开 `http://localhost:5173`（树莓派本机）或 `http://<树莓派IP>:5173`（局域网设备）
 2. 输入 LiveKit URL（与 .env 中的 `LIVEKIT_URL` 相同）
 3. 粘贴之前生成的 Token
 4. 点击 "连接设备" 按钮

@@ -17,7 +17,10 @@
               <span class="input-icon">🌐</span>
             </template>
           </el-input>
-          <div v-if="isUrlPreConfigured" class="hint success">
+          <div v-if="isDevModeEnabled" class="hint success">
+            ✅ 开发模式已启用，可跳过 URL 和 Token 输入
+          </div>
+          <div v-else-if="isUrlPreConfigured" class="hint success">
             ✅ URL 已预配置，可直接使用或修改
           </div>
           <div v-else class="hint warning">
@@ -33,7 +36,10 @@
             placeholder="粘贴生成的 Token..."
             clearable
           />
-          <div class="hint">
+          <div v-if="isDevModeEnabled" class="hint success">
+            ✅ 开发模式已启用，可跳过 Token 输入
+          </div>
+          <div v-else class="hint">
             💡 运行 <code>./quick_start.sh</code> 快速生成 Token
           </div>
         </el-form-item>
@@ -65,8 +71,12 @@ const { connect } = useLiveKit()
 
 const loading = ref(false)
 
-// 检查 URL 是否已预配置
 const preConfiguredUrl = import.meta.env.VITE_LIVEKIT_URL || ''
+const preConfiguredToken = import.meta.env.VITE_LIVEKIT_TOKEN || ''
+const isDevModeEnabled = computed(() => {
+  const raw = String(import.meta.env.VITE_LELAMP_DEV_MODE || '').trim().toLowerCase()
+  return ['1', 'true', 'yes', 'on'].includes(raw)
+})
 const isUrlPreConfigured = computed(() => {
   return preConfiguredUrl && preConfiguredUrl !== 'wss://your-livekit-url.livekit.cloud'
 })
@@ -77,14 +87,24 @@ const form = reactive({
 })
 
 async function handleConnect() {
-  if (!form.serverUrl || !form.token) {
-    ElMessage.warning('请填写完整信息')
-    return
+  const resolvedUrl = form.serverUrl || preConfiguredUrl
+  const resolvedToken = form.token || preConfiguredToken
+
+  if (!isDevModeEnabled.value) {
+    if (!resolvedUrl || !resolvedToken) {
+      ElMessage.warning('请填写完整信息')
+      return
+    }
+  } else {
+    if (!resolvedUrl) {
+      ElMessage.warning('请配置 LiveKit Server URL')
+      return
+    }
   }
 
   loading.value = true
   try {
-    await connect(form.serverUrl, form.token)
+    await connect(resolvedUrl, resolvedToken)
     ElMessage.success('连接成功')
     router.push('/room')
   } catch (error) {
