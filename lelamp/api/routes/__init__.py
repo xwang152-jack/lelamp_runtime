@@ -1,7 +1,10 @@
 from fastapi import APIRouter
-from lelamp.api.routes import devices, history, websocket, system, settings
+from lelamp.api.routes import devices, history, websocket, system, settings, auth
 
 api_router = APIRouter(prefix="/api")
+
+# 认证端点
+api_router.include_router(auth.router, prefix="/auth", tags=["认证"])
 
 # 设备相关端点
 api_router.include_router(devices.router, prefix="/devices", tags=["devices"])
