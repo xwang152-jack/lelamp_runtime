@@ -7,40 +7,18 @@
       </div>
 
       <el-form :model="form" label-position="top">
-        <el-form-item label="LiveKit Server URL">
+        <el-form-item label="API Server URL">
           <el-input
             v-model="form.serverUrl"
-            placeholder="wss://your-project.livekit.cloud"
+            placeholder="http://localhost:8000"
             clearable
           >
             <template #prefix>
               <span class="input-icon">🌐</span>
             </template>
           </el-input>
-          <div v-if="isDevModeEnabled" class="hint success">
-            ✅ 开发模式已启用，可跳过 URL 和 Token 输入
-          </div>
-          <div v-else-if="isUrlPreConfigured" class="hint success">
-            ✅ URL 已预配置，可直接使用或修改
-          </div>
-          <div v-else class="hint warning">
-            ⚠️ 请在 web/.env.development 中配置 VITE_LIVEKIT_URL
-          </div>
-        </el-form-item>
-
-        <el-form-item label="Access Token">
-          <el-input
-            v-model="form.token"
-            type="textarea"
-            :rows="4"
-            placeholder="粘贴生成的 Token..."
-            clearable
-          />
-          <div v-if="isDevModeEnabled" class="hint success">
-            ✅ 开发模式已启用，可跳过 Token 输入
-          </div>
-          <div v-else class="hint">
-            💡 运行 <code>./quick_start.sh</code> 快速生成 Token
+          <div class="hint">
+            💡 请输入 LeLamp 后端 API 地址（默认 http://localhost:8000）
           </div>
         </el-form-item>
 
@@ -61,52 +39,33 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed } from 'vue'
+import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { useLiveKit } from '@/composables/useLiveKit'
+import { useWebSocket } from '@/composables/useWebSocket'
 
 const router = useRouter()
-const { connect } = useLiveKit()
+const { connect } = useWebSocket()
 
 const loading = ref(false)
 
-const preConfiguredUrl = import.meta.env.VITE_LIVEKIT_URL || ''
-const preConfiguredToken = import.meta.env.VITE_LIVEKIT_TOKEN || ''
-const isDevModeEnabled = computed(() => {
-  const raw = String(import.meta.env.VITE_LELAMP_DEV_MODE || '').trim().toLowerCase()
-  return ['1', 'true', 'yes', 'on'].includes(raw)
-})
-const isUrlPreConfigured = computed(() => {
-  return preConfiguredUrl && preConfiguredUrl !== 'wss://your-livekit-url.livekit.cloud'
-})
-
 const form = reactive({
-  serverUrl: preConfiguredUrl,
-  token: ''
+  serverUrl: 'http://localhost:8000'
 })
 
 async function handleConnect() {
-  const resolvedUrl = form.serverUrl || preConfiguredUrl
-  const resolvedToken = form.token || preConfiguredToken
+  const resolvedUrl = form.serverUrl
 
-  if (!isDevModeEnabled.value) {
-    if (!resolvedUrl || !resolvedToken) {
-      ElMessage.warning('请填写完整信息')
-      return
-    }
-  } else {
-    if (!resolvedUrl) {
-      ElMessage.warning('请配置 LiveKit Server URL')
-      return
-    }
+  if (!resolvedUrl) {
+    ElMessage.warning('请配置 API Server URL')
+    return
   }
 
   loading.value = true
   try {
-    await connect(resolvedUrl, resolvedToken)
+    await connect(resolvedUrl, 'lelamp')
     ElMessage.success('连接成功')
-    router.push('/room')
+    router.push('/room') // Note: We might want to rename this view later, but keeping it for now
   } catch (error) {
     ElMessage.error('连接失败，请检查配置')
     console.error(error)

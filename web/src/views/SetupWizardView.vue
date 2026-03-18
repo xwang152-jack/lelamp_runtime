@@ -150,13 +150,13 @@
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Refresh } from '@element-plus/icons-vue'
-import { Signal } from '@element-plus/icons-vue'
 import axios from 'axios'
 import type { WiFiNetwork } from '@/types/settings'
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || ''
 
 // 添加请求超时配置
+// @ts-ignore
 const apiClient = axios.create({
   timeout: 30000,  // 30 秒超时
   headers: {
