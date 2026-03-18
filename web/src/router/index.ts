@@ -17,6 +17,12 @@ const routes: RouteRecordRaw[] = [
     name: 'room',
     component: () => import('@/views/RoomView.vue'),
     meta: { requiresAuth: true, title: '控制台' }
+  },
+  {
+    path: '/settings',
+    name: 'settings',
+    component: () => import('@/views/SettingsView.vue'),
+    meta: { requiresAuth: true, title: '系统设置' }
   }
 ]
 
