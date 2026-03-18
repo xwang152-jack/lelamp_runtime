@@ -97,6 +97,8 @@ class OperationLog(Base):
     __table_args__ = (
         Index("ix_operation_logs_lamp_id_timestamp", "lamp_id", "timestamp"),
         Index("ix_operation_logs_operation_type", "operation_type"),
+        Index("ix_operation_logs_success", "success"),  # 用于过滤失败的操作
+        Index("ix_operation_logs_lamp_id_success_timestamp", "lamp_id", "success", "timestamp"),  # 复合索引
     )
 
     def __repr__(self) -> str:
@@ -142,6 +144,7 @@ class DeviceState(Base):
 
     __table_args__ = (
         Index("ix_device_states_lamp_id_timestamp", "lamp_id", "timestamp"),
+        Index("ix_device_states_lamp_id_conversation_state", "lamp_id", "conversation_state"),  # 用于状态查询
     )
 
     def __repr__(self) -> str:
@@ -277,6 +280,10 @@ class UserSettings(Base):
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+    )
+
+    __table_args__ = (
+        Index("ix_user_settings_updated_at", "updated_at"),  # 用于按更新时间排序
     )
 
     def __repr__(self) -> str:
