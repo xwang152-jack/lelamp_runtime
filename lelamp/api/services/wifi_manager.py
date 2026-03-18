@@ -85,48 +85,45 @@ class WiFiManager:
                     if not line:
                         continue
 
-                    # 处理nmcli输出中的转义字符
-                    line = line.replace('\\:', ':')  # 修复MAC地址中的转义冒号
-                    parts = line.split(':')
+                    # 实际的nmcli输出格式: SSID:BSSID:SECURITY:FREQ
+                    # 注意：BSSID中的冒号被转义为 \:，SSID可能为空（隐藏网络）
 
-                    # 适应不同的nmcli输出格式
-                    # 实际观察到的格式: SSID:BSSID:SECURITY:FREQ (没有信号字段)
-                    if len(parts) >= 4:
-                        ssid = parts[0] or "-- Hidden Network --"
-                        bssid = parts[1]
-
-                        # 尝试解析信号强度（如果存在）
-                        signal = 50  # 默认信号强度
-                        security = "open"
-                        freq_part = ""
-
-                        # 根据字段数量判断格式
-                        if len(parts) >= 5:
-                            # 可能是标准格式: SSID,BSSID,SIGNAL,SECURITY,FREQ
-                            if parts[2] and parts[2].replace('.','').replace('-','').isdigit():
-                                try:
-                                    signal = int(float(parts[2]))
-                                except (ValueError, IndexError):
-                                    signal = 50
-                                security = parts[3] if len(parts) > 3 else "open"
-                                freq_part = parts[4] if len(parts) > 4 else ""
-                            else:
-                                # 简化格式: SSID:BSSID:SECURITY:FREQ
-                                security = parts[2] if parts[2] else "open"
-                                freq_part = parts[3] if len(parts) > 3 else ""
+                    # 手动解析转义字符
+                    import re
+                    # 使用正则表达式正确分割转义的冒号
+                    # 匹配: 非冒号字符 或 转义的冒号
+                    pattern = r'[^:]|(?:\\:)'
+                    parts = []
+                    current = ""
+                    i = 0
+                    while i < len(line):
+                        if i + 1 < len(line) and line[i:i+2] == '\\:':
+                            current += ':'
+                            i += 2
+                        elif line[i] == ':':
+                            parts.append(current)
+                            current = ""
+                            i += 1
                         else:
-                            # 简化格式: SSID:BSSID:SECURITY:FREQ
-                            security = parts[2] if parts[2] else "open"
-                            freq_part = parts[3] if len(parts) > 3 else ""
+                            current += line[i]
+                            i += 1
+                    if current:
+                        parts.append(current)
+
+                    # 解析各个字段
+                    if len(parts) >= 4:
+                        ssid = parts[0] if parts[0] else "-- Hidden Network --"
+                        bssid = parts[1] if len(parts) > 1 else ""
+                        security = parts[2] if len(parts) > 2 else "open"
+                        freq_str = parts[3] if len(parts) > 3 else ""
+
+                        # 信号强度：当前nmcli版本不提供，使用默认值
+                        signal = 50  # 默认中等信号强度
 
                         # 解析频率
                         try:
-                            freq_clean = freq_part.replace(' MHz', '').replace(' MHz','').strip()
-                            if freq_clean:
-                                freq_mhz = int(freq_clean)
-                                frequency = "5GHz" if freq_mhz > 4000 else "2.4GHz"
-                            else:
-                                frequency = "2.4GHz"
+                            freq_mhz = int(freq_str.replace(' MHz', '').replace(' MHz','').strip())
+                            frequency = "5GHz" if freq_mhz > 4000 else "2.4GHz"
                         except (ValueError, IndexError):
                             frequency = "2.4GHz"
 
