@@ -55,8 +55,8 @@ async def get_settings(
 
 @router.put("/", response_model=AppSettingsResponse)
 async def update_settings(
-    lamp_id: str = Query(..., description="设备 ID"),
     request: AppSettingsUpdateRequest,
+    lamp_id: str = Query(..., description="设备 ID"),
     db: Session = Depends(get_db)
 ) -> AppSettingsResponse:
     """
