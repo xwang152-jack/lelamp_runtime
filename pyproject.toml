@@ -3,7 +3,7 @@ name = "lelamp-runtime"
 version = "0.1.0"
 description = "Python-based control system for LeLamp robotic lamp with voice AI, motor control, and vision capabilities"
 readme = "README.md"
-requires-python = ">=3.12,<3.13"
+requires-python = ">=3.12,<3.14"
 dependencies = [
     "feetech-servo-sdk>=1.0.0,<2.0.0",
     "lerobot>=0.3.3",
