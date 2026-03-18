@@ -290,6 +290,131 @@ Located in `lelamp/integrations/`:
 - Download progress reporting (with `httpx`)
 - Configured via `LELAMP_OTA_URL` environment variable
 
+### Authentication System (`lelamp/api/` & `lelamp/database/`)
+
+**JWT-Based Authentication**: Complete user authentication system with access and refresh tokens:
+
+- **Access Token**: Short-lived (30 minutes) token for API authentication
+- **Refresh Token**: Long-lived (7 days) token for obtaining new access tokens
+- **Password Security**: bcrypt hashing with automatic salt generation
+- **Token Storage**: Access tokens in client memory, refresh tokens in database
+- **Token Refresh**: Automatic token rotation with old token revocation
+
+**API Endpoints** (`lelamp/api/routes/auth.py`):
+```python
+POST /api/auth/register      # User registration
+POST /api/auth/login         # User login
+POST /api/auth/refresh-token # Token refresh
+GET  /api/auth/me            # Get current user info
+POST /api/auth/bind-device   # Bind device to user
+```
+
+**Database Models** (`lelamp/database/models_auth.py`):
+```python
+class User(Base):
+    # User account with username, email, hashed_password
+    # Indexes: username (unique), email (unique)
+
+class RefreshToken(Base):
+    # Refresh tokens with expiry tracking
+    # Indexes: token (unique), user_id, expires_at
+
+class DeviceBinding(Base):
+    # User-to-device binding with permissions
+    # Foreign key: User
+```
+
+**Authentication Service** (`lelamp/api/services/auth_service.py`):
+```python
+class AuthService:
+    @staticmethod
+    def register_user(db, username, email, password):
+        # Create user with bcrypt password hash
+
+    @staticmethod
+    def authenticate_user(db, username, password):
+        # Verify credentials and return user
+
+    @staticmethod
+    def create_access_token(data):
+        # Generate JWT (30 min expiry)
+
+    @staticmethod
+    def create_refresh_token(user_id, db):
+        # Generate JWT with UUID jti (7 days expiry)
+
+    @staticmethod
+    def verify_token(token, token_type):
+        # Decode and validate JWT
+```
+
+**Authentication Middleware** (`lelamp/api/middleware/auth.py`):
+```python
+# Dependency injection for protected routes
+async def get_current_user(token: str, db: Session) -> User:
+    # Verify JWT, query database, return user
+
+async def get_current_user_optional(token: str, db: Session) -> Optional[User]:
+    # Optional authentication (allow anonymous)
+
+async def get_current_admin(user: User) -> User:
+    # Require admin role
+```
+
+### Middleware System (`lelamp/api/middleware/`)
+
+**Rate Limiting** (`rate_limit.py`):
+- **Algorithm**: Sliding window with configurable limits
+- **Identification**: User ID (authenticated) or IP address (anonymous)
+- **Limits**: default (100/min), strict (20/min), loose (1000/min)
+- **Response**: 429 Too Many Requests with retry-after header
+
+```python
+from lelamp.api.middleware.rate_limit import RateLimiter, RateLimitDep
+
+limiter = RateLimiter()
+
+# Apply to endpoints
+@router.get("/api/devices/{lamp_id}/state")
+@RateLimitDep(max_requests=100, window_seconds=60)
+async def get_device_state():
+    # Endpoint logic
+```
+
+**API Caching** (`cache.py`):
+- **Scope**: GET requests only
+- **Storage**: In-memory dictionary with TTL
+- **Cache Key**: MD5 hash of URL
+- **Decorator**: `@cache_response(ttl_seconds=60)`
+
+```python
+from lelamp.api.middleware.cache import cache_response
+
+@router.get("/api/devices/{lamp_id}/state")
+@cache_response(ttl_seconds=30)
+async def get_device_state(request: Request, lamp_id: str):
+    # Data cached for 30 seconds
+```
+
+**Security Headers** (in `lelamp/api/app.py`):
+- `X-Content-Type-Options: nosniff` - Prevent MIME sniffing
+- `X-Frame-Options: DENY` - Prevent clickjacking
+- `X-XSS-Protection: 1; mode=block` - Enable XSS protection
+- `Strict-Transport-Security: max-age=31536000` - Force HTTPS
+- `Content-Security-Policy: default-src 'self'` - Prevent XSS
+- `Referrer-Policy: strict-origin-when-cross-origin` - Control referrer leaks
+- `Permissions-Policy: geolocation=(), microphone=(), camera=()` - Restrict browser features
+
+**WebSocket Authentication** (`lelamp/api/routes/websocket.py`):
+```python
+@router.websocket("/{lamp_id}")
+async def websocket_endpoint(websocket: WebSocket, lamp_id: str, token: Optional[str] = Query(None)):
+    # Optional JWT authentication via query parameter
+    # Anonymous connections allowed
+    # Invalid token logged as warning
+    # Expired token rejects with 1008 error code
+```
+
 ### Agent Architecture (`lelamp/agent/`)
 
 **Modular Agent Design**: The agent logic has been refactored into separate modules:
