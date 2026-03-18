@@ -121,32 +121,75 @@ You are LeLamp, a sentient robot lamp. You are clumsy, extremely sarcastic, but 
 
         # 初始化或使用注入的服务
         if motors_service is None:
-            from lelamp.service.motors.motors_service import MotorsService
-            self.motors_service = MotorsService(
-                port=port,
-                lamp_id=lamp_id,
-                fps=30,
-                motor_config=motor_config
+            motors_enabled = (os.getenv("LELAMP_MOTORS_ENABLED") or "1").strip().lower() in (
+                "1",
+                "true",
+                "yes",
+                "on",
             )
+            if motors_enabled:
+                try:
+                    from lelamp.service.motors.motors_service import MotorsService
+
+                    self.motors_service = MotorsService(
+                        port=port,
+                        lamp_id=lamp_id,
+                        fps=30,
+                        motor_config=motor_config,
+                    )
+                except Exception as e:
+                    logger.warning(f"MotorsService init failed, fallback to NoOpMotorsService: {e}")
+                    from lelamp.service.motors.noop_motors_service import NoOpMotorsService
+
+                    self.motors_service = NoOpMotorsService()
+            else:
+                from lelamp.service.motors.noop_motors_service import NoOpMotorsService
+
+                self.motors_service = NoOpMotorsService()
         else:
             self.motors_service = motors_service
 
         if rgb_service is None:
-            from lelamp.service.rgb.rgb_service import RGBService
-            self.rgb_service = RGBService(
-                led_count=64,
-                led_pin=12,
-                led_freq_hz=800000,
-                led_dma=10,
-                led_brightness=25,
-                led_invert=False,
-                led_channel=0
+            rgb_enabled = (os.getenv("LELAMP_RGB_ENABLED") or "1").strip().lower() in (
+                "1",
+                "true",
+                "yes",
+                "on",
             )
+            if rgb_enabled:
+                try:
+                    from lelamp.service.rgb.rgb_service import RGBService
+
+                    self.rgb_service = RGBService(
+                        led_count=64,
+                        led_pin=12,
+                        led_freq_hz=800000,
+                        led_dma=10,
+                        led_brightness=25,
+                        led_invert=False,
+                        led_channel=0,
+                    )
+                except Exception as e:
+                    logger.warning(f"RGBService init failed, fallback to NoOpRGBService: {e}")
+                    from lelamp.service.rgb.noop_rgb_service import NoOpRGBService
+
+                    self.rgb_service = NoOpRGBService()
+            else:
+                from lelamp.service.rgb.noop_rgb_service import NoOpRGBService
+
+                self.rgb_service = NoOpRGBService()
         else:
             self.rgb_service = rgb_service
 
         # 启动服务
-        self.motors_service.start()
+        try:
+            self.motors_service.start()
+        except Exception as e:
+            logger.warning(f"MotorsService start failed, fallback to NoOpMotorsService: {e}")
+            from lelamp.service.motors.noop_motors_service import NoOpMotorsService
+
+            self.motors_service = NoOpMotorsService()
+            self.motors_service.start()
         self.rgb_service.start()
 
         # 初始化状态管理器

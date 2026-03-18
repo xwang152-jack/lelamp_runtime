@@ -239,11 +239,13 @@ uv run python scripts/generate_client_token.py --room lelamp-room --user jack
 
 #### Step 6: 打开 Web Frontend
 ```bash
-# 启动前端开发服务器
+# 启动前端开发服务器（允许局域网访问）
 cd web
-pnpm dev
+pnpm dev --host 0.0.0.0 --port 5173
 
-# 访问: http://localhost:5173
+# 访问:
+# - 树莓派本机: http://localhost:5173
+# - 局域网设备: http://<树莓派IP>:5173
 ```
 
 **前端环境变量配置** (可选):
@@ -261,7 +263,7 @@ VITE_API_BASE_URL=http://your-raspberry-pi:8000  # API 服务器地址
 
 **访问设置页面**:
 - 连接后点击右上角 "设置" 按钮
-- 或直接访问 `http://localhost:5173/settings`
+- 或直接访问 `http://localhost:5173/settings`（树莓派本机）/ `http://<树莓派IP>:5173/settings`（局域网）
 
 ---
 
