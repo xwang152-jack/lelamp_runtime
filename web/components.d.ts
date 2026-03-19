@@ -7,6 +7,7 @@ export {}
 
 declare module 'vue' {
   export interface GlobalComponents {
+    AccountSettings: typeof import('./src/components/settings/AccountSettings.vue')['default']
     BehaviorConfig: typeof import('./src/components/settings/BehaviorConfig.vue')['default']
     CameraConfig: typeof import('./src/components/settings/CameraConfig.vue')['default']
     ElAlert: typeof import('element-plus/es')['ElAlert']
@@ -36,7 +37,9 @@ declare module 'vue' {
     HardwareConfig: typeof import('./src/components/settings/HardwareConfig.vue')['default']
     LightPanel: typeof import('./src/components/room/LightPanel.vue')['default']
     LLMConfig: typeof import('./src/components/settings/LLMConfig.vue')['default']
+    LoginForm: typeof import('./src/components/auth/LoginForm.vue')['default']
     PrivacyIndicator: typeof import('./src/components/common/PrivacyIndicator.vue')['default']
+    RegisterForm: typeof import('./src/components/auth/RegisterForm.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
     SpeechConfig: typeof import('./src/components/settings/SpeechConfig.vue')['default']

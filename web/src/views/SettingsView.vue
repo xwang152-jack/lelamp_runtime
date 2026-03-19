@@ -127,7 +127,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { useSettingsStore } from '@/stores'
+import { useSettingsStore, useAuthStore } from '@/stores'
 
 // Import all settings components
 import WiFiSettings from '@/components/settings/WiFiSettings.vue'
@@ -138,7 +138,13 @@ import SpeechConfig from '@/components/settings/SpeechConfig.vue'
 import HardwareConfig from '@/components/settings/HardwareConfig.vue'
 import BehaviorConfig from '@/components/settings/BehaviorConfig.vue'
 import UIConfig from '@/components/settings/UIConfig.vue'
+import AccountSettings from '@/components/settings/AccountSettings.vue'
 import { triggerRestart } from '@/api/settings'
+
+const router = useRouter()
+const route = useRoute()
+const settingsStore = useSettingsStore()
+const authStore = useAuthStore()
 
 const router = useRouter()
 const route = useRoute()
@@ -159,7 +165,8 @@ const tabs = [
   { key: 'speech', emoji: '🎤', label: '语音' },
   { key: 'hardware', emoji: '🔧', label: '硬件' },
   { key: 'behavior', emoji: '🎭', label: '性格' },
-  { key: 'ui', emoji: '🎨', label: '界面' }
+  { key: 'ui', emoji: '🎨', label: '界面' },
+  { key: 'account', emoji: '👤', label: '账户' }
 ]
 
 const components = {
@@ -170,7 +177,8 @@ const components = {
   speech: SpeechConfig,
   hardware: HardwareConfig,
   behavior: BehaviorConfig,
-  ui: UIConfig
+  ui: UIConfig,
+  account: AccountSettings
 }
 
 const currentComponent = computed(() => components[activeTab.value as keyof typeof components])

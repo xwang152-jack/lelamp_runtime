@@ -1,21 +1,31 @@
-import { useConnectionStore, useChatStore, useDeviceStore } from '@/stores'
+import { useConnectionStore, useChatStore, useDeviceStore, useAuthStore } from '@/stores'
 import type { DataMessage } from '@/types'
 import { ElMessage } from 'element-plus'
+import { WS_CONNECTION_TIMEOUT } from '@/utils/auth-constants'
 
 export function useWebSocket() {
   const connectionStore = useConnectionStore()
   const chatStore = useChatStore()
   const deviceStore = useDeviceStore()
+  const authStore = useAuthStore()
 
   async function connect(url: string, lampId: string = 'lelamp') {
     try {
       connectionStore.setConnectionStatus('connecting')
-      connectionStore.setCredentials(url, '') // No token needed for simple WS
+      connectionStore.setCredentials(url, '')
 
       const baseUrl = url.endsWith('/') ? url.slice(0, -1) : url
-      const wsUrl = baseUrl.endsWith('/api')
+
+      // 构建 WebSocket URL，如果有 token 则添加到 query 参数
+      let wsUrl = baseUrl.endsWith('/api')
         ? `${baseUrl.replace(/^http/, 'ws')}/ws/${lampId}`
         : `${baseUrl.replace(/^http/, 'ws')}/api/ws/${lampId}`
+
+      // 添加 token 参数（如果已登录）
+      if (authStore.accessToken) {
+        wsUrl += `?token=${encodeURIComponent(authStore.accessToken)}`
+      }
+
       const ws = new WebSocket(wsUrl)
 
       ws.onopen = () => {
@@ -48,7 +58,7 @@ export function useWebSocket() {
       return new Promise<void>((resolve, reject) => {
         const timeout = setTimeout(() => {
           reject(new Error('Connection timeout'))
-        }, 10000)
+        }, WS_CONNECTION_TIMEOUT)
 
         const checkConnection = () => {
           if (ws.readyState === WebSocket.OPEN) {

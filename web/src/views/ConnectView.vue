@@ -7,6 +7,17 @@
       <div class="shape shape-3"></div>
     </div>
 
+    <!-- Auth Entry Button -->
+    <button class="auth-entry-btn" @click="handleAuthClick">
+      <span v-if="!isAuthenticated" class="auth-content">
+        <span class="auth-icon">👤</span>
+        <span class="auth-text">登录 / 注册</span>
+      </span>
+      <div v-else class="user-avatar" @click.stop="handleAvatarClick">
+        <span class="avatar-text">{{ userInitial }}</span>
+      </div>
+    </button>
+
     <div class="connect-container">
       <!-- Robot Mascot -->
       <div class="robot-mascot" :class="{ 'excited': loading, 'connected': isConnected }">
@@ -123,9 +134,12 @@ import { ref, reactive, onMounted, onUnmounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useWebSocket } from '@/composables/useWebSocket'
+import { useAuthStore } from '@/stores'
+import { getUserInitial } from '@/utils/device'
 
 const router = useRouter()
 const { connect } = useWebSocket()
+const authStore = useAuthStore()
 
 const loading = ref(false)
 const isConnected = ref(false)
@@ -157,6 +171,29 @@ const statusText = computed(() => {
   if (loading.value) return '正在连接...'
   return '等待连接'
 })
+
+// Auth computed properties
+const isAuthenticated = computed(() => authStore.isAuthenticated)
+
+const userInitial = computed(() => {
+  return getUserInitial(authStore.user?.username)
+})
+
+// Auth handlers
+function handleAuthClick() {
+  if (isAuthenticated.value) {
+    // Show user menu or go to profile
+    router.push('/profile')
+  } else {
+    // Go to auth page
+    router.push('/auth')
+  }
+}
+
+function handleAvatarClick() {
+  // Show dropdown menu or navigate to profile
+  router.push('/profile')
+}
 
 const autoConfigureUrl = () => {
   const protocol = window.location.protocol
@@ -762,6 +799,85 @@ onUnmounted(() => {
       width: 14px;
       height: 14px;
     }
+  }
+}
+
+/* === Auth Entry Button === */
+.auth-entry-btn {
+  position: fixed;
+  top: var(--lelamp-space-lg);
+  right: var(--lelamp-space-lg);
+  z-index: 100;
+  padding: var(--lelamp-space-sm) var(--lelamp-space-md);
+  background: var(--lelamp-bg-white);
+  border: 2px solid rgba(0, 0, 0, 0.08);
+  border-radius: var(--lelamp-radius-full);
+  cursor: pointer;
+  transition: all var(--lelamp-transition-bounce);
+  box-shadow: var(--lelamp-shadow-md);
+
+  &:hover {
+    border-color: var(--lelamp-peach);
+    transform: translateY(-2px);
+    box-shadow: var(--lelamp-shadow-lg);
+  }
+
+  &:active {
+    transform: translateY(0);
+  }
+}
+
+.auth-content {
+  display: flex;
+  align-items: center;
+  gap: var(--lelamp-space-sm);
+}
+
+.auth-icon {
+  font-size: 1.25rem;
+}
+
+.auth-text {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--lelamp-text-primary);
+}
+
+.user-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--lelamp-peach) 0%, var(--lelamp-coral) 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(255, 107, 138, 0.3);
+}
+
+.avatar-text {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--lelamp-bg-white);
+}
+
+@media (max-width: 480px) {
+  .auth-entry-btn {
+    top: var(--lelamp-space-md);
+    right: var(--lelamp-space-md);
+    padding: var(--lelamp-space-xs) var(--lelamp-space-sm);
+  }
+
+  .auth-text {
+    display: none;
+  }
+
+  .user-avatar {
+    width: 36px;
+    height: 36px;
+  }
+
+  .avatar-text {
+    font-size: 0.875rem;
   }
 }
 </style>

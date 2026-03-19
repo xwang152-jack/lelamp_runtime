@@ -21,6 +21,15 @@
         </div>
       </div>
       <div class="header-actions">
+        <!-- User Avatar (when logged in) -->
+        <button
+          v-if="isAuthenticated"
+          class="user-avatar-btn"
+          @click="handleProfileClick"
+          :title="authStore.user?.username || '个人中心'"
+        >
+          <span class="avatar-text">{{ userInitial }}</span>
+        </button>
         <button class="icon-btn" @click="handleSettings" title="设置">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="12" cy="12" r="3" />
@@ -134,15 +143,17 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { useChatStore, useConnectionStore, useDeviceStore } from '@/stores'
+import { useChatStore, useConnectionStore, useDeviceStore, useAuthStore } from '@/stores'
 import { useWebSocket } from '@/composables/useWebSocket'
 import LightPanel from '@/components/room/LightPanel.vue'
+import { getUserInitial } from '@/utils/device'
 
 const router = useRouter()
 const { disconnect, sendChat: sendWSChat } = useWebSocket()
 const chatStore = useChatStore()
 const connectionStore = useConnectionStore()
 const deviceStore = useDeviceStore()
+const authStore = useAuthStore()
 
 const inputText = ref('')
 const messagesContainer = ref<HTMLElement>()
@@ -171,6 +182,12 @@ const statusText = computed(() => {
   }
 })
 
+// Auth computed properties
+const isAuthenticated = computed(() => authStore.isAuthenticated)
+const userInitial = computed(() => {
+  return getUserInitial(authStore.user?.username)
+})
+
 function scrollToBottom() {
   nextTick(() => {
     if (messagesContainer.value) {
@@ -190,6 +207,10 @@ async function handleDisconnect() {
 
 function handleSettings() {
   router.push('/settings')
+}
+
+function handleProfileClick() {
+  router.push('/profile')
 }
 
 function sendChatAction(text: string) {
@@ -377,6 +398,36 @@ watch(
     color: var(--lelamp-coral-dark);
     border-color: var(--lelamp-coral);
   }
+}
+
+/* === User Avatar Button === */
+.user-avatar-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  background: linear-gradient(135deg, var(--lelamp-peach) 0%, var(--lelamp-coral) 100%);
+  border: 2px solid rgba(255, 255, 255, 0.8);
+  border-radius: var(--lelamp-radius-md);
+  cursor: pointer;
+  transition: all var(--lelamp-transition-normal);
+  box-shadow: 0 2px 8px rgba(255, 107, 138, 0.3);
+
+  &:hover {
+    transform: translateY(-2px) scale(1.05);
+    box-shadow: 0 4px 12px rgba(255, 107, 138, 0.4);
+  }
+
+  &:active {
+    transform: translateY(0) scale(1);
+  }
+}
+
+.avatar-text {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--lelamp-bg-white);
 }
 
 /* === Main Content === */
