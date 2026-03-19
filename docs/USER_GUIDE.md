@@ -1,19 +1,16 @@
-# LeLamp 完整使用指南 v2.2
+# LeLamp 完整使用指南 v0.1.0
 
-**最后更新**: 2026-03-18
-**适用版本**: LeLamp Runtime v2.2 + Web Frontend (Vue 3) v2.2
+**最后更新**: 2026-03-19
+**适用版本**: LeLamp Runtime v0.1.0
 
-**v2.2 新增**:
-- ✨ 开箱即用 AP 模式配置 - 无需技术背景即可配置 WiFi
-- ✨ 自动设置检测 - 首次启动自动进入配置模式
-- ✨ 设置向导界面 - 5 步引导式配置流程
+**当前功能**:
+- ✅ Web 设置页面 - 无需 SSH 即可配置系统
+- ✅ WiFi 网络配置 - 扫描、连接、断开 WiFi
+- ✅ 配置管理 API - RESTful API 用于系统配置
+- ✅ 服务热重启 - 通过 Web 界面重启服务
+- ✅ 开箱即用 AP 模式配置 - 无需技术背景即可配置 WiFi
+- ✅ 自动设置检测 - 首次启动自动进入配置模式
 - ✨ Captive Portal 支持 - 连接热点后自动弹出配置页面
-
-**v2.1 功能**:
-- ✨ Web 设置页面 - 无需 SSH 即可配置系统
-- ✨ WiFi 网络配置 - 扫描、连接、断开 WiFi
-- ✨ 配置管理 API - RESTful API 用于系统配置
-- ✨ 服务热重启 - 通过 Web 界面重启服务
 
 ---
 
@@ -154,7 +151,7 @@
 #### Step 1: 克隆项目
 ```bash
 cd ~
-git clone https://github.com/humancomputerlab/lelamp_runtime.git
+git clone https://github.com/xwang152-jack/lelamp_runtime.git
 cd lelamp_runtime
 ```
 
@@ -176,19 +173,22 @@ nano .env
 **最小配置** (必填项):
 ```bash
 # LiveKit (实时通信)
-LIVEKIT_URL=wss://your-project.livekit.cloud
-LIVEKIT_API_KEY=your_api_key
-LIVEKIT_API_SECRET=your_api_secret
+LIVEKIT_URL=wss://your-livekit-server.livekit.cloud
+LIVEKIT_API_KEY=your_api_key_here
+LIVEKIT_API_SECRET=your_api_secret_here
 
 # DeepSeek (LLM)
-DEEPSEEK_API_KEY=your_deepseek_key
+DEEPSEEK_API_KEY=your_deepseek_api_key_here
 
 # Baidu Speech (语音服务)
-BAIDU_SPEECH_API_KEY=your_baidu_api_key
-BAIDU_SPEECH_SECRET_KEY=your_baidu_secret_key
+BAIDU_SPEECH_API_KEY=your_baidu_api_key_here
+BAIDU_SPEECH_SECRET_KEY=your_baidu_secret_key_here
+
+# 开发模式（跳过授权检查）
+LELAMP_DEV_MODE=1
 
 # ModelScope (视觉识别 - 可选)
-MODELSCOPE_API_KEY=your_modelscope_key
+MODELSCOPE_API_KEY=your_modelscope_api_key_here
 ```
 
 #### Step 4: 启动 LeLamp Agent
@@ -251,7 +251,6 @@ pnpm dev --host 0.0.0.0 --port 5173
 **前端环境变量配置** (可选):
 ```bash
 # web/.env.development
-VITE_LIVEKIT_URL=ws://your-livekit-server:7880
 VITE_API_BASE_URL=http://your-raspberry-pi:8000  # API 服务器地址
 ```
 
@@ -274,27 +273,23 @@ VITE_API_BASE_URL=http://your-raspberry-pi:8000  # API 服务器地址
 #### LiveKit 配置
 ```bash
 # LiveKit Server WebSocket URL
-LIVEKIT_URL=wss://your-project.livekit.cloud
+LIVEKIT_URL=wss://your-livekit-server.livekit.cloud
 
 # LiveKit API 凭证 (用于 Token 生成)
-LIVEKIT_API_KEY=APIxxxxxxxxxxxx
-LIVEKIT_API_SECRET=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+LIVEKIT_API_KEY=your_api_key_here
+LIVEKIT_API_SECRET=your_api_secret_here
 ```
 
 **获取方式**:
 ```bash
-# 方法 1: 使用 LiveKit CLI
-lk app env -w
-cat .env.local
-
-# 方法 2: 从 LiveKit Cloud Dashboard 复制
+# 从 LiveKit Cloud Dashboard 复制
 # https://cloud.livekit.io/projects/YOUR_PROJECT/settings
 ```
 
 #### DeepSeek LLM 配置
 ```bash
 # DeepSeek API Key (必需)
-DEEPSEEK_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+DEEPSEEK_API_KEY=your_deepseek_api_key_here
 
 # 模型名称 (可选,默认 deepseek-chat)
 DEEPSEEK_MODEL=deepseek-chat
@@ -306,14 +301,14 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com
 #### Baidu Speech 配置
 ```bash
 # 百度语音 API 凭证 (必需)
-BAIDU_SPEECH_API_KEY=xxxxxxxxxxxxxxxxxxxxxxxx
-BAIDU_SPEECH_SECRET_KEY=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+BAIDU_SPEECH_API_KEY=your_baidu_api_key_here
+BAIDU_SPEECH_SECRET_KEY=your_baidu_secret_key_here
 
 # 设备标识 (可选,默认 lelamp)
 BAIDU_SPEECH_CUID=lelamp
 
 # TTS 发音人 (可选,默认 4 = 度丫丫)
-# 0=度小美, 1=度小宇, 3=度逍遥, 4=度丫丫
+# 可选值: 0=度小美, 1=度小宇, 3=度逍遥, 4=度丫丫, 106=博文男声, 110=度小童, 111=度小萌
 BAIDU_SPEECH_TTS_PER=4
 ```
 
@@ -323,15 +318,15 @@ BAIDU_SPEECH_TTS_PER=4
 LELAMP_VISION_ENABLED=true
 
 # ModelScope API Key (启用视觉时必需)
-MODELSCOPE_API_KEY=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+MODELSCOPE_API_KEY=your_modelscope_api_key_here
 
-# 模型名称 (可选)
+# 模型名称 (可选,默认 Qwen/Qwen3-VL-235B-A22B-Instruct)
 MODELSCOPE_MODEL=Qwen/Qwen3-VL-235B-A22B-Instruct
 
-# API 地址 (可选)
+# API 地址 (可选,默认 https://api-inference.modelscope.cn/v1)
 MODELSCOPE_BASE_URL=https://api-inference.modelscope.cn/v1
 
-# 请求超时 (秒,可选,默认 60)
+# 请求超时 (秒,可选,默认 60.0)
 MODELSCOPE_TIMEOUT_S=60.0
 ```
 
@@ -471,9 +466,9 @@ LELAMP_SUPPRESS_MOTION_AFTER_LIGHT_S=2
 **前置条件**:
 ```bash
 # 在 .env 中配置飞书 API
-FEISHU_APP_ID=cli_xxxxxxxxxxxxxxxx
-FEISHU_APP_SECRET=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-FEISHU_RECEIVE_ID=oc_xxxxxxxxxxxxxxxxxxxxxxxx
+FEISHU_APP_ID=your_feishu_app_id_here
+FEISHU_APP_SECRET=your_feishu_app_secret_here
+FEISHU_RECEIVE_ID=your_receive_id_here
 ```
 
 **使用方式**:
@@ -715,7 +710,7 @@ LeLamp 会根据对话内容自动做出表情：
 **前置条件**:
 ```bash
 # 在 .env 中配置博查 API Key
-BOCHA_API_KEY=your_bocha_api_key
+BOCHA_API_KEY=your_bocha_api_key_here
 ```
 
 **使用方式**:
@@ -724,7 +719,7 @@ BOCHA_API_KEY=your_bocha_api_key
 台灯: (调用博查 API) "今天北京晴，最高温度 15℃，最低 5℃。适合出门玩耍哦！"
 
 用户: "LeLamp 是什么？"
-台灯: (调用搜索 API) "LeLamp 是一个开源的机器人台灯项目，由 Human Computer Lab 开发..."
+台灯: (调用搜索 API) "LeLamp 是一个开源的机器人台灯项目..."
 ```
 
 **速率限制**:
@@ -1094,6 +1089,8 @@ LELAMP_VISION_JPEG_QUALITY=80
 ```bash
 # 生产环境必须配置授权密钥
 LELAMP_LICENSE_KEY=your_license_key_here
+
+# 许可证签名密钥（生产环境必需，务必保密）
 LELAMP_LICENSE_SECRET=your_strong_random_secret_here
 
 # 开发环境可跳过 (不推荐)
@@ -1220,7 +1217,7 @@ LELAMP_NOISE_CANCELLATION=false
 
 ### Q8: 如何贡献代码？
 **A**: 欢迎贡献！
-1. Fork 项目: https://github.com/humancomputerlab/lelamp_runtime
+1. Fork 项目: https://github.com/xwang152-jack/lelamp_runtime
 2. 创建功能分支: `git checkout -b feature/AmazingFeature`
 3. 提交更改: `git commit -m 'Add some AmazingFeature'`
 4. 推送到分支: `git push origin feature/AmazingFeature`
@@ -1251,7 +1248,7 @@ timestamp,base_yaw.pos,base_pitch.pos,elbow_pitch.pos,wrist_roll.pos,wrist_pitch
 
 ### B. 环境变量完整列表
 
-参见 `.env.example` 文件 (76 个环境变量)
+参见 `.env.example` 文件获取完整的环境变量配置说明
 
 ### C. 错误代码对照表
 
@@ -1278,7 +1275,7 @@ timestamp,base_yaw.pos,base_pitch.pos,elbow_pitch.pos,wrist_roll.pos,wrist_pitch
 
 ---
 
-**文档版本**: v2.1
-**最后更新**: 2026-03-18
-**作者**: Claude (Technical Writer Mode)
+**文档版本**: v0.1.0
+**最后更新**: 2026-03-19
+**作者**: LeLamp 开发团队
 **许可证**: 参见主项目许可证
