@@ -742,19 +742,29 @@ sudo uv run -m lelamp.calibrate --id lelamp --port /dev/ttyACM0
 uv run -m lelamp.test.test_motors --id lelamp --port /dev/ttyACM0
 ```
 
-### 问题 4: LED 不亮
+### 问题 4: LED 不亮 ⚠️ 重要
 
-**症状**: 灯光指令无效
+**症状**: 灯光指令返回成功但实际 LED 无响应
+
+**根本原因**: `ws281x` LED 驱动库需要 `/dev/mem` 访问权限，普通用户无权限。
 
 **解决方案**:
 ```bash
-# 1. 测试 LED (需要 sudo)
-sudo uv run -m lelamp.test.test_rgb
+# 1. 使用 sudo 运行 API 服务器 (必需)
+sudo .venv/bin/python -m uvicorn lelamp.api.app:app --host 0.0.0.0 --port 8000
 
-# 2. 调整亮度
-# 在 .env 中设置:
-LELAMP_LED_BRIGHTNESS=50
+# 2. 使用启动脚本
+start-lelamp-api
+
+# 3. 使用 systemd 服务 (生产环境推荐)
+sudo systemctl start lelamp-api
+
+# 4. 检查 RGB 服务状态
+tail -f /tmp/uvicorn.log | grep -E 'RGB|NoOpRGBService'
+# 如果看到 "fallback to NoOpRGBService"，说明权限不足
 ```
+
+**详细文档**: [API 服务器设置指南](./docs/setup/api-server-setup.md)
 
 更多故障排查，请参见 [完整使用指南](./docs/USER_GUIDE.md)。
 
