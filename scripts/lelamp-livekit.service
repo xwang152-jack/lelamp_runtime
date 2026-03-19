@@ -1,0 +1,37 @@
+[Unit]
+Description=LeLamp LiveKit Agent (via tmux)
+Documentation=https://github.com/xwang152-jack/lelamp_runtime
+After=network.target
+
+[Service]
+Type=forking
+User=root
+WorkingDirectory=/home/pi/lelamp_runtime
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+EnvironmentFile=/home/pi/lelamp_runtime/.env
+
+# 启动 tmux 会话运行 LiveKit Console 模式
+ExecStart=/usr/bin/tmux new-session -d -s livekit -n livekit 'cd /home/pi/lelamp_runtime && /usr/local/bin/uv run python main.py Console'
+
+# 优雅停止：发送 Ctrl+C 然后关闭会话
+ExecStop=/usr/bin/tmux send-keys -t livekit C-c
+ExecStop=/bin/sleep 2
+ExecStop=/usr/bin/tmux kill-session -t livekit
+
+# 自动重启配置
+Restart=always
+RestartSec=10
+StartLimitInterval=60
+StartLimitBurst=3
+
+# 日志配置
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=lelamp-livekit
+
+# 安全设置
+NoNewPrivileges=false
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
