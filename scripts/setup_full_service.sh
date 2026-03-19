@@ -31,8 +31,24 @@ ssh $PI_HOST "sudo systemctl disable lelamp-api.service 2>/dev/null || true"
 echo "✅ 现有服务已停止"
 echo ""
 
-# 2. 创建对话代理服务
-echo "📝 2. 创建对话代理 systemd 服务..."
+# 2. 创建对话代理启动脚本（非交互模式）
+echo "📝 2. 创建对话代理启动脚本..."
+ssh $PI_HOST "cat > $PROJECT_DIR/start_conversation.sh << 'EOFSCRIPT'
+#!/bin/bash
+cd /home/pi/lelamp_runtime
+export LIVEKIT_URL=\"\${LIVEKIT_URL}\"
+export LIVEKIT_API_KEY=\"\${LIVEKIT_API_KEY}\"
+export LIVEKIT_API_SECRET=\"\${LIVEKIT_API_SECRET}\"
+exec /usr/local/bin/uv run main.py start
+EOFSCRIPT
+chmod +x $PROJECT_DIR/start_conversation.sh
+"
+
+echo "✅ 启动脚本已创建"
+echo ""
+
+# 3. 创建对话代理 systemd 服务
+echo "📝 3. 创建对话代理 systemd 服务..."
 ssh $PI_HOST "sudo tee /etc/systemd/system/lelamp-conversation.service > /dev/null << 'EOF'
 [Unit]
 Description=LeLamp Voice Conversation Agent
@@ -44,11 +60,12 @@ User=root
 WorkingDirectory=/home/pi/lelamp_runtime
 Environment=PATH=/usr/local/bin:/usr/bin:/bin
 EnvironmentFile=/home/pi/lelamp_runtime/.env
-ExecStart=/usr/local/bin/uv run main.py console
-Restart=always
-RestartSec=10
+StandardInput=null
 StandardOutput=journal
 StandardError=journal
+ExecStart=/home/pi/lelamp_runtime/start_conversation.sh
+Restart=always
+RestartSec=10
 
 [Install]
 WantedBy=multi-user.target
@@ -58,15 +75,15 @@ EOF
 echo "✅ 对话代理服务文件已创建"
 echo ""
 
-# 3. 重新加载 systemd
-echo "🔄 3. 配置系统服务..."
+# 4. 重新加载 systemd
+echo "🔄 4. 配置系统服务..."
 ssh $PI_HOST "sudo systemctl daemon-reload"
 ssh $PI_HOST "sudo systemctl enable lelamp-conversation.service"
 echo "✅ 对话代理已设置为开机自启"
 echo ""
 
-# 4. 启动对话代理
-echo "▶️  4. 启动对话代理..."
+# 5. 启动对话代理
+echo "▶️  5. 启动对话代理..."
 ssh $PI_HOST "sudo systemctl start lelamp-conversation.service"
 sleep 5
 echo "✅ 对话代理已启动"
