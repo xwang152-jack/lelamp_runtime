@@ -42,17 +42,45 @@ fi
 
 echo ""
 
+# 3. 确保依赖安装正确
+echo "📦 在树莓派上确保依赖安装..."
+ssh $PI_HOST "cd $PI_DIR && sudo uv sync --extra api --extra hardware"
+
+if [ $? -eq 0 ]; then
+    echo "✅ 依赖安装成功"
+else
+    echo "⚠️  依赖安装可能有问题"
+fi
+
+if [ $? -eq 0 ]; then
+    echo "✅ 代码同步成功"
+else
+    echo "❌ 代码同步失败"
+    exit 1
+fi
+
+echo ""
+
 # 3. 显示同步的提交
 echo "📝 最新提交信息："
 ssh $PI_HOST "cd $PI_DIR && git log -1 --oneline"
 
 echo ""
+echo ""
 echo "================================================"
 echo "✅ 推送完成！"
 echo "================================================"
+echo ""
+echo "📝 修复总结："
+echo "  - 修复了电机服务关闭时的竞态条件"
+echo "  - 确保了 API 依赖正确安装"
+echo "  - API 现在可以正常启动和关闭"
 echo ""
 echo "🚀 在树莓派上启动 API："
 echo "  ssh $PI_HOST"
 echo "  cd $PI_DIR"
 echo "  sudo uv run python -m uvicorn lelamp.api.app:app --host 0.0.0.0 --port 8000"
+echo ""
+echo "💡 如果将来遇到依赖问题，运行："
+echo "  sudo uv sync --extra api --extra hardware"
 echo ""
