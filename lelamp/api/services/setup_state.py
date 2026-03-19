@@ -4,6 +4,7 @@
 """
 import json
 import logging
+import os
 from datetime import datetime
 from pathlib import Path
 from threading import Lock
@@ -28,12 +29,24 @@ class SetupStateManager:
         "network_history": []
     }
 
-    def __init__(self, state_file: str = "/var/lib/lelamp/setup_status.json"):
+    def __init__(self, state_file: str = None):
+        # 支持自定义路径或使用默认路径
+        if state_file is None:
+            # 支持通过环境变量自定义目录
+            state_dir = os.environ.get('LELAMP_STATE_DIR', '/var/lib/lelamp')
+            state_file = f"{state_dir}/setup_status.json"
+
         self.state_file = Path(state_file)
         self._lock = Lock()
 
-        # 确保目录存在
-        self.state_file.parent.mkdir(parents=True, exist_ok=True)
+        # 确保目录存在（静默处理权限错误）
+        try:
+            self.state_file.parent.mkdir(parents=True, exist_ok=True)
+        except PermissionError:
+            logger.warning(f"无法创建目录 {self.state_file.parent}，使用当前目录")
+            # 回退到临时目录
+            import tempfile
+            self.state_file = Path(tempfile.gettempdir()) / "setup_status.json"
 
         # 如果文件不存在，创建初始状态
         if not self.state_file.exists():
