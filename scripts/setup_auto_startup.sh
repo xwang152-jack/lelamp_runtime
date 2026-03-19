@@ -4,8 +4,8 @@
 set -e
 
 PI_HOST="pi@192.168.0.104"
-PROJECT_DIR="~/lelamp_runtime"
-FRONTEND_DIR="~/lelamp_runtime/web"
+PROJECT_DIR="/home/pi/lelamp_runtime"
+FRONTEND_DIR="/home/pi/lelamp_runtime/web"
 
 echo "================================================"
 echo "LeLamp 自动启动设置"
@@ -36,9 +36,9 @@ After=network.target
 [Service]
 Type=simple
 User=root
-WorkingDirectory=$PROJECT_DIR
+WorkingDirectory=/home/pi/lelamp_runtime
 Environment=PATH=/usr/local/bin:/usr/bin:/bin
-EnvironmentFile=$PROJECT_DIR/.env
+EnvironmentFile=/home/pi/lelamp_runtime/.env
 ExecStart=/usr/local/bin/uv run python -m uvicorn lelamp.api.app:app --host 0.0.0.0 --port 8000
 Restart=always
 RestartSec=10
@@ -62,7 +62,7 @@ After=network.target lelamp-api.service
 [Service]
 Type=simple
 User=pi
-WorkingDirectory=$FRONTEND_DIR
+WorkingDirectory=/home/pi/lelamp_runtime/web
 Environment=PATH=/usr/local/bin:/usr/bin:/bin
 Environment=NODE_ENV=production
 ExecStart=/usr/bin/npm run dev -- --host 0.0.0.0 --port 5173

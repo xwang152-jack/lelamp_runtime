@@ -4,7 +4,7 @@
 set -e
 
 PI_HOST="pi@192.168.0.104"
-PROJECT_DIR="~/lelamp_runtime"
+PROJECT_DIR="/home/pi/lelamp_runtime"
 
 echo "================================================"
 echo "LeLamp 自动启动设置（简化版）"
@@ -56,9 +56,9 @@ After=network.target
 [Service]
 Type=simple
 User=root
-WorkingDirectory=$PROJECT_DIR
+WorkingDirectory=/home/pi/lelamp_runtime
 Environment=PATH=/usr/local/bin:/usr/bin:/bin
-EnvironmentFile=$PROJECT_DIR/.env
+EnvironmentFile=/home/pi/lelamp_runtime/.env
 ExecStart=/usr/local/bin/uv run python -m uvicorn lelamp.api.app:app --host 0.0.0.0 --port 8000
 Restart=always
 RestartSec=10
