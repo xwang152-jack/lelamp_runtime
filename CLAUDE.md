@@ -66,19 +66,35 @@ lerobot = { git = "https://github.com/huggingface/lerobot" }
 uv run lerobot-find-port
 
 # Test RGB LEDs (requires sudo)
-sudo uv run -m lelamp.test.test_rgb
+sudo uv run -m lelamp.test.hardware.test_rgb
 
 # Test audio system
-uv run -m lelamp.test.test_audio
+uv run -m lelamp.test.hardware.test_audio
 
 # Test motors
-uv run -m lelamp.test.test_motors --id <lamp_id> --port <port>
+uv run -m lelamp.test.hardware.test_motors --id <lamp_id> --port <port>
 
-# Run API tests (if test suite exists)
-uv run pytest lelamp/api/tests/
+# Run all tests with coverage
+uv run pytest tests/ --cov=lelamp --cov-report=html
 
-# Run with coverage
-uv run pytest --cov=lelamp --cov-report=html
+# Run a single test file
+uv run pytest tests/test_basic.py -v
+
+# Run tests matching a pattern
+uv run pytest tests/ -k "test_setup"
+```
+
+### Linting & Code Quality
+
+```bash
+# Run ruff linter
+uv run ruff check lelamp/
+
+# Run ruff with auto-fix
+uv run ruff check --fix lelamp/
+
+# Format code with ruff
+uv run ruff format lelamp/
 ```
 
 ### API & Database Commands
@@ -450,11 +466,22 @@ async def websocket_endpoint(websocket: WebSocket, lamp_id: str, token: Optional
 - `DeviceState`: Device state snapshots for monitoring
 - `UserSettings`: User preferences and configuration storage
 
+**Captive Portal** (`lelamp/api/services/captive_portal.py`):
+- Self-contained FastAPI app with embedded HTML/CSS/JS for first-time device setup
+- Provides WiFi scanning, connection, and setup completion flow
+- Runs on separate port (8080) with its own systemd service
+- Endpoints: `/api/setup/status`, `/api/setup/networks`, `/api/setup/connect`, `/api/setup/reset`
+- Related scripts: `scripts/lelamp-captive-portal.service`, `scripts/install_captive_portal.sh`
+
 **API Services** (`lelamp/api/services/`):
 - `wifi_manager.py`: WiFi network scanning and connection management
 - `ap_manager.py`: Access point mode for onboarding
 - `config_sync.py`: Configuration synchronization between services
 - `onboarding.py`: First-time setup wizard logic
+- `captive_portal.py`: Web-based first-time setup portal with embedded HTML UI for WiFi configuration
+- `setup_state.py`: Setup state persistence and recovery
+- `wifi_scanner.py`: Async WiFi network scanning
+- `network_manager.py`: Network connection management with retry logic
 
 ### Legacy Main Agent (main.py)
 
@@ -617,9 +644,17 @@ Silero VAD can be customized via environment variables:
   - `session.py`: Database session management
 
 ### Frontend & Deployment
-- `web/`: Vue 3 + TypeScript + Vite frontend (deprecated, see web_client)
-- `scripts/`: Build and token generation utilities for commercial deployment
+- `web/`: Vue 3 frontend (standalone HTML/JS/CSS)
+- `scripts/`: Build, deployment, and systemd service scripts for commercial deployment
+- `docs/`: Technical documentation (CAPTIVE_PORTAL_GUIDE, ARCHITECTURE, SECURITY, API, etc.)
 - `VERSION`: Current runtime version string (used for OTA updates)
+
+### Documentation
+- `docs/CAPTIVE_PORTAL_GUIDE.md`: Captive Portal setup and usage guide
+- `docs/ARCHITECTURE.md`: System architecture details
+- `docs/API.md`: REST API documentation
+- `docs/SECURITY.md`: Security guidelines
+- `docs/plans/`: Implementation plans and design documents
 
 ## Hardware-Specific Notes
 
@@ -670,6 +705,13 @@ When working with commercial features:
 - Generate client tokens using `scripts/generate_client_token.py` for authentication
 - Test web client locally before deploying to production
 - Use `LELAMP_LICENSE_KEY` for device authorization in commercial deployments
+
+When setting up Captive Portal:
+- Captive Portal is a standalone FastAPI app in `lelamp/api/services/captive_portal.py`
+- It runs on port 8080 with its own systemd service (`scripts/lelamp-captive-portal.service`)
+- Installation script: `scripts/install_captive_portal.sh`
+- For development, run directly: `python -m lelamp.api.services.captive_portal`
+- Full documentation: `docs/CAPTIVE_PORTAL_GUIDE.md`
 - Implement OTA updates using `OTAManager` class for remote firmware updates
 - Build distribution packages with `scripts/build_dist.sh` for releases
 
