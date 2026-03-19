@@ -238,14 +238,43 @@ print('✅ 数据库初始化完成')
 
 **注意**: 如果不使用 Web 设置界面，可以跳过此步骤。
 
-#### 7. 启动 LeLamp Agent
+#### 7. 启动 LeLamp 完整服务系统
 
-**方式一：LiveKit Tmux 服务（推荐用于日常使用）⭐**
+**方式一：完整服务系统（推荐用于日常使用）⭐**
 
-使用 systemd + tmux 实现 LiveKit Console 模式的后台持久化运行：
+使用 systemd 管理完整的三服务架构（LiveKit + API + Frontend）：
 
 ```bash
-# 设置 LiveKit Tmux 服务
+# 一键设置完整服务系统
+./scripts/setup_all_services.sh
+```
+
+这将自动配置：
+- **LiveKit 服务**（语音交互）- 通过 tmux 后台运行
+- **API 服务**（后端 REST API）- 端口 8000
+- **Frontend 服务**（Web 界面）- 端口 5173
+
+**管理所有服务：**
+```bash
+# 查看所有服务状态
+ssh pi@192.168.0.104 'sudo systemctl status lelamp-{livekit,api,frontend}.service'
+
+# 重启所有服务
+ssh pi@192.168.0.104 'sudo systemctl restart lelamp-{livekit,api,frontend}.service'
+
+# 查看所有服务日志
+ssh pi@192.168.0.104 'sudo journalctl -u lelamp-{livekit,api,frontend}.service -f'
+```
+
+**访问地址：**
+- Web 界面：http://192.168.0.104:5173
+- API 文档：http://192.168.0.104:8000/docs
+- 健康检查：http://192.168.0.104:8000/health
+
+**方式二：仅 LiveKit 服务（纯语音交互）**
+
+```bash
+# 仅设置 LiveKit Tmux 服务
 ./scripts/setup_livekit_tmux_service.sh
 
 # 管理服务
@@ -254,9 +283,7 @@ print('✅ 数据库初始化完成')
 ./scripts/livekit_service_manager.sh attach    # 连接到 tmux
 ```
 
-详细说明请参考：[自动启动配置指南](docs/AUTO_STARTUP_GUIDE.md)
-
-**方式二：手动启动（开发调试）**
+**方式三：手动启动（开发调试）**
 
 ```bash
 sudo uv run main.py console
@@ -271,36 +298,20 @@ INFO:root:VisionService started
 INFO:livekit:Connected to LiveKit
 ```
 
-#### 7. 启动 API 服务器
+在 Web Client 中自动连接到本地服务器，点击"连接设备"即可开始使用！🎉
+
+**开发模式下单独启动服务：**
+
+如果需要单独启动 API 或 Frontend 服务进行开发调试：
+
 ```bash
-# 方式1: 使用 UV (推荐)
+# API 服务器（开发模式）
 uv run uvicorn lelamp.api.app:app --host 0.0.0.0 --port 8000 --reload
 
-# 方式2: 直接使用 Python
-.venv/bin/python -m uvicorn lelamp.api.app:app --host 0.0.0.0 --port 8000
-
-# 生产环境 (多进程)
-.venv/bin/python -m uvicorn lelamp.api.app:app --host 0.0.0.0 --port 8000 --workers 4
-```
-
-**API 端点**:
-- 健康检查: `http://localhost:8000/health`
-- API 文档: `http://localhost:8000/docs`
-- WebSocket: `ws://localhost:8000/api/ws/{lamp_id}`
-
-#### 8. 启动 Web Client
-```bash
-# 开发模式 (热更新)
+# Web Client（开发模式）
 cd web
 npm run dev
-
-# 生产构建
-npm run build
-
-# 访问: http://localhost:5173
 ```
-
-在 Web Client 中输入服务器地址 `http://localhost:8000`，点击"连接设备"即可开始使用！🎉
 
 ---
 
