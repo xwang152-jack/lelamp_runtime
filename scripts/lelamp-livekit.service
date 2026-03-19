@@ -13,16 +13,16 @@ EnvironmentFile=/home/pi/lelamp_runtime/.env
 # 启动 tmux 会话运行 LiveKit Console 模式
 ExecStart=/usr/bin/tmux new-session -d -s livekit -n livekit 'cd /home/pi/lelamp_runtime && /usr/local/bin/uv run python main.py Console'
 
-# 优雅停止：发送 Ctrl+C 然后关闭会话
-ExecStop=/usr/bin/tmux send-keys -t livekit C-c
+# 优雅停止：发送 Ctrl+C 然后关闭会话（忽略不存在的会话）
+ExecStop=/bin/sh -c '/usr/bin/tmux send-keys -t livekit C-c || true'
 ExecStop=/bin/sleep 2
-ExecStop=/usr/bin/tmux kill-session -t livekit
+ExecStop=/bin/sh -c '/usr/bin/tmux kill-session -t livekit || true'
 
 # 自动重启配置
-Restart=always
-RestartSec=10
-StartLimitInterval=60
-StartLimitBurst=3
+Restart=on-failure
+RestartSec=5
+StartLimitInterval=120
+StartLimitBurst=5
 
 # 日志配置
 StandardOutput=journal
