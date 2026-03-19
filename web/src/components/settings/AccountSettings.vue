@@ -1,84 +1,99 @@
 <template>
   <div class="account-settings">
-    <!-- User Info Card -->
-    <div class="user-card">
-      <div class="user-avatar">
-        <span class="avatar-text">{{ userInitial }}</span>
-      </div>
-      <div class="user-info">
-        <h3 class="user-name">{{ authStore.user?.username }}</h3>
-        <p class="user-email">{{ authStore.user?.email }}</p>
-      </div>
-      <div class="user-badges">
-        <el-tag v-if="authStore.isAdmin" type="warning" size="small">
-          <span class="badge-icon">👑</span>
-          管理员
-        </el-tag>
-        <el-tag v-else type="info" size="small">免费用户</el-tag>
+    <!-- 未登录状态 -->
+    <div v-if="!isAuthenticated" class="not-logged-in">
+      <div class="login-prompt">
+        <span class="prompt-icon">🔐</span>
+        <h3 class="prompt-title">尚未登录</h3>
+        <p class="prompt-desc">登录后可使用账户管理和设备绑定等功能</p>
+        <el-button type="primary" class="login-btn" @click="goToAuth">
+          去登录
+        </el-button>
       </div>
     </div>
 
-    <!-- Premium Features Notice -->
-    <div class="premium-notice">
-      <div class="notice-header">
-        <span class="notice-icon">✨</span>
-        <h4 class="notice-title">升级到高级版</h4>
-      </div>
-      <p class="notice-desc">解锁更多功能，享受更好的体验</p>
-      <div class="feature-list">
-        <div class="feature-item">
-          <span class="feature-icon">🔧</span>
-          <span>电机健康监控</span>
-          <el-tag v-if="hasMotorHealth" type="success" size="small">已解锁</el-tag>
-          <el-tag v-else type="info" size="small">高级功能</el-tag>
+    <!-- 已登录状态 -->
+    <template v-else>
+      <!-- User Info Card -->
+      <div class="user-card">
+        <div class="user-avatar">
+          <span class="avatar-text">{{ userInitial }}</span>
         </div>
-        <div class="feature-item">
-          <span class="feature-icon">🧠</span>
-          <span>高级 AI 模型</span>
-          <el-tag v-if="hasAdvancedAI" type="success" size="small">已解锁</el-tag>
-          <el-tag v-else type="info" size="small">高级功能</el-tag>
+        <div class="user-info">
+          <h3 class="user-name">{{ authStore.user?.username }}</h3>
+          <p class="user-email">{{ authStore.user?.email }}</p>
         </div>
-        <div class="feature-item">
-          <span class="feature-icon">📦</span>
-          <span>设备绑定</span>
-          <el-tag v-if="hasDeviceBinding" type="success" size="small">已解锁</el-tag>
-          <el-tag v-else type="info" size="small">需登录</el-tag>
+        <div class="user-badges">
+          <el-tag v-if="authStore.isAdmin" type="warning" size="small">
+            <span class="badge-icon">👑</span>
+            管理员
+          </el-tag>
+          <el-tag v-else type="info" size="small">免费用户</el-tag>
         </div>
       </div>
-    </div>
 
-    <!-- Account Actions -->
-    <div class="account-actions">
-      <el-button
-        type="primary"
-        class="action-btn"
-        @click="goToProfile"
-      >
-        <span class="btn-icon">👤</span>
-        个人中心
-      </el-button>
-      <el-button
-        type="primary"
-        class="action-btn"
-        @click="goToDevices"
-      >
-        <span class="btn-icon">📱</span>
-        设备管理
-      </el-button>
-    </div>
+      <!-- Premium Features Notice -->
+      <div class="premium-notice">
+        <div class="notice-header">
+          <span class="notice-icon">✨</span>
+          <h4 class="notice-title">升级到高级版</h4>
+        </div>
+        <p class="notice-desc">解锁更多功能，享受更好的体验</p>
+        <div class="feature-list">
+          <div class="feature-item">
+            <span class="feature-icon">🔧</span>
+            <span>电机健康监控</span>
+            <el-tag v-if="hasMotorHealth" type="success" size="small">已解锁</el-tag>
+            <el-tag v-else type="info" size="small">高级功能</el-tag>
+          </div>
+          <div class="feature-item">
+            <span class="feature-icon">🧠</span>
+            <span>高级 AI 模型</span>
+            <el-tag v-if="hasAdvancedAI" type="success" size="small">已解锁</el-tag>
+            <el-tag v-else type="info" size="small">高级功能</el-tag>
+          </div>
+          <div class="feature-item">
+            <span class="feature-icon">📦</span>
+            <span>设备绑定</span>
+            <el-tag v-if="hasDeviceBinding" type="success" size="small">已解锁</el-tag>
+            <el-tag v-else type="info" size="small">需登录</el-tag>
+          </div>
+        </div>
+      </div>
 
-    <!-- Logout Button -->
-    <div class="logout-section">
-      <el-button
-        type="danger"
-        plain
-        class="logout-btn"
-        @click="handleLogout"
-      >
-        <span class="btn-icon">🚪</span>
-        退出登录
-      </el-button>
-    </div>
+      <!-- Account Actions -->
+      <div class="account-actions">
+        <el-button
+          type="primary"
+          class="action-btn"
+          @click="goToProfile"
+        >
+          <span class="btn-icon">👤</span>
+          个人中心
+        </el-button>
+        <el-button
+          type="primary"
+          class="action-btn"
+          @click="goToDevices"
+        >
+          <span class="btn-icon">📱</span>
+          设备管理
+        </el-button>
+      </div>
+
+      <!-- Logout Button -->
+      <div class="logout-section">
+        <el-button
+          type="danger"
+          plain
+          class="logout-btn"
+          @click="handleLogout"
+        >
+          <span class="btn-icon">🚪</span>
+          退出登录
+        </el-button>
+      </div>
+    </template>
   </div>
 </template>
 
@@ -93,6 +108,8 @@ const router = useRouter()
 const authStore = useAuthStore()
 const subscriptionStore = useSubscriptionStore()
 
+const isAuthenticated = computed(() => authStore.isAuthenticated)
+
 const userInitial = computed(() => {
   return getUserInitial(authStore.user?.username)
 })
@@ -100,6 +117,10 @@ const userInitial = computed(() => {
 const hasMotorHealth = computed(() => subscriptionStore.hasMotorHealth)
 const hasAdvancedAI = computed(() => subscriptionStore.hasAdvancedAI)
 const hasDeviceBinding = computed(() => subscriptionStore.hasDeviceBinding)
+
+function goToAuth() {
+  router.push('/auth')
+}
 
 function goToProfile() {
   router.push('/profile')
@@ -135,6 +156,46 @@ async function handleLogout() {
   display: flex;
   flex-direction: column;
   gap: var(--lelamp-space-lg);
+}
+
+/* === Not Logged In State === */
+.not-logged-in {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 200px;
+}
+
+.login-prompt {
+  text-align: center;
+  padding: var(--lelamp-space-xl);
+  background: linear-gradient(135deg, rgba(255, 154, 118, 0.1), rgba(255, 217, 61, 0.1));
+  border: 2px dashed rgba(255, 154, 118, 0.3);
+  border-radius: var(--lelamp-radius-xl);
+  max-width: 300px;
+}
+
+.prompt-icon {
+  display: block;
+  font-size: 3rem;
+  margin-bottom: var(--lelamp-space-md);
+}
+
+.prompt-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--lelamp-text-primary);
+  margin: 0 0 var(--lelamp-space-sm);
+}
+
+.prompt-desc {
+  color: var(--lelamp-text-secondary);
+  margin: 0 0 var(--lelamp-space-lg);
+  font-size: 0.9rem;
+}
+
+.login-btn {
+  width: 100%;
 }
 
 /* === User Card === */

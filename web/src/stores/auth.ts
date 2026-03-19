@@ -285,7 +285,7 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       const updatedUser = await authApi.updateProfile(data, accessToken.value)
       user.value = updatedUser
-      localStorage.setItem(USER_STORAGE_KEY, JSON.stringify(updatedUser))
+      localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(updatedUser))
       return { success: true }
     } catch (e) {
       error.value = e instanceof Error ? e.message : '更新失败'

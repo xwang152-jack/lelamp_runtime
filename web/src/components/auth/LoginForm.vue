@@ -87,26 +87,38 @@ const rules: FormRules = {
 }
 
 async function handleSubmit() {
-  if (!formRef.value) return
+  if (!formRef.value) {
+    ElMessage.error('表单未初始化，请刷新页面重试')
+    return
+  }
 
-  await formRef.value.validate(async (valid) => {
-    if (!valid) return
-
-    loading.value = true
-    try {
-      const result = await authStore.login(form.username, form.password)
-      if (result.success) {
-        ElMessage.success('登录成功')
-        emit('success')
-      } else {
-        ElMessage.error(result.error || '登录失败')
-      }
-    } catch (e) {
-      ElMessage.error('登录失败，请稍后重试')
-    } finally {
-      loading.value = false
+  try {
+    const valid = await formRef.value.validate()
+    if (!valid) {
+      ElMessage.warning('请检查输入信息')
+      return
     }
-  })
+  } catch (error) {
+    console.error('Form validation error:', error)
+    ElMessage.error('表单验证失败')
+    return
+  }
+
+  loading.value = true
+  try {
+    const result = await authStore.login(form.username, form.password)
+    if (result.success) {
+      ElMessage.success('登录成功')
+      emit('success')
+    } else {
+      ElMessage.error(result.error || '登录失败')
+    }
+  } catch (e) {
+    console.error('Login error:', e)
+    ElMessage.error('登录失败，请稍后重试')
+  } finally {
+    loading.value = false
+  }
 }
 </script>
 

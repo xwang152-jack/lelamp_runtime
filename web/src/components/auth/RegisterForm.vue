@@ -154,30 +154,42 @@ const strengthClass = computed(() => {
 })
 
 async function handleSubmit() {
-  if (!formRef.value) return
+  if (!formRef.value) {
+    ElMessage.error('表单未初始化，请刷新页面重试')
+    return
+  }
 
-  await formRef.value.validate(async (valid) => {
-    if (!valid) return
-
-    loading.value = true
-    try {
-      const result = await authStore.register(
-        form.username,
-        form.email,
-        form.password
-      )
-      if (result.success) {
-        ElMessage.success('注册成功')
-        emit('success')
-      } else {
-        ElMessage.error(result.error || '注册失败')
-      }
-    } catch (e) {
-      ElMessage.error('注册失败，请稍后重试')
-    } finally {
-      loading.value = false
+  try {
+    const valid = await formRef.value.validate()
+    if (!valid) {
+      ElMessage.warning('请检查输入信息')
+      return
     }
-  })
+  } catch (error) {
+    console.error('Form validation error:', error)
+    ElMessage.error('表单验证失败')
+    return
+  }
+
+  loading.value = true
+  try {
+    const result = await authStore.register(
+      form.username,
+      form.email,
+      form.password
+    )
+    if (result.success) {
+      ElMessage.success('注册成功')
+      emit('success')
+    } else {
+      ElMessage.error(result.error || '注册失败')
+    }
+  } catch (e) {
+    console.error('Register error:', e)
+    ElMessage.error('注册失败，请稍后重试')
+  } finally {
+    loading.value = false
+  }
 }
 </script>
 

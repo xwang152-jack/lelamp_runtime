@@ -127,7 +127,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { useSettingsStore, useAuthStore } from '@/stores'
+import { useSettingsStore } from '@/stores'
 
 // Import all settings components
 import WiFiSettings from '@/components/settings/WiFiSettings.vue'
@@ -140,11 +140,6 @@ import BehaviorConfig from '@/components/settings/BehaviorConfig.vue'
 import UIConfig from '@/components/settings/UIConfig.vue'
 import AccountSettings from '@/components/settings/AccountSettings.vue'
 import { triggerRestart } from '@/api/settings'
-
-const router = useRouter()
-const route = useRoute()
-const settingsStore = useSettingsStore()
-const authStore = useAuthStore()
 
 const router = useRouter()
 const route = useRoute()

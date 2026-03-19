@@ -23,13 +23,13 @@ const routes: RouteRecordRaw[] = [
     path: '/room',
     name: 'room',
     component: () => import('@/views/RoomView.vue'),
-    meta: { requiresAuth: true, title: '控制台' }
+    meta: { title: '控制台' }
   },
   {
     path: '/settings',
     name: 'settings',
     component: () => import('@/views/SettingsView.vue'),
-    meta: { requiresAuth: true, title: '系统设置' }
+    meta: { title: '系统设置' }
   },
   {
     path: '/auth',
@@ -56,7 +56,7 @@ const router = createRouter({
   routes
 })
 
-router.beforeEach(async (to, from, next) => {
+router.beforeEach(async (to, _from, next) => {
   document.title = `${to.meta.title || 'LeLamp'} - LeLamp Web`
 
   // 初始化认证状态
@@ -65,8 +65,9 @@ router.beforeEach(async (to, from, next) => {
     authStore.restoreAuth()
   }
 
-  // 检查是否需要登录 (统一检查 requiresAuth 和 requiresLogin)
-  const requiresLogin = to.meta.requiresAuth === true || to.meta.requiresLogin === true
+  // 只有 /profile 和 /devices 需要登录
+  const requiresLogin = to.meta.requiresLogin === true
+
   if (requiresLogin && !authStore.isAuthenticated) {
     // 保存原始目标路径
     next({

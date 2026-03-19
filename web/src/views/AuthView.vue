@@ -74,7 +74,7 @@
       <button
         v-if="!isAuthenticated"
         class="skip-btn"
-        @click="handleSkip"
+        @click.stop="handleSkip"
       >
         跳过，稍后登录
       </button>
@@ -118,8 +118,9 @@ function handleAuthSuccess() {
 }
 
 function handleSkip() {
+  // 跳过登录，直接去目标页面或连接页面
   const redirect = (route.query.redirect as string) || '/connect'
-  router.replace(redirect)
+  router.push(redirect)
 }
 </script>
 
@@ -227,7 +228,10 @@ function handleSkip() {
   font-family: var(--lelamp-font-display);
   font-size: 2rem;
   font-weight: 700;
-  color: var(--lelamp-text-primary);
+  background: linear-gradient(135deg, var(--lelamp-peach) 0%, var(--lelamp-coral) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
   margin: 0 0 var(--lelamp-space-xs);
 }
 
