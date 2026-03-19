@@ -2,6 +2,25 @@
 
 ## 🚀 快速开始
 
+### 方法零：首次设置（Captive Portal）⭐
+
+新设备首次使用？无需知道 IP 地址！
+
+```bash
+# 在树莓派上安装 Captive Portal
+./scripts/install_captive_portal.sh
+
+# 清除设置状态（重新进入设置模式）
+ssh pi@192.168.0.104 'sudo rm /var/lib/lelamp/setup_status.json'
+```
+
+然后：
+1. 连接到 "LeLamp-Setup" WiFi 热点（密码：lelamp123）
+2. 浏览器访问 http://192.168.4.1:8080
+3. 按向导完成 WiFi 配置
+
+详细说明请参考：[Captive Portal 设置指南](CAPTIVE_PORTAL_GUIDE.md)
+
 ### 方法一：完整服务系统（推荐）⭐
 
 ```bash
