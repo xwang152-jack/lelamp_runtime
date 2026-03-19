@@ -21,6 +21,7 @@ from lelamp.api.models.websocket import (
     validate_client_message,
     is_valid_channel,
 )
+from lelamp.service.base import Priority
 
 logger = logging.getLogger("lelamp.api.websocket")
 
@@ -438,7 +439,7 @@ async def websocket_endpoint(
                             
                     asyncio.create_task(process_chat(text))
                 else:
-                    # 对于非聊天的其他指令，优先交给核心大脑 (Agent) 处理
+                    # 对于非聊天的其他指令，直接使用硬件服务处理
                     try:
                         success = False
                         result = None
@@ -447,35 +448,14 @@ async def websocket_endpoint(
                         logger.info(f"处理命令: action={action}, params={params}")
                         logger.info(f"服务状态: agent={agent is not None}, rgb_service={rgb_service is not None}, motors_service={motors_service is not None}")
 
-                        if agent:
-                            # 使用 Agent 处理命令
-                            # 注意：这里需要等待命令执行完成
-                            if hasattr(agent, '_execute_command'):
-                                logger.info("使用 Agent 执行命令")
-                                # 异步执行命令并等待结果
-                                command_result = await agent._execute_command(action, params)
-
-                                # 检查命令结果是否包含错误信息
-                                if command_result and ("失败" in command_result or "错误" in command_result or "未知指令" in command_result):
-                                    success = False
-                                    error_message = command_result
-                                    logger.warning(f"Agent 命令执行失败: {command_result}")
-                                else:
-                                    success = True
-                                    result = command_result
-                                    logger.info(f"Agent 命令执行完成: {command_result}")
-                            else:
-                                error_message = "Agent 不支持命令执行"
-                                logger.warning(error_message)
+                        # 直接调用硬件服务执行命令
+                        logger.info("使用硬件服务执行命令")
+                        success = await execute_direct_command(action, params, rgb_service, motors_service, agent)
+                        if not success:
+                            error_message = "命令执行失败或不支持"
+                            logger.warning(f"命令执行失败: {error_message}")
                         else:
-                            # 降级处理：如果没有 Agent，直接调用硬件服务
-                            logger.info("使用降级处理执行命令")
-                            success = await execute_fallback_command(action, params, rgb_service, motors_service)
-                            if not success:
-                                error_message = "命令执行失败或不支持"
-                                logger.warning(f"降级处理失败: {error_message}")
-                            else:
-                                logger.info("降级处理成功")
+                            logger.info("命令执行成功")
 
                         # 发送执行结果反馈
                         response = {
@@ -513,55 +493,84 @@ async def websocket_endpoint(
 # =============================================================================
 
 
-async def execute_fallback_command(action: str, params: dict, rgb_service, motors_service) -> bool:
+async def execute_direct_command(action: str, params: dict, rgb_service, motors_service, agent) -> bool:
     """
-    降级命令执行 - 当 Agent 不可用时直接操作硬件
+    直接命令执行 - 直接操作硬件服务
 
     Args:
         action: 命令动作
         params: 命令参数
         rgb_service: RGB 服务实例
         motors_service: 电机服务实例
+        agent: LeLamp agent 实例（可选）
 
     Returns:
         bool: 命令是否成功执行
     """
     try:
+        # RGB 固定颜色命令
         if action == "set_rgb_solid" and rgb_service:
-            r = params.get("r", 0)
-            g = params.get("g", 0)
-            b = params.get("b", 0)
-            rgb_service.dispatch("solid", (r, g, b))
+            r = params.get("r", params.get("red", 0))
+            g = params.get("g", params.get("green", 0))
+            b = params.get("b", params.get("blue", 0))
+            rgb_service.dispatch("solid", (r, g, b), priority=Priority.HIGH)
             return True
 
-        elif action.startswith("rgb_effect_") and rgb_service:
+        # RGB 效果命令
+        elif action in ["rgb_effect_rainbow", "rgb_effect_breathing", "rgb_effect_wave", "rgb_effect_fire", "rgb_effect_emoji"] and rgb_service:
             effect_name = action.replace("rgb_effect_", "")
-            rgb_service.dispatch("effect", {"name": effect_name})
+            effect_params = {**params, "name": effect_name}
+            rgb_service.dispatch("effect", effect_params, priority=Priority.HIGH)
             return True
 
+        # 停止 RGB 效果
         elif action == "stop_rgb_effect" and rgb_service:
-            rgb_service.dispatch("clear", None)
+            rgb_service.dispatch("clear", None, priority=Priority.HIGH)
             return True
 
+        # RGB 图案绘制
+        elif action == "paint_rgb_pattern" and rgb_service:
+            pattern = params.get("pattern", "")
+            if pattern:
+                rgb_service.dispatch("paint", pattern, priority=Priority.HIGH)
+                return True
+
+        # RGB 亮度设置
+        elif action == "set_rgb_brightness" and rgb_service:
+            percent = params.get("percent", 25)
+            rgb_service.dispatch("brightness", percent, priority=Priority.HIGH)
+            return True
+
+        # 电机移动命令
         elif action == "move_joint" and motors_service:
             joint_name = params.get("joint_name")
             angle = params.get("angle")
             if joint_name and angle is not None:
-                motors_service.dispatch("move_joint", {"joint": joint_name, "angle": float(angle)})
+                motors_service.dispatch("move_joint", {"joint": joint_name, "angle": float(angle)}, priority=Priority.HIGH)
                 return True
 
+        # 播放录制动作
         elif action == "play_recording" and motors_service:
             recording_name = params.get("recording_name")
             if recording_name:
-                motors_service.dispatch("play", recording_name)
+                motors_service.dispatch("play", recording_name, priority=Priority.HIGH)
+                return True
+
+        # 音量设置
+        elif action == "set_volume" and agent:
+            volume_percent = params.get("volume_percent", params.get("volume", 50))
+            # 异步调用 agent 的方法
+            if hasattr(agent, '_set_system_volume'):
+                import asyncio
+                asyncio.create_task(agent._set_system_volume(volume_percent))
                 return True
 
         # 不支持的命令
-        logger.warning(f"降级处理不支持命令: {action}")
+        logger.warning(f"不支持的命令: {action}")
         return False
 
     except Exception as e:
-        logger.error(f"降级命令执行失败: {e}", exc_info=True)
+        logger.error(f"命令执行失败: {e}", exc_info=True)
         return False
 
 
