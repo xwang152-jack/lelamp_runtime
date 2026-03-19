@@ -63,16 +63,26 @@ class MotorsService(ServiceBase):
             self.logger.info("Motor health monitoring started")
 
     def stop(self, timeout: float = 5.0):
+        # 标记服务正在停止，防止新事件处理
+        self._cancel_playback.set()
+
         # 停止健康检查线程
         if self._health_check_thread and self._health_check_thread.is_alive():
             self._health_check_stop.set()
             self._health_check_thread.join(timeout=timeout)
             self.logger.info("Motor health check thread stopped")
 
+        # 先断开机器人连接，但保留对象引用用于最后的事件处理
         if self.robot:
             self.robot.disconnect()
-            self.robot = None
+            # 不立即设置为 None，让剩余事件能正常完成
+            # 等待事件队列清空后再设置为 None
+
+        # 停止服务基础类（这会等待事件队列清空）
         super().stop(timeout)
+
+        # 现在可以安全设置为 None
+        self.robot = None
     
     def handle_event(self, event_type: str, payload: Any):
         if event_type == "play":
@@ -86,6 +96,11 @@ class MotorsService(ServiceBase):
     
     def _handle_move_joint(self, payload: dict):
         """Move a single joint to a specified angle"""
+        # 检查服务是否正在停止
+        if self._cancel_playback.is_set():
+            self.logger.info("Service is stopping, ignoring move_joint request")
+            return
+
         if not self.robot:
             self.logger.error("Robot not connected")
             return
@@ -99,6 +114,11 @@ class MotorsService(ServiceBase):
 
         try:
             with self._bus_lock:
+                # 最后一次检查 robot 连接
+                if not self.robot:
+                    self.logger.error("Robot disconnected before move operation")
+                    return
+
                 # Get current positions of all joints first
                 obs = self.robot.get_observation()
                 action = {}
@@ -114,7 +134,7 @@ class MotorsService(ServiceBase):
 
                 # Send full action with all joints
                 self.robot.send_action(action)
-            
+
             self.logger.info(f"Moved joint {joint_name} to {angle} degrees")
         except Exception as e:
             self.logger.error(f"Error moving joint {joint_name}: {e}")
@@ -174,11 +194,14 @@ class MotorsService(ServiceBase):
 
     def _handle_play(self, recording_name: str):
         """Play a recording by name"""
+        # 检查服务是否正在停止
+        if self._cancel_playback.is_set():
+            self.logger.info("Service is stopping, ignoring play request")
+            return
+
         if not self.robot:
             self.logger.error("Robot not connected")
             return
-
-        self._cancel_playback.clear()
 
         # 使用缓存加载录制数据
         actions = self._load_recording(recording_name)
@@ -187,26 +210,38 @@ class MotorsService(ServiceBase):
 
         try:
             self.logger.info(f"Playing {len(actions)} actions from {recording_name}")
-            
+
             for row in actions:
+                # 在每个动作前检查是否需要停止
                 if self._cancel_playback.is_set():
                     self.logger.info(f"Playback cancelled: {recording_name}")
                     break
+
+                # 再次检查 robot 连接
+                if not self.robot:
+                    self.logger.error("Robot disconnected during playback")
+                    return
+
                 t0 = time.perf_counter()
-                
+
                 # Extract action data (exclude timestamp column)
                 action = {key: float(value) for key, value in row.items() if key != 'timestamp'}
-                
+
                 with self._bus_lock:
-                    self.robot.send_action(action)
-                
+                    if self.robot:  # 最后一次检查
+                        self.robot.send_action(action)
+                    else:
+                        self.logger.error("Robot disconnected before sending action")
+                        return
+
                 # Use time.sleep instead of busy_wait to avoid blocking other threads
                 sleep_time = 1.0 / self.fps - (time.perf_counter() - t0)
                 if sleep_time > 0:
                     time.sleep(sleep_time)
-            
-            self.logger.info(f"Finished playing recording: {recording_name}")
-            
+
+            if not self._cancel_playback.is_set():
+                self.logger.info(f"Finished playing recording: {recording_name}")
+
         except Exception as e:
             self.logger.error(f"Error playing recording {recording_name}: {e}")
     
