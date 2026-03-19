@@ -53,6 +53,19 @@
 
 - **访问方式**：SSH 到树莓派直接交互
 
+### 4. LiveKit Tmux 模式（推荐用于语音交互）⭐
+- **适用场景**：日常语音交互、后台持久化运行
+- **特点**：
+  - 使用 tmux 后台会话运行 LiveKit Console 模式
+  - 满足 LiveKit Console 要求，无需显示窗口
+  - systemd 自动管理开机自启和重启
+  - 支持手动连接 tmux 会话查看实时日志
+  - 优雅停止（Ctrl+C）避免强制 kill
+
+- **访问方式**：
+  - 通过 LiveKit 客户端连接
+  - SSH 连接 tmux 会话：`tmux attach -t livekit`
+
 ## 🛠️ 管理命令
 
 ### 服务状态查看
@@ -151,6 +164,47 @@ ssh pi@192.168.0.104 'ls -la ~/lelamp_runtime/web/dist/'
 ```bash
 # 在树莓派上重新安装依赖
 ssh pi@192.168.0.104 'cd ~/lelamp_runtime && sudo uv sync --extra api --extra hardware'
+```
+
+## 🚀 LiveKit Tmux 模式设置
+
+### 快速设置
+
+```bash
+./scripts/setup_livekit_tmux_service.sh
+```
+
+### 管理命令
+
+```bash
+# 查看服务状态
+ssh pi@192.168.0.104 'sudo systemctl status lelamp-livekit.service'
+
+# 查看实时日志
+ssh pi@192.168.0.104 'sudo journalctl -u lelamp-livekit.service -f'
+
+# 连接到 tmux 会话（查看实时输出）
+ssh pi@192.168.0.104 'tmux attach -t livekit'
+# 退出 tmux 会话：按 Ctrl+B 然后 D
+
+# 重启服务
+ssh pi@192.168.0.104 'sudo systemctl restart lelamp-livekit.service'
+
+# 停止服务
+ssh pi@192.168.0.104 'sudo systemctl stop lelamp-livekit.service'
+```
+
+### 故障排除
+
+```bash
+# 检查 tmux 会话状态
+ssh pi@192.168.0.104 'tmux list-sessions'
+
+# 手动启动测试
+ssh pi@192.168.0.104 'tmux new-session -s test -d "cd /home/pi/lelamp_runtime && uv run python main.py Console"'
+
+# 查看详细日志
+ssh pi@192.168.0.104 'sudo journalctl -u lelamp-livekit.service -n 100 --no-pager'
 ```
 
 ## 🎯 推荐工作流
