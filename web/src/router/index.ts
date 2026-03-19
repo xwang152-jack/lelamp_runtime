@@ -55,11 +55,11 @@ router.beforeEach(async (to, _from, next) => {
           next({ path: '/setup', replace: true })
           return
         }
-      } 
-      // 如果设备已配置且当前在根路径或连接页面
-      else if (data.is_configured && (to.path === '/' || to.path === '/connect')) {
-        // 跳过连接页面,直接进入控制台
-        next({ path: '/room', replace: true })
+      }
+      // 如果设备已配置且用户直接访问根路径
+      else if (data.is_configured && to.path === '/') {
+        // 跳转到连接页面,让用户手动连接到设备
+        next({ path: '/connect', replace: true })
         return
       }
     }
