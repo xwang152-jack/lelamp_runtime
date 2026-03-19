@@ -25,6 +25,11 @@ class APConfig:
     channel: int = 6
     hw_mode: str = "g"  # a, b, g, n, ac
     interface: str = "wlan0"
+    # Captive Portal 相关配置
+    captive_portal_enabled: bool = False
+    portal_port: int = 8080
+    dhcp_start: str = "192.168.4.100"
+    dhcp_end: str = "192.168.4.200"
 
     def __post_init__(self):
         """验证配置参数"""
@@ -198,6 +203,58 @@ class APManager:
             except Exception as e:
                 logger.error(f"Failed to stop AP mode: {e}", exc_info=True)
                 return False
+
+    # ==================== Captive Portal Support ====================
+
+    async def check_captive_portal_enabled(self) -> bool:
+        """
+        检查是否启用了 Captive Portal 模式
+
+        Returns:
+            是否启用 Captive Portal
+        """
+        return self._config.captive_portal_enabled
+
+    def get_portal_config(self) -> dict:
+        """
+        获取 Captive Portal 配置信息
+
+        Returns:
+            Portal 配置字典
+        """
+        return {
+            "enabled": self._config.captive_portal_enabled,
+            "ssid": self._config.ssid,
+            "password": self._config.password,
+            "ip_address": self._config.ip_address,
+            "port": self._config.portal_port,
+            "dhcp_start": self._config.dhcp_start,
+            "dhcp_end": self._config.dhcp_end,
+        }
+
+    async def is_captive_portal_running(self) -> bool:
+        """
+        检查 Captive Portal 服务是否正在运行
+
+        Returns:
+            Portal 是否运行
+        """
+        if not self._config.captive_portal_enabled:
+            return False
+
+        # 检查端口是否在监听
+        try:
+            process = await asyncio.create_subprocess_exec(
+                "sudo", "netstat", "-tlnp",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, _ = await process.communicate()
+            port_str = f":{self._config.portal_port}"
+            return port_str in stdout.decode()
+        except Exception as e:
+            logger.error(f"检查 Portal 状态失败: {e}")
+            return False
 
     async def is_in_ap_mode(self) -> bool:
         """
