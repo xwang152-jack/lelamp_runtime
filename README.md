@@ -239,6 +239,25 @@ print('✅ 数据库初始化完成')
 **注意**: 如果不使用 Web 设置界面，可以跳过此步骤。
 
 #### 7. 启动 LeLamp Agent
+
+**方式一：LiveKit Tmux 服务（推荐用于日常使用）⭐**
+
+使用 systemd + tmux 实现 LiveKit Console 模式的后台持久化运行：
+
+```bash
+# 设置 LiveKit Tmux 服务
+./scripts/setup_livekit_tmux_service.sh
+
+# 管理服务
+./scripts/livekit_service_manager.sh status    # 查看状态
+./scripts/livekit_service_manager.sh logs      # 查看日志
+./scripts/livekit_service_manager.sh attach    # 连接到 tmux
+```
+
+详细说明请参考：[自动启动配置指南](docs/AUTO_STARTUP_GUIDE.md)
+
+**方式二：手动启动（开发调试）**
+
 ```bash
 sudo uv run main.py console
 ```
