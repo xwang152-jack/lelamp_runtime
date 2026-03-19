@@ -876,7 +876,67 @@ INFO     service.vision VisionService started
 - 台灯会通过系统扬声器回应
 - 按 `Ctrl+C` 退出
 
-### 5.3 Room 模式（远程语音访问）
+### 5.3 设置开机自动启动
+
+LeLamp 提供了便捷的自动启动设置脚本，让台灯开机后自动进入对话模式。
+
+#### 使用自动启动脚本
+
+```bash
+cd ~/lelamp_runtime
+
+# 运行自动启动设置脚本
+bash scripts/setup_full_service.sh
+```
+
+**脚本功能**：
+- ✅ 自动配置 systemd 服务
+- ✅ 设置开机自启
+- ✅ 启动语音对话代理
+- ✅ 配置重启保护
+
+**启动模式说明**：
+
+1. **对话模式**（推荐，日常使用）
+   - 启动语音对话代理
+   - 支持直接语音交互
+   - 低资源占用
+   - 开机自动运行
+
+2. **API 模式**（Web 控制）
+   - 启动 Web API 服务器
+   - 提供控制面板和 REST API
+   - 支持远程控制
+
+3. **手动控制**
+   ```bash
+   # 启动对话模式
+   sudo systemctl start lelamp-conversation
+
+   # 启动 API 模式
+   sudo systemctl start lelamp-api
+   ```
+
+#### 服务管理命令
+
+```bash
+# 查看对话模式状态
+sudo systemctl status lelamp-conversation
+
+# 查看API模式状态
+sudo systemctl status lelamp-api
+
+# 重启对话服务
+sudo systemctl restart lelamp-conversation
+
+# 停止服务
+sudo systemctl stop lelamp-conversation
+
+# 查看实时日志
+sudo journalctl -u lelamp-conversation -f
+```
+
+### 5.4 Room 模式（远程语音访问）
 
 Room 模式用于手机 App 远程访问，**需要 LiveKit 配置**。
 
@@ -887,7 +947,7 @@ cd ~/lelamp_runtime
 sudo uv run main.py dev
 ```
 
-**注意**: 如果只需要本地测试，使用 Console 模式即可，不需要配置 LiveKit。
+**注意**: 如果只需要本地测试，使用对话模式（setup_full_service.sh）即可，不需要配置 LiveKit。
 
 ### 5.3 启动前端开发服务器
 
@@ -1403,7 +1463,190 @@ GIT_LFS_SKIP_SMUDGE=1 uv sync
 
 ---
 
-**文档版本**: v0.1.0
+## 快速启动指南
+
+### 方式一：自动启动（推荐）
+
+适用于已经完成配置的台灯，一键启动所有功能：
+
+```bash
+cd ~/lelamp_runtime
+bash scripts/setup_full_service.sh
+```
+
+**优点**：
+- 🔧 自动配置系统服务
+- 🚀 开机自动启动
+- 🔄 自动重启保护
+- 💡 开箱即用
+
+### 方式二：手动启动
+
+开发调试或临时使用：
+
+```bash
+cd ~/lelamp_runtime
+
+# 对话模式（语音交互）
+sudo uv run main.py console
+
+# API 模式（Web 控制）
+sudo uv run python -m uvicorn lelamp.api.app:app --host 0.0.0.0 --port 8000
+```
+
+---
+
+## 常见使用场景
+
+### 场景 1：日常使用 - 语音助手
+
+**推荐模式**：自动启动（对话模式）
+
+**设置**：
+```bash
+bash scripts/setup_full_service.sh
+```
+
+**使用**：
+- 直接对台灯说话即可开始对话
+- 支持天气查询、讲故事、控制家电等
+- 开机自动进入待机状态
+
+**管理**：
+```bash
+# 查看状态
+ssh pi@192.168.0.104 'sudo systemctl status lelamp-conversation'
+
+# 重启服务
+ssh pi@192.168.0.104 'sudo systemctl restart lelamp-conversation'
+```
+
+### 场景 2：开发调试 - 功能测试
+
+**推荐模式**：手动启动
+
+**启动**：
+```bash
+# 终端 1：启动对话模式
+sudo uv run main.py console
+
+# 终端 2：启动 API 服务（可选）
+sudo uv run python -m uvicorn lelamp.api.app:app --host 0.0.0.0 --port 8000
+```
+
+**调试工具**：
+```bash
+# API 诊断
+python diagnose_api.py
+
+# 灯光测试
+bash scripts/test_light.sh
+
+# 电机测试
+uv run -m lelamp.test.test_motors --id lelamp --port /dev/ttyACM0
+```
+
+### 场景 3：生产部署 - 远程访问
+
+**推荐模式**：systemd 服务 + LiveKit
+
+**设置**：
+1. 配置 LiveKit 账户
+2. 修改 systemd 服务配置使用 Room 模式
+3. 设置端口转发（如果需要外网访问）
+
+---
+
+## 新增功能说明
+
+### 🎙️ 语音对话系统
+
+台灯现在支持完整的语音交互功能：
+
+**唤醒方式**：
+- 直接对台灯说话（无需特定唤醒词）
+- 系统自动检测语音输入
+
+**对话状态指示**：
+- 🟡 暖白色：待机状态
+- 🔵 蓝色：正在倾听
+- 🟣 紫色：正在思考
+- 🟢 随机彩色：正在回应
+
+**支持功能**：
+- 💬 日常对话
+- 🌤️ 天气查询
+- 📚 讲故事、笑话
+- 🎮 语音控制（开灯、动作等）
+- 📷 拍照识别（需配置 ModelScope）
+
+### 🌐 自动启动管理
+
+**服务管理**：
+```bash
+# 查看所有 LeLamp 服务
+systemctl status lelamp-*
+
+# 重启所有服务
+systemctl restart lelamp-*
+
+# 停止所有服务
+systemctl stop lelamp-*
+```
+
+**日志查看**：
+```bash
+# 实时日志
+journalctl -u lelamp-conversation -f
+
+# 最近 50 行
+journalctl -u lelamp-conversation -n 50
+```
+
+**故障排除**：
+```bash
+# 检查服务失败原因
+systemctl status lelamp-conversation -l
+
+# 查看详细错误
+journalctl -u lelamp-conversation -n 100 --no-pager
+```
+
+### 🔧 快速命令参考
+
+**本地操作**（在树莓派上）：
+```bash
+# 快速启动对话模式
+sudo systemctl start lelamp-conversation
+
+# 快速停止
+sudo systemctl stop lelamp-conversation
+
+# 重启对话服务
+sudo systemctl restart lelamp-conversation
+
+# 查看日志
+sudo journalctl -u lelamp-conversation -f
+```
+
+**远程操作**（从其他设备）：
+```bash
+# SSH 连接后操作
+ssh pi@192.168.0.104
+
+# 查看状态
+ssh pi@192.168.0.104 'sudo systemctl status lelamp-conversation'
+
+# 重启服务
+ssh pi@192.168.0.104 'sudo systemctl restart lelamp-conversation'
+
+# 实时日志
+ssh pi@192.168.0.104 'sudo journalctl -u lelamp-conversation -f'
+```
+
+---
+
+**文档版本**: v0.1.1
 **最后更新**: 2026-03-19
 **作者**: LeLamp 开发团队
 **许可证**: 参见主项目许可证
