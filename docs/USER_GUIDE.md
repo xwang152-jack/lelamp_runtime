@@ -37,49 +37,40 @@
 │  ┌─────────────────────────────────────────────────────┐   │
 │  │          Web Browser / Mobile App                    │   │
 │  │  - 视频预览                                          │   │
-│  │  - 双向语音                                          │   │
 │  │  - 控制面板                                          │   │
-│  │  - 实时对话                                          │   │
-│  │  - 系统设置 (新增)                                   │   │
+│  │  - 文字聊天                                          │   │
+│  │  - 系统设置                                          │   │
 │  └──────────────────┬──────────────────────────────────┘   │
 └─────────────────────┼──────────────────────────────────────┘
-                      │ WebSocket + WebRTC
-                      │ HTTP/REST API (新增)
+                      │ WebSocket (ws://IP:8000/api/ws/lelamp)
+                      │ HTTP/REST API
                       │
                       ↓
-┌─────────────────────────────────────────────────────────────┐
-│               LiveKit Cloud / Self-hosted                   │
-│  - SFU (Selective Forwarding Unit)                          │
-│  - 实时音视频流转发                                          │
-│  - Data Channel 消息传输                                     │
-└──────────────────┬──────────────────────────────────────────┘
-                   │ WebSocket + DTLS/SRTP
-                   ↓
 ┌─────────────────────────────────────────────────────────────┐
 │          Raspberry Pi (LeLamp Runtime)                      │
 │                                                             │
 │  ┌─────────────────────────────────────────────────────┐   │
-│  │  FastAPI Server (新增)                              │   │
-│  │  - /api/system/* (WiFi、重启、系统信息)               │   │
-│  │  - /api/settings/* (配置管理)                        │   │
+│  │  FastAPI Server (端口 8000) - 主服务                 │   │
+│  │  - WebSocket: /api/ws/{lamp_id}                      │   │
 │  │  - /api/devices/* (设备控制)                         │   │
-│  │  - /api/history/* (历史记录)                         │   │
+│  │  - /api/chat/* (文字聊天)                            │   │
+│  │  - /api/settings/* (配置管理)                        │   │
+│  │  - /api/system/* (WiFi、重启、系统信息)               │   │
 │  └──────────────────┬──────────────────────────────────┘   │
 │                     │                                        │
 │  ┌──────────────────┴─────────────────────────────────────┐ │
-│  │  LeLamp Agent (main.py)                             │ │
-│  │  - DeepSeek LLM                                      │ │
-│  │  - Qwen VL (视觉识别)                                │ │
-│  │  - Baidu Speech (STT/TTS)                            │ │
-│  │  - LiveKit Agents SDK                                │ │
-│  └─────────┬───────────────────────────────────────────┘   │
-│            │                                                 │
-│  ┌─────────┴───────────────────────────────────────────┐   │
-│  │  Services (多线程)                                   │   │
-│  │  ┌──────────────┐  ┌──────────────┐  ┌──────────┐  │   │
-│  │  │ Motors       │  │ RGB LEDs     │  │ Vision   │  │   │
-│  │  │ Service      │  │ Service      │  │ Service  │  │   │
-│  │  └──────────────┘  └──────────────┘  └──────────┘  │   │
+│  │  MotorsService → 电机硬件                              │ │
+│  │  RGBService → LED 灯光                                 │ │
+│  │  VisionService → 摄像头                                │ │
+│  │  LeLamp Agent → 状态管理、消息广播                     │ │
+│  └─────────────────────────────────────────────────────┘   │
+│                                                             │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │  LiveKit Agent (main.py) - 可选，语音功能             │   │
+│  │  - DeepSeek LLM                                      │   │
+│  │  - Qwen VL (视觉识别)                                │   │
+│  │  - Baidu Speech (STT/TTS)                            │   │
+│  │  - LiveKit Agents SDK                                │   │
 │  └─────────────────────────────────────────────────────┘   │
 │            │                 │                 │            │
 │  ┌─────────┴─────────────────┴─────────────────┴───────┐   │
@@ -91,6 +82,10 @@
 │  └─────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────┘
 ```
+
+**服务说明**:
+- **FastAPI 服务** (必需) - 设备控制、文字聊天、系统配置
+- **LiveKit Agent** (可选) - 语音对话功能，需要 LiveKit 配置
 
 ### 通信协议
 
@@ -139,12 +134,12 @@
 #### 软件
 - ✅ Python 3.12+ (已安装)
 - ✅ UV Package Manager
-- ✅ LiveKit Account (或自托管 LiveKit Server)
 
 #### 服务
-- ✅ DeepSeek API Key
-- ✅ ModelScope API Key (视觉功能)
-- ✅ Baidu Speech API Key (语音服务)
+- ✅ **DeepSeek API Key** (必需 - LLM 对话)
+- ⚪ **Baidu Speech API Key** (语音功能需要)
+- ⚪ **LiveKit Account** (语音功能需要)
+- ⚪ **ModelScope API Key** (视觉识别 - 可选)
 
 ### 5 分钟快速启动
 
@@ -170,72 +165,79 @@ cp .env.example .env
 nano .env
 ```
 
-**最小配置** (必填项):
+**最小配置** (必填项 - 设备控制 + 文字聊天):
 ```bash
-# LiveKit (实时通信)
-LIVEKIT_URL=wss://your-livekit-server.livekit.cloud
-LIVEKIT_API_KEY=your_api_key_here
-LIVEKIT_API_SECRET=your_api_secret_here
-
-# DeepSeek (LLM)
+# DeepSeek (LLM - 必需)
 DEEPSEEK_API_KEY=your_deepseek_api_key_here
-
-# Baidu Speech (语音服务)
-BAIDU_SPEECH_API_KEY=your_baidu_api_key_here
-BAIDU_SPEECH_SECRET_KEY=your_baidu_secret_key_here
 
 # 开发模式（跳过授权检查）
 LELAMP_DEV_MODE=1
+```
 
+**本地语音功能配置** (Console 模式):
+```bash
+# Baidu Speech (语音服务 - Console 模式需要)
+BAIDU_SPEECH_API_KEY=your_baidu_api_key_here
+BAIDU_SPEECH_SECRET_KEY=your_baidu_secret_key_here
+```
+
+**远程访问配置** (可选 - Room 模式/手机 App):
+```bash
+# LiveKit (远程语音对话 - 可选)
+LIVEKIT_URL=wss://your-livekit-server.livekit.cloud
+LIVEKIT_API_KEY=your_api_key_here
+LIVEKIT_API_SECRET=your_api_secret_here
+```
+
+**其他可选配置**:
+```bash
 # ModelScope (视觉识别 - 可选)
 MODELSCOPE_API_KEY=your_modelscope_api_key_here
 ```
 
-#### Step 4: 启动 LeLamp Agent
+#### Step 4: 启动 FastAPI 服务
 ```bash
+# 启动 FastAPI 服务（需要 sudo 权限用于 LED 控制）
+sudo uv run uvicorn lelamp.api.app:app --host 0.0.0.0 --port 8000
+```
+
+**预期输出**:
+```
+INFO:     Started server process [12345]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+```
+
+**说明**: FastAPI 服务提供设备控制、文字聊天和系统配置功能。
+
+#### Step 5: 启动 Console 模式 (本地语音测试)
+
+**前置条件**: 需要配置 Baidu Speech API Key
+
+```bash
+# 在另一个终端窗口（如果需要语音功能）
+cd ~/lelamp_runtime
 sudo uv run main.py console
 ```
 
 **预期输出**:
 ```
-INFO:root:config ready: lamp_id=lelamp port=/dev/ttyACM0 vision=True camera=0
-INFO:root:MotorsService started
-INFO:root:RGBService started
-INFO:root:VisionService started
-INFO:livekit:Connected to LiveKit
+Agents   Starting console mode 🚀
+INFO     livekit.agents starting worker
+DEBUG    livekit.agents using audio io: `Console` -> `AgentSession` -> `Console`
+INFO     lelamp config ready: lamp_id=lelamp port=/dev/ttyACM0 vision=True camera=0
+INFO     service.motors MotorsService started
+INFO     service.rgb RGBService started
+INFO     service.vision VisionService started
 ```
 
-#### Step 4.5: 启动 API 服务器 (可选 - 用于 Web 设置)
-```bash
-# 在另一个终端窗口
-cd ~/lelamp_runtime
-uv run python -m uvicorn lelamp.api.app:app --host 0.0.0.0 --port 8000
-```
+**使用方式**:
+- 直接对着电脑麦克风说话
+- 台灯会通过系统扬声器回应
+- **不需要 LiveKit 配置**
 
-**预期输出**:
-```
-INFO:     Started server process [xxxxx]
-INFO:     Waiting for application startup.
-INFO:     Application startup complete.
-INFO:     Uvicorn running on http://0.0.0.0:8000
-```
-
-**说明**: API 服务器提供 Web 设置页面所需的后端接口，包括 WiFi 配置和系统设置管理。
-
-#### Step 5: 生成 Web Client Token
-```bash
-# 在另一个终端窗口
-cd ~/lelamp_runtime
-uv run python scripts/generate_client_token.py --room lelamp-room --user jack
-
-# 输出:
-# Room: lelamp-room
-# User: jack
-# --------------------
-# Token:
-# eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
-# --------------------
-```
+**注意**: 如果只需要文字聊天和设备控制，可以跳过此步骤。
 
 #### Step 6: 打开 Web Frontend
 ```bash
@@ -255,14 +257,13 @@ VITE_API_BASE_URL=http://your-raspberry-pi:8000  # API 服务器地址
 ```
 
 **在 Web Client 中**:
-1. 粘贴 LiveKit Server URL
-2. 粘贴生成的 Token
-3. 点击 "连接设备"
-4. 开始使用！🎉
+1. 输入 API 地址：`http://<树莓派IP>:8000`
+2. 点击 "连接设备"
+3. 开始使用！🎉
 
 **访问设置页面**:
 - 连接后点击右上角 "设置" 按钮
-- 或直接访问 `http://localhost:5173/settings`（树莓派本机）/ `http://<树莓派IP>:5173/settings`（局域网）
+- 或直接访问 `http://<树莓派IP>:5173/settings`
 
 ---
 
@@ -272,7 +273,7 @@ VITE_API_BASE_URL=http://your-raspberry-pi:8000  # API 服务器地址
 
 #### LiveKit 配置
 ```bash
-# LiveKit Server WebSocket URL
+# LiveKit Server WebSocket URL (可选 - 仅远程语音访问需要)
 LIVEKIT_URL=wss://your-livekit-server.livekit.cloud
 
 # LiveKit API 凭证 (用于 Token 生成)
@@ -285,6 +286,16 @@ LIVEKIT_API_SECRET=your_api_secret_here
 # 从 LiveKit Cloud Dashboard 复制
 # https://cloud.livekit.io/projects/YOUR_PROJECT/settings
 ```
+
+**两种语音模式**:
+| 模式 | 命令 | 是否需要 LiveKit |
+|------|------|------------------|
+| **Console 模式** | `main.py console` | ❌ 不需要 (本地测试) |
+| **Room 模式** | `main.py dev` | ✅ 需要 (远程访问) |
+
+**说明**:
+- **本地语音测试** (Console 模式)：不需要 LiveKit 配置
+- **远程语音访问** (手机 App)：需要 LiveKit 配置
 
 #### DeepSeek LLM 配置
 ```bash
@@ -400,7 +411,28 @@ LELAMP_SUPPRESS_MOTION_AFTER_LIGHT_S=2
 
 ### 1. 语音对话
 
-**使用方式**: 直接对着台灯说话
+LeLamp 支持两种语音模式：
+
+#### Console 模式（本地测试）
+
+**前置条件**:
+- 配置 Baidu Speech API Key
+- 运行 `sudo uv run main.py console`
+
+**使用方式**: 直接对着电脑麦克风说话，台灯会通过系统扬声器回应
+- ✅ 不需要 LiveKit 配置
+- ✅ 适合本地开发测试
+
+#### Room 模式（远程访问）
+
+**前置条件**:
+- 配置 Baidu Speech API Key
+- 配置 LiveKit URL、API Key、Secret
+- 运行 `sudo uv run main.py dev`
+
+**使用方式**: 通过手机 App 远程访问
+- ✅ 支持远程语音对话
+- ✅ 支持 App 控制
 
 **示例对话**:
 ```
@@ -817,39 +849,41 @@ BOCHA_API_KEY=your_bocha_api_key_here
 **症状**: Web Client 显示 "连接失败: Connection timeout"
 
 **可能原因**:
-1. LiveKit Server URL 错误
-2. Token 已过期
+1. API 地址错误
+2. FastAPI 服务未启动
 3. 网络连接问题
-4. LeLamp Agent 未启动
 
 **解决方案**:
 
-**步骤 1: 检查 Agent 状态**
+**步骤 1: 检查 FastAPI 服务状态**
 ```bash
-# 查看 Agent 是否在运行
-ps aux | grep "main.py"
+# 查看服务是否在运行
+ps aux | grep "uvicorn"
 
-# 如果没有运行,启动 Agent
+# 如果没有运行,启动服务
 cd ~/lelamp_runtime
-sudo uv run main.py console
+sudo uv run uvicorn lelamp.api.app:app --host 0.0.0.0 --port 8000
 ```
 
-**步骤 2: 检查 LiveKit Server URL**
+**步骤 2: 检查 API 地址**
 ```bash
-# 确认 URL 格式正确
-echo $LIVEKIT_URL
-# 输出示例: wss://your-project.livekit.cloud
+# 确认地址格式正确
+# 应该是: http://<树莓派IP>:8000
+# 例如: http://192.168.1.100:8000
 ```
 
-**步骤 3: 重新生成 Token**
+**步骤 3: 验证服务可访问**
 ```bash
-uv run python scripts/generate_client_token.py --room lelamp-room --user test
+# 在浏览器访问
+curl http://localhost:8000/health
+# 或访问 API 文档
+http://localhost:8000/docs
 ```
 
 **步骤 4: 检查网络连接**
 ```bash
-# 测试 LiveKit Server 连通性
-curl -v https://your-project.livekit.cloud
+# 测试网络连通性
+ping <树莓派IP>
 
 # 检查防火墙
 sudo ufw status
@@ -1082,8 +1116,8 @@ LELAMP_VISION_JPEG_QUALITY=80
 #### API 安全
 - ✅ 使用环境变量存储 API Key
 - ✅ 不要提交 `.env` 文件到 Git
-- ✅ 定期更换 LiveKit Token
-- ✅ 限制 Token 有效期 (默认 1 小时)
+- ✅ 生产环境配置 HTTPS
+- ✅ 限制 API 访问权限
 
 #### 设备授权
 ```bash
@@ -1149,18 +1183,29 @@ LELAMP_OTA_URL=https://api.lelamp.com/ota/check
 
 ## 常见问题
 
-### Q1: Token 多久过期？
-**A**: 默认 1 小时。可以在生成时自定义有效期：
-```python
-token = api.AccessToken(api_key, api_secret) \
-    .with_ttl(3600)  # 1 小时 = 3600 秒
-```
+### Q1: 需要启动哪些服务？
+**A**: LeLamp 有三种运行模式：
+
+| 模式 | 命令 | 功能 | 是否必需 |
+|------|------|------|----------|
+| **FastAPI 服务** | `uvicorn lelamp.api.app:app` | Web 控制面板、设备控制、文字聊天 | ✅ 必需 |
+| **Console 模式** | `main.py console` | 本地语音测试（系统麦克风/扬声器） | ⚪ 可选 |
+| **Room 模式** | `main.py dev` | 远程语音访问（手机 App） | ⚪ 可选 |
+
+**推荐**：
+- 开发测试：FastAPI + Console 模式
+- 生产部署：FastAPI + Room 模式
+
+**注意**：
+- Console 模式**不需要 LiveKit 配置**
+- Room 模式需要 LiveKit 配置
 
 ### Q2: 可以同时连接多个客户端吗？
-**A**: 可以。LiveKit 支持多人同时连接到一个房间。每个客户端都能：
-- 看到视频流
-- 听到语音
-- 发送控制指令
+**A**: 可以。多个浏览器可以同时连接到 FastAPI 服务，每个客户端都能：
+- 控制设备
+- 发送文字聊天
+- 查看设备状态
+- 接收状态更新（WebSocket 广播）
 
 ### Q3: 如何录制新动作？
 **A**: 使用录制功能：
