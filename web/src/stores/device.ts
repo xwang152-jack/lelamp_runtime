@@ -6,6 +6,7 @@ export const useDeviceStore = defineStore('device', {
     name: 'LeLamp',
     status: 'offline',
     cameraActive: false,
+    conversationState: 'idle',
     lights: {
       color: { r: 255, g: 244, b: 229 },
       effect: null
@@ -15,6 +16,10 @@ export const useDeviceStore = defineStore('device', {
   actions: {
     setCameraActive(active: boolean) {
       this.cameraActive = active
+    },
+
+    setConversationState(state: 'idle' | 'listening' | 'thinking' | 'speaking') {
+      this.conversationState = state
     },
 
     setLightColor(r: number, g: number, b: number) {

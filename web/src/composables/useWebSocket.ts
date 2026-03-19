@@ -22,12 +22,17 @@ export function useWebSocket() {
         connectionStore.setWebSocket(ws)
         connectionStore.setConnectionStatus('connected')
         deviceStore.setStatus('online')
+        // 设置连接标记，让路由守卫知道用户已连接
+        sessionStorage.setItem('lelamp_connected', 'true')
+        sessionStorage.setItem('lelamp_server_url', url)
       }
 
       ws.onclose = () => {
         connectionStore.setConnectionStatus('disconnected')
         deviceStore.setStatus('offline')
         connectionStore.setWebSocket(null)
+        // 清除连接标记
+        sessionStorage.removeItem('lelamp_connected')
       }
 
       ws.onerror = (error) => {
@@ -81,7 +86,10 @@ export function useWebSocket() {
           }
           break
         case 'state_update':
-          // Handle backend state updates if needed
+          // Handle conversation state updates
+          if (data.conversation_state) {
+            deviceStore.setConversationState(data.conversation_state)
+          }
           break
         case 'connected':
           console.log('Backend connection confirmed:', data)

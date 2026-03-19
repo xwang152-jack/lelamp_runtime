@@ -258,18 +258,18 @@ function getSignalColor(strength: number): string {
   align-items: center;
   gap: 16px;
   padding: 12px;
-  border: 1px solid #eee;
+  border: 1px solid var(--el-border-color);
   border-radius: 8px;
-  background: #fafafa;
+  background: var(--el-fill-color-blank);
   transition: all 0.2s;
 
   &:hover {
-    background: #f0f0f0;
+    background: var(--el-fill-color-light);
   }
 
   &.connected {
     border-color: var(--el-color-success);
-    background: #f0f9ff;
+    background: rgba(107, 203, 119, 0.1);
   }
 
   .network-info {
@@ -288,7 +288,7 @@ function getSignalColor(strength: number): string {
       display: flex;
       gap: 12px;
       font-size: 12px;
-      color: #999;
+      color: var(--lelamp-text-tertiary);
     }
   }
 
@@ -300,7 +300,7 @@ function getSignalColor(strength: number): string {
 
     .signal-text {
       font-size: 12px;
-      color: #666;
+      color: var(--lelamp-text-secondary);
       min-width: 35px;
     }
   }

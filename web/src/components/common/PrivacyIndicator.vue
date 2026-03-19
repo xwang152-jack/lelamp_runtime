@@ -26,7 +26,7 @@ const isActive = computed(() => props.active)
   padding: 12px 16px;
   background: rgba(0, 0, 0, 0.7);
   border-radius: 8px;
-  color: white;
+  color: var(--lelamp-bg-white);
   font-size: 14px;
 
   .privacy-header {

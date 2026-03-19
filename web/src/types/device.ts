@@ -2,6 +2,7 @@ export interface DeviceState {
   name: string
   status: 'online' | 'offline'
   cameraActive: boolean
+  conversationState: 'idle' | 'listening' | 'thinking' | 'speaking'
   lights: LightState
 }
 

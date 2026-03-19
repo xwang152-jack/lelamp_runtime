@@ -4,8 +4,10 @@ import ElementPlus from 'element-plus'
 import 'element-plus/dist/index.css'
 import './assets/styles/variables.scss'
 import './assets/styles/global.scss'
+import './assets/styles/theme.scss'
 import App from './App.vue'
 import router from './router'
+import { useThemeStore } from './stores'
 
 const app = createApp(App)
 const pinia = createPinia()
@@ -13,5 +15,9 @@ const pinia = createPinia()
 app.use(pinia)
 app.use(router)
 app.use(ElementPlus)
+
+// 初始化主题
+const themeStore = useThemeStore()
+themeStore.initTheme()
 
 app.mount('#app')

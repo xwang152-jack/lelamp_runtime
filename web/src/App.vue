@@ -12,6 +12,6 @@
 .lelamp-app {
   width: 100%;
   min-height: 100vh;
-  background: var(--lelamp-bg);
+  background: var(--lelamp-bg-cream);
 }
 </style>

@@ -25,4 +25,5 @@ export interface DataMessage {
   timestamp?: string
   channels?: string[]
   code?: string
+  conversation_state?: 'idle' | 'listening' | 'thinking' | 'speaking'
 }

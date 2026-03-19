@@ -54,7 +54,7 @@ const statusText = computed(() => {
 
   .status-text {
     font-size: 14px;
-    color: #606266;
+    color: var(--lelamp-text-secondary);
   }
 }
 

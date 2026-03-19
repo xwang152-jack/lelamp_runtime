@@ -38,23 +38,41 @@ app = FastAPI(
 )
 
 # 配置 CORS
+# 开发环境：允许所有本地网络访问
+# 生产环境：应该设置具体的域名
+import os
+
+# 从环境变量读取允许的源，如果没有则使用默认列表
+allowed_origins = os.getenv("LELAMP_CORS_ORIGINS", "").split(",") if os.getenv("LELAMP_CORS_ORIGINS") else [
+    "http://localhost:5173",
+    "http://localhost:5174",
+    "http://localhost:3000",
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:5174",
+    "http://127.0.0.1:3000",
+    "http://192.168.0.104:5173",
+    "http://192.168.0.104:3000",
+    "http://192.168.0.105:5173",
+    "http://192.168.0.105:3000",
+]
+
+# 开发模式下添加当前访问的 IP
+if os.getenv("LELAMP_DEV_MODE", "0") == "1":
+    # 开发模式：允许所有 localhost 和内网 IP
+    allowed_origins.extend([
+        "http://10.251.145.7:5173",
+        "http://10.251.145.7:5174",
+    ])
+    # 可以通过环境变量添加更多源
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://localhost:3000",
-        "http://127.0.0.1:5173",
-        "http://127.0.0.1:3000",
-        # 允许所有网络地址访问（开发环境）
-        "http://192.168.0.104:5173",
-        "http://192.168.0.104:3000",
-        "http://192.168.0.105:5173",
-        "http://192.168.0.105:3000",
-    ],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Reset"],
+    max_age=600,  # 预检请求缓存时间（秒）
 )
 
 

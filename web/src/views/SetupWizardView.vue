@@ -369,12 +369,12 @@ onMounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: white;
+  color: var(--lelamp-bg-white);
   font-weight: bold;
 }
 
 .step-label {
-  color: white;
+  color: var(--lelamp-bg-white);
   font-size: 14px;
 }
 
@@ -388,7 +388,7 @@ onMounted(() => {
 
 .welcome-step {
   text-align: center;
-  color: white;
+  color: var(--lelamp-bg-white);
 
   .welcome-icon {
     font-size: 80px;
@@ -413,7 +413,7 @@ onMounted(() => {
 }
 
 .wifi-scan-step {
-  background: white;
+  background: var(--lelamp-bg-white);
   border-radius: 16px;
   padding: 30px;
   max-width: 500px;
@@ -421,11 +421,11 @@ onMounted(() => {
 
   h2 {
     margin-top: 0;
-    color: #333;
+    color: var(--lelamp-text-primary);
   }
 
   .step-description {
-    color: #666;
+    color: var(--lelamp-text-secondary);
     margin-bottom: 20px;
   }
 
@@ -448,19 +448,19 @@ onMounted(() => {
   align-items: center;
   justify-content: space-between;
   padding: 16px;
-  border: 2px solid #eee;
+  border: 2px solid var(--lelamp-bg-gray);
   border-radius: 12px;
   cursor: pointer;
   transition: all 0.2s;
 
   &:hover {
-    border-color: #667eea;
-    background: #f8f9ff;
+    border-color: var(--lelamp-sky);
+    background: var(--lelamp-bg-gray);
   }
 
   &.selected {
-    border-color: #667eea;
-    background: #f0f2ff;
+    border-color: var(--lelamp-sky);
+    background: var(--lelamp-sky-light);
   }
 
   .network-info {
@@ -469,7 +469,7 @@ onMounted(() => {
     .network-name {
       font-weight: 500;
       font-size: 16px;
-      color: #333;
+      color: var(--lelamp-text-primary);
       margin-bottom: 4px;
     }
 
@@ -477,20 +477,20 @@ onMounted(() => {
       display: flex;
       gap: 12px;
       font-size: 12px;
-      color: #999;
+      color: var(--lelamp-text-tertiary);
     }
   }
 
   .network-signal {
     .signal-icon {
       font-size: 24px;
-      color: #67c23a;
+      color: var(--lelamp-mint);
     }
   }
 }
 
 .password-step {
-  background: white;
+  background: var(--lelamp-bg-white);
   border-radius: 16px;
   padding: 30px;
   max-width: 450px;
@@ -498,24 +498,24 @@ onMounted(() => {
 
   h2 {
     margin-top: 0;
-    color: #333;
+    color: var(--lelamp-text-primary);
   }
 
   .selected-network {
     padding: 16px;
-    background: #f8f9ff;
+    background: var(--lelamp-bg-gray);
     border-radius: 8px;
     margin-bottom: 24px;
 
     .network-ssid {
       font-size: 18px;
       font-weight: 500;
-      color: #333;
+      color: var(--lelamp-text-primary);
     }
 
     .network-security {
       font-size: 14px;
-      color: #666;
+      color: var(--lelamp-text-secondary);
       margin-top: 4px;
     }
   }
@@ -523,7 +523,7 @@ onMounted(() => {
 
 .connecting-step {
   text-align: center;
-  color: white;
+  color: var(--lelamp-text-primary);
 
   .connecting-animation {
     margin-bottom: 30px;
@@ -532,7 +532,7 @@ onMounted(() => {
       width: 60px;
       height: 60px;
       border: 4px solid rgba(255, 255, 255, 0.3);
-      border-top-color: white;
+      border-top-color: var(--lelamp-bg-white);
       border-radius: 50%;
       animation: spin 1s linear infinite;
       margin: 0 auto;
@@ -555,7 +555,7 @@ onMounted(() => {
 
 .complete-step {
   text-align: center;
-  color: white;
+  color: var(--lelamp-bg-white);
 
   .success-icon {
     width: 80px;

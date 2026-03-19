@@ -1,30 +1,88 @@
+/* ============================================
+   LeLamp Design System - Playful Robot Aesthetic
+   ============================================ */
+
 :root {
-  // 品牌色
-  --lelamp-brand: #ff6b6b;
-  --lelamp-accent: #4ecdc4;
-  --lelamp-bg: #f5f7fa;
-  --lelamp-surface: #ffffff;
+  /* === Primary Palette - Warm & Friendly === */
+  --lelamp-peach: #FF9A76;
+  --lelamp-peach-light: #FFB89A;
+  --lelamp-peach-dark: #E8856F;
 
-  // 功能色
-  --color-success: #67c23a;
-  --color-warning: #e6a23c;
-  --color-danger: #f56c6c;
-  --color-info: #909399;
+  --lelamp-sunny: #FFD93D;
+  --lelamp-sunny-light: #FFE5A0;
+  --lelamp-sunny-dark: #E6C235;
 
-  // 间距
-  --spacing-xs: 4px;
-  --spacing-sm: 8px;
-  --spacing-md: 16px;
-  --spacing-lg: 24px;
-  --spacing-xl: 32px;
+  --lelamp-coral: #FF6B8A;
+  --lelamp-coral-light: #FF9CB8;
+  --lelamp-coral-dark: #E65D7A;
 
-  // 圆角
-  --radius-sm: 4px;
-  --radius-md: 8px;
-  --radius-lg: 16px;
+  --lelamp-mint: #6BCB77;
+  --lelamp-mint-light: #95DB9F;
+  --lelamp-mint-dark: #5AB868;
 
-  // 阴影
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.1);
-  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.1);
-  --shadow-lg: 0 10px 20px rgba(0, 0, 0, 0.1);
+  --lelamp-sky: #74B9FF;
+  --lelamp-sky-light: #A3D0FF;
+  --lelamp-sky-dark: #5DA3E6;
+
+  /* === Backgrounds === */
+  --lelamp-bg-cream: #FFF8F0;
+  --lelamp-bg-white: #FFFFFF;
+  --lelamp-bg-gray: #F0F2F5;
+
+  /* === Text Colors === */
+  --lelamp-text-primary: #2D2F36;
+  --lelamp-text-secondary: #6B6E78;
+  --lelamp-text-tertiary: #9A9DA6;
+
+  /* === Semantic Colors === */
+  --lelamp-success: var(--lelamp-mint);
+  --lelamp-warning: var(--lelamp-sunny);
+  --lelamp-danger: var(--lelamp-coral);
+  --lelamp-info: var(--lelamp-sky);
+
+  /* === Spacing === */
+  --lelamp-space-xs: 4px;
+  --lelamp-space-sm: 8px;
+  --lelamp-space-md: 16px;
+  --lelamp-space-lg: 24px;
+  --lelamp-space-xl: 32px;
+  --lelamp-space-2xl: 48px;
+
+  /* === Border Radius - Extra Rounded === */
+  --lelamp-radius-sm: 8px;
+  --lelamp-radius-md: 16px;
+  --lelamp-radius-lg: 24px;
+  --lelamp-radius-xl: 32px;
+  --lelamp-radius-full: 9999px;
+
+  /* === Shadows - Soft & Playful === */
+  --lelamp-shadow-sm: 0 2px 8px rgba(255, 154, 118, 0.08);
+  --lelamp-shadow-md: 0 4px 16px rgba(255, 154, 118, 0.12);
+  --lelamp-shadow-lg: 0 8px 32px rgba(255, 154, 118, 0.16);
+  --lelamp-shadow-xl: 0 16px 48px rgba(255, 154, 118, 0.2);
+  --lelamp-shadow-glow: 0 0 40px rgba(255, 154, 118, 0.4);
+
+  /* === Transitions === */
+  --lelamp-transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --lelamp-transition-normal: 250ms cubic-bezier(0.4, 0, 0.2, 1);
+  --lelamp-transition-slow: 350ms cubic-bezier(0.4, 0, 0.2, 1);
+  --lelamp-transition-bounce: 500ms cubic-bezier(0.68, -0.55, 0.265, 1.55);
+
+  /* === Typography === */
+  --lelamp-font-display: 'Quicksand', 'Nunito', sans-serif;
+  --lelamp-font-body: 'Nunito', -apple-system, sans-serif;
+  --lelamp-font-mono: 'Fira Code', monospace;
+}
+
+/* === Dark Mode Support === */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --lelamp-bg-cream: #1A1A2E;
+    --lelamp-bg-white: #16213E;
+    --lelamp-bg-gray: #0F0F1A;
+
+    --lelamp-text-primary: #F0F0F0;
+    --lelamp-text-secondary: #B0B0B0;
+    --lelamp-text-tertiary: #707070;
+  }
 }

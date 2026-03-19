@@ -134,12 +134,12 @@ function handleReset() {
   display: block;
   margin-top: 4px;
   font-size: 12px;
-  color: #999;
+  color: var(--lelamp-text-tertiary);
 
   .masked-key {
     margin-left: 8px;
     font-family: monospace;
-    color: #666;
+    color: var(--lelamp-text-secondary);
   }
 
   a {
