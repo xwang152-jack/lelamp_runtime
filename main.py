@@ -228,8 +228,12 @@ async def entrypoint(ctx: JobContext):
         )
         if config.greeting_text:
             await session.say(config.greeting_text, allow_interruptions=False)
+    except Exception as e:
+        logger.error(f"Session error: {e}")
     finally:
-        vision_service.stop()
+        # 注意：不再停止 vision_service，因为它应该在进程生命周期中持续运行
+        # 当进程退出时，vision_service 线程会自动终止
+        logger.info("Session ended")
 
 
 if __name__ == "__main__":

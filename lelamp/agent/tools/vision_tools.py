@@ -86,7 +86,8 @@ class VisionTools:
             if not await self._vision_service.activate_camera():
                 return "摄像头未启用或用户未同意。请确保摄像头已连接且您已授权使用。"
 
-            latest = await self._vision_service.get_latest_jpeg_b64()
+            # 使用 get_fresh_jpeg_b64 等待新帧（摄像头激活后需要时间捕获第一帧）
+            latest = await self._vision_service.get_fresh_jpeg_b64(timeout_s=10.0)
             if not latest:
                 return "当前没有可用画面。请确保摄像头已启用并在刷新。"
 

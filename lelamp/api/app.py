@@ -186,6 +186,14 @@ async def lifespan(app: FastAPI):
     # 启动时执行
     logger.info("LeLamp API 启动")
 
+    # 初始化数据库（确保表已创建）
+    try:
+        from lelamp.database.base import init_db
+        init_db()
+        logger.info("Database initialized")
+    except Exception as e:
+        logger.error(f"Database init failed: {e}")
+
     # 初始化硬件服务
     try:
         from lelamp.service.motors.motors_service import MotorsService
