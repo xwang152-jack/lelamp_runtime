@@ -82,6 +82,10 @@ class VisionTools:
 
             self.rgb_service.dispatch("solid", (255, 255, 255), priority=Priority.HIGH)
 
+            # 激活摄像头（带隐私保护）
+            if not await self._vision_service.activate_camera():
+                return "摄像头未启用或用户未同意。请确保摄像头已连接且您已授权使用。"
+
             latest = await self._vision_service.get_latest_jpeg_b64()
             if not latest:
                 return "当前没有可用画面。请确保摄像头已启用并在刷新。"
@@ -114,6 +118,10 @@ class VisionTools:
             from lelamp.service import Priority
 
             self.rgb_service.dispatch("solid", (255, 255, 255), priority=Priority.HIGH)
+
+            # 激活摄像头（带隐私保护）
+            if not await self._vision_service.activate_camera():
+                return "摄像头未启用或用户未同意。请确保摄像头已连接且您已授权使用。"
 
             # 2. 获取最清晰、最实时的画面
             latest = await self._vision_service.get_fresh_jpeg_b64(
@@ -178,6 +186,10 @@ class VisionTools:
                 return f"获取飞书 Token 失败: {token_resp.get('msg')}"
 
             # 4. 获取当前画面 (确保是机械臂停止后的最新画面)
+            # 激活摄像头（带隐私保护）
+            if not await self._vision_service.activate_camera():
+                return "摄像头未启用或用户未同意。请确保摄像头已连接且您已授权使用。"
+
             latest = await self._vision_service.get_fresh_jpeg_b64(
                 timeout_s=self.FRESH_FRAME_TIMEOUT_S
             )
