@@ -143,6 +143,7 @@ async def entrypoint(ctx: JobContext):
         timeout_s=config.modelscope_timeout_s,
     )
 
+    # 注意：对于个人设备，隐私保护默认禁用（用户已在设置时授权）
     vision_service = VisionService(
         enabled=config.vision_enabled,
         index_or_path=config.camera_index_or_path,
@@ -153,6 +154,7 @@ async def entrypoint(ctx: JobContext):
         max_age_s=config.vision_max_age_s,
         rotate_deg=config.camera_rotate_deg,
         flip=config.camera_flip,
+        enable_privacy_protection=False,  # 个人设备无需每次请求同意
     )
     vision_service.start()
 
