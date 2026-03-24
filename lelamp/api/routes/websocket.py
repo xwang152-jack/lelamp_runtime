@@ -519,8 +519,16 @@ async def execute_direct_command(action: str, params: dict, rgb_service, motors_
         # RGB 效果命令
         elif action in ["rgb_effect_rainbow", "rgb_effect_breathing", "rgb_effect_wave", "rgb_effect_fire", "rgb_effect_emoji"] and rgb_service:
             effect_name = action.replace("rgb_effect_", "")
-            effect_params = {**params, "name": effect_name}
-            rgb_service.dispatch("effect", effect_params, priority=Priority.HIGH)
+
+            # 呼吸效果使用 "breath" 事件类型
+            if effect_name == "breathing":
+                r = params.get("r", params.get("red", 0))
+                g = params.get("g", params.get("green", 150))
+                b = params.get("b", params.get("blue", 255))
+                rgb_service.dispatch("breath", {"rgb": (r, g, b)}, priority=Priority.HIGH)
+            else:
+                effect_params = {**params, "name": effect_name}
+                rgb_service.dispatch("effect", effect_params, priority=Priority.HIGH)
             return True
 
         # 停止 RGB 效果

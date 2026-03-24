@@ -464,7 +464,12 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
         return "已开启彩虹动态灯效"
 
     @function_tool
-    async def rgb_effect_breathing(self, r: int, g: int, b: int) -> str:
+    async def rgb_effect_breathing(
+        self,
+        r: int = 0,
+        g: int = 150,
+        b: int = 255
+    ) -> str:
         """启动呼吸效果"""
         return await self._rgb_tools.rgb_effect_breathing(r, g, b)
 

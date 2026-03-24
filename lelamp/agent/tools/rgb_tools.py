@@ -148,10 +148,10 @@ class RGBTools:
 
             from lelamp.service import Priority
 
-            # 分发呼吸效果
+            # 分发呼吸效果 - 使用 "breath" 事件类型
             self.rgb_service.dispatch(
-                "effect",
-                {"name": "breathing", "color": (r, g, b)},
+                "breath",
+                {"rgb": (r, g, b)},
                 priority=Priority.NORMAL
             )
 
