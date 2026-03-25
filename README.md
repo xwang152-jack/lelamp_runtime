@@ -8,7 +8,7 @@
 [![License](https://img.shields.io/badge/license-See%20LeLamp%20Repo-green.svg)](https://github.com/humancomputerlab/LeLamp)
 [![UV](https://img.shields.io/badge/package%20manager-UV-orange.svg)](https://github.com/astral-sh/uv)
 
-> 📖 **新用户?** 查看 [用户使用指南](USER_GUIDE.md) | **开发部署?** 查看 [部署指南](DEPLOYMENT_GUIDE.md)
+> 📖 **新用户?** 查看 [用户快速指南](docs/USER_GUIDE_QUICK.md) | **首次设置?** 查看 [完整设置指南](docs/SETUP_GUIDE.md) | **开发部署?** 查看 [开发者指南](CLAUDE.md)
 
 ---
 
@@ -25,6 +25,7 @@
 - **作业检查**: AI 批改数学题、语文题
 - **飞书推送**: 拍照并发送到飞书群组
 - **隐私保护**: LED 指示灯 + 用户同意机制
+- **边缘视觉** ⭐ NEW: 本地人脸检测、手势追踪、物体检测
 
 ### 🎭 动作表情
 - **预设动作**: 点头、摇头、兴奋、睡觉、跳舞、思考
@@ -44,7 +45,7 @@
 - **双向音频**: 语音通话功能
 - **全功能面板**: 视觉、动作、灯光、聊天全覆盖
 
-### 📱 Captive Portal 设置向导 ⭐ NEW
+### 📱 Captive Portal 设置向导
 - **首次设置**: 无需知道 IP 地址即可配置 WiFi
 - **自动热点**: 创建 "LeLamp-Setup" WiFi 热点
 - **友好界面**: 响应式 Web 设置向导
@@ -53,27 +54,28 @@
 
 详细说明请参考：[Captive Portal 设置指南](docs/CAPTIVE_PORTAL_GUIDE.md)
 
-### 🚀 RESTful API 系统 ⭐ NEW
+### 🚀 RESTful API 系统
 - **完整的 REST API**: 认证端点、设备管理、设置管理
 - **实时 WebSocket 推送**: 13 种消息类型,频道订阅,可选认证
 - **数据持久化**: SQLite/PostgreSQL 支持,4 个 ORM 模型
 - **自动 API 文档**: Swagger UI + ReDoc
-- **JWT 认证**: 访问令牌 + 刷新令牌机制 ⭐ NEW
-- **速率限制**: 滑动窗口算法,可配置限制级别 ⭐ NEW
-- **API 缓存**: TTL 缓存减少重复查询,提升性能 ⭐ NEW
-- **61% 测试覆盖率**: 57 个测试全部通过 ⭐ IMPROVED
+- **JWT 认证**: 访问令牌 + 刷新令牌机制
+- **速率限制**: 滑动窗口算法,可配置限制级别
+- **API 缓存**: TTL 缓存减少重复查询,提升性能
+- **61% 测试覆盖率**: 57 个测试全部通过
 
 ### 🔐 安全与性能
 - **设备授权**: License Key 保护
-- **OTA 更新**: 远程固件升级,SHA256 验证 ⭐ IMPROVED
+- **OTA 更新**: 远程固件升级,SHA256 验证
 - **舵机健康监控**: 温度、电压、负载实时监控
 - **远程 PID 调参**: 无需上门即可优化动作性能
 - **隐私保护**: 摄像头使用同意机制
-- **JWT 认证系统**: 用户注册、登录、设备绑定 ⭐ NEW
-- **速率限制**: 防止 API 滥用,可配置限制级别 ⭐ NEW
-- **安全响应头**: X-Frame-Options, CSP, HSTS 等 ⭐ NEW
-- **API 响应缓存**: 减少重复查询,提升响应速度 ⭐ NEW
-- **数据库索引优化**: 复合索引加速查询 ⭐ NEW
+- **JWT 认证系统**: 用户注册、登录、设备绑定
+- **速率限制**: 防止 API 滥用,可配置限制级别
+- **安全响应头**: X-Frame-Options, CSP, HSTS 等
+- **API 响应缓存**: 减少重复查询,提升响应速度
+- **数据库索引优化**: 复合索引加速查询
+- **边缘视觉** ⭐ NEW: 本地 AI 推理，保护隐私
 
 ---
 
@@ -249,7 +251,7 @@ print('✅ 数据库初始化完成')
 
 #### 7. 启动 LeLamp 完整服务系统
 
-**方式一：完整服务系统（推荐用于日常使用）⭐**
+**方式一：完整服务系统（推荐用于日常使用）**
 
 使用 systemd 管理完整的三服务架构（LiveKit + API + Frontend）：
 
@@ -628,6 +630,13 @@ LELAMP_OTA_URL=https://api.lelamp.com/ota/check
 - 🚀 [部署指南](DEPLOYMENT_GUIDE.md) - 详细的部署和配置说明
 - 🔧 [设置快速参考](SETTINGS_QUICK_REFERENCE.md) - 设置界面快速参考
 
+### 🌟 **新用户文档**
+- 📘 [用户快速指南](docs/USER_GUIDE_QUICK.md) - 快速上手教程
+- 🚀 [完整设置指南](docs/SETUP_GUIDE.md) - 详细配置教程
+- 🔧 [Captive Portal 指南](docs/CAPTIVE_PORTAL_GUIDE.md) - 开箱配置说明
+- 🤖 [边缘视觉配置](docs/EDGE_VISION_SETUP.md) - 本地 AI 模型下载和配置
+- 🧪 [边缘视觉测试](docs/EDGE_VISION_TEST_SUMMARY.md) - 树莓派测试完整指南
+
 ### 开发文档
 - 🔧 [开发者指南](CLAUDE.md) - 代码架构和开发规范
 - 🌐 [Web 前端](./web/) - Vue 3 前端应用
@@ -871,6 +880,6 @@ tail -f /tmp/uvicorn.log | grep -E 'RGB|NoOpRGBService'
 
 ---
 
-**版本**: v2.0
-**最后更新**: 2026-03-16
+**版本**: v0.1.0
+**最后更新**: 2026-03-25
 **Python 版本**: 3.12+

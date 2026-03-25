@@ -1,9 +1,11 @@
 # LeLamp 项目从零配置教学指南
 
-**最后更新**: 2026-03-19
+**最后更新**: 2026-03-25
 **适用版本**: LeLamp Runtime v0.1.0
 **适用人群**: 首次接触 LeLamp 项目的开发者
 **预计完成时间**: 45-60 分钟（含树莓派初始设置）
+
+> 💡 **快速提示**: 如果您已经购买了预装系统的 LeLamp 设备，可以直接跳到 [阶段三：获取 API 密钥](#阶段二获取-api-密钥) 和 [阶段三：环境变量配置](#阶段三环境变量配置)，设备已预装所有依赖。
 
 ---
 
@@ -460,24 +462,58 @@ uv 0.1.20 (或更高版本)
 
 ### 1.3 安装 Python 依赖
 
-LeLamp 项目支持两种安装模式：
+LeLamp 项目支持多种安装模式：
 
-#### 在树莓派上（包含硬件依赖）
+#### 在树莓派上（完整功能，推荐）
 
 ```bash
 cd ~/lelamp_runtime
 
 # 安装所有依赖（包括硬件相关的库）
-uv sync --extra hardware
+uv sync --extra hardware --extra vision --extra api
 ```
 
-#### 在开发机上（仅电机控制，无硬件）
+**说明**：
+- `hardware`: LED 控制（GPIO 访问）
+- `vision`: 摄像头和视觉识别（**注意**：边缘视觉功能在 Raspberry Pi ARM 平台上官方不支持，需要手动编译）
+- `api`: FastAPI Web 服务和 REST API
+
+**⚠️ 边缘视觉特别说明**：
+- MediaPipe 在 Raspberry Pi (ARM 架构) 上官方不支持
+- 如需边缘视觉功能，请参考 [FEATURES.md](FEATURES.md) 中的手动安装方法
+- 系统会自动降级到云端视觉识别，不影响基本功能
+
+**📖 下载物体检测模型** (可选，用于本地物体识别):
+
+如果需要在支持的平台上使用本地物体检测功能：
+
+```bash
+# 方式 1: 使用下载脚本（推荐）
+bash scripts/download_edge_vision_models.sh
+
+# 方式 2: 手动下载
+mkdir -p ~/lelamp_runtime/models
+cd ~/lelamp_runtime/models
+curl -L -o efficientdet_lite0.tflite \
+  "https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/int8/1/efficientdet_lite0.tflite"
+```
+
+详细配置说明请参考：[边缘视觉配置指南](EDGE_VISION_SETUP.md)
+
+#### 在开发机上（仅测试，无硬件）
 
 ```bash
 cd ~/lelamp_runtime
 
-# 仅安装软件依赖
+# 仅安装软件依赖（不含硬件库）
 uv sync
+```
+
+#### 仅安装必需依赖（最小化安装）
+
+```bash
+# 仅安装核心功能（语音对话）
+uv sync --extra hardware
 ```
 
 **注意**: 如果遇到 Git LFS 相关问题，使用以下命令：
@@ -813,17 +849,31 @@ Calibration complete!
 
 ## 阶段五：启动服务
 
-LeLamp 有**三种运行模式**：
+LeLamp 有**多种运行模式**和**服务架构**：
 
-| 模式 | 命令 | 功能 | 是否必需 |
-|------|------|------|----------|
-| **FastAPI 服务** | `uvicorn lelamp.api.app:app` | Web 控制面板、设备控制、文字聊天 | ✅ 必需 |
-| **Console 模式** | `main.py console` | 本地语音对话（使用系统麦克风/扬声器） | ⚪ 可选 |
-| **Room 模式** | `main.py dev` / 生产部署 | 远程语音访问（手机 App） | ⚪ 可选 |
+### 运行模式对比
+
+| 模式 | 命令 | 功能 | 是否必需 | 需要配置 |
+|------|------|------|----------|----------|
+| **FastAPI 服务** | `uvicorn lelamp.api.app:app` | Web 控制面板、设备控制、文字聊天 | ✅ 必需 | DeepSeek API Key |
+| **Console 模式** | `main.py console` | 本地语音对话（系统麦克风/扬声器） | ⚪ 可选 | + Baidu Speech API Key |
+| **Room 模式** | `main.py dev` / tmux | 远程语音访问（手机 App） | ⚪ 可选 | + LiveKit 配置 |
+| **Captive Portal** | 自动启动 | 首次开箱 WiFi 配置 | ⚪ 产品用户 | 无需配置 |
 
 ### 5.1 启动 FastAPI 服务（推荐）
 
 FastAPI 服务提供 Web 控制面板、设备控制和文字聊天功能。
+
+**方式一：使用启动脚本（推荐）**
+
+```bash
+cd ~/lelamp_runtime
+
+# 使用启动脚本（自动处理 GPIO 权限）
+sudo bash scripts/start_api_server.sh
+```
+
+**方式二：手动启动**
 
 ```bash
 cd ~/lelamp_runtime
@@ -844,6 +894,7 @@ INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
 - ✅ 服务启动无错误
 - ✅ 访问 http://localhost:8000/docs 可以看到 API 文档
 - ✅ LED 显示白色（空闲状态）
+- ✅ 健康检查通过: `curl http://localhost:8000/health`
 
 ### 5.2 启动 Console 模式（本地语音测试）
 
@@ -949,7 +1000,98 @@ sudo uv run main.py dev
 
 **注意**: 如果只需要本地测试，使用对话模式（setup_full_service.sh）即可，不需要配置 LiveKit。
 
-### 5.3 启动前端开发服务器
+### 5.5 设置完整服务系统（推荐生产环境）
+
+LeLamp 提供了完整的三服务架构脚本，适合生产环境部署：
+
+**一键设置完整服务系统**：
+
+```bash
+cd ~/lelamp_runtime
+
+# 运行完整服务系统设置脚本
+bash scripts/setup_all_services.sh
+```
+
+这将自动配置：
+- **LiveKit 服务**（语音交互）- 通过 tmux 后台运行
+- **API 服务**（后端 REST API）- 端口 8000，systemd 管理
+- **Frontend 服务**（Web 界面）- 端口 5173，systemd 管理
+
+**管理所有服务**：
+```bash
+# 查看所有服务状态
+sudo systemctl status lelamp-{livekit,api,frontend}.service
+
+# 重启所有服务
+sudo systemctl restart lelamp-{livekit,api,frontend}.service
+
+# 查看所有服务日志
+sudo journalctl -u lelamp-{livekit,api,frontend}.service -f
+```
+
+**访问地址**：
+- Web 界面：http://<树莓派IP>:5173
+- API 文档：http://<树莓派IP>:8000/docs
+- 健康检查：http://<树莓派IP>:8000/health
+
+### 5.6 设置 Captive Portal（开箱即用配置）
+
+Captive Portal 适用于产品用户首次使用，无需 SSH 或命令行知识：
+
+**安装 Captive Portal 服务**：
+
+```bash
+cd ~/lelamp_runtime
+
+# 安装 Captive Portal 服务
+bash scripts/install_captive_portal.sh
+```
+
+**工作流程**：
+1. 设备首次启动时自动检测 WiFi 连接状态
+2. 如果未配置 WiFi，自动启动 "LeLamp-Setup" 热点
+3. 用户连接热点后浏览器自动弹出配置页面
+4. 完成配置后设备自动重启并连接到指定 WiFi
+
+**手动触发设置模式**：
+```bash
+# 清除设置状态
+sudo rm /var/lib/lelamp/setup_status.json
+
+# 重启设备进入设置模式
+sudo reboot
+```
+
+**详细文档**: [Captive Portal 设置指南](CAPTIVE_PORTAL_GUIDE.md)
+
+### 5.7 设置 LiveKit Tmux 服务（语音对话专用）
+
+如果只需要语音对话功能，可以使用独立的 LiveKit Tmux 服务：
+
+```bash
+cd ~/lelamp_runtime
+
+# 设置 LiveKit Tmux 服务
+bash scripts/setup_livekit_tmux_service.sh
+```
+
+**管理服务**：
+```bash
+# 查看状态
+bash scripts/livekit_service_manager.sh status
+
+# 查看日志
+bash scripts/livekit_service_manager.sh logs
+
+# 连接到 tmux 会话
+bash scripts/livekit_service_manager.sh attach
+
+# 重启服务
+bash scripts/livekit_service_manager.sh restart
+```
+
+### 5.8 启动前端开发服务器
 
 在第三个终端窗口（或您的开发机上）启动前端：
 
@@ -971,7 +1113,7 @@ pnpm dev --host 0.0.0.0 --port 5173
   ➜  Network: http://<树莓派IP>:5173/
 ```
 
-### 5.4 连接 Web 客户端
+### 5.9 连接 Web 客户端
 
 1. 在浏览器中打开 `http://localhost:5173`（树莓派本机）或 `http://<树莓派IP>:5173`（局域网设备）
 2. 输入 API 地址：`http://<树莓派IP>:8000`
@@ -1646,8 +1788,8 @@ ssh pi@192.168.0.104 'sudo journalctl -u lelamp-conversation -f'
 
 ---
 
-**文档版本**: v0.1.1
-**最后更新**: 2026-03-19
+**文档版本**: v0.1.2
+**最后更新**: 2026-03-25
 **作者**: LeLamp 开发团队
 **许可证**: 参见主项目许可证
 
