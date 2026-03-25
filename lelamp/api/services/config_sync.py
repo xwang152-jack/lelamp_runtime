@@ -138,6 +138,11 @@ class ConfigSyncService:
             "noise_cancellation": settings.noise_cancellation if settings else get_env_bool("LELAMP_NOISE_CANCELLATION", True),
             "motion_cooldown_s": settings.motion_cooldown_s if settings else float(os.getenv("LELAMP_MOTION_COOLDOWN_S", "2.0")),
 
+            # Edge Vision (新增)
+            "edge_vision_enabled": settings.edge_vision_enabled if settings else get_env_bool("LELAMP_EDGE_VISION_ENABLED", False),
+            "edge_vision_prefer_local": settings.edge_vision_prefer_local if settings else get_env_bool("LELAMP_EDGE_VISION_PREFER_LOCAL", True),
+            "edge_vision_local_threshold": settings.edge_vision_local_threshold if settings else float(os.getenv("LELAMP_EDGE_VISION_CONFIDENCE_THRESHOLD", "0.7")),
+
             # Metadata
             "requires_restart": False,
             "last_updated": settings.updated_at.isoformat() if settings and settings.updated_at else None,
