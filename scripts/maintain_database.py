@@ -8,7 +8,7 @@ import sys
 import os
 import sqlite3
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # 添加项目路径
 sys.path.insert(0, os.path.expanduser('~/lelamp_runtime'))
@@ -59,7 +59,7 @@ try:
     print('\n3. 清理过期数据:')
 
     # 清理 30 天前的对话记录
-    cutoff_date = (datetime.now() - datetime.timedelta(days=30)).isoformat()
+    cutoff_date = (datetime.now() - timedelta(days=30)).isoformat()
     cursor.execute(
         "DELETE FROM conversations WHERE timestamp < ?",
         (cutoff_date,)
