@@ -722,23 +722,6 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
             由于本项目不使用 LiveKit 远程服务功能，主动监听已禁用以避免占用摄像头资源。
         """
         return "主动监听服务已禁用（避免占用摄像头资源）。边缘视觉服务正常运行，可通过语音命令触发检测。"
-            duration = stats.get('user_present_duration', 0)
-            lines.append(f"- 在场时长: {duration:.1f} 秒")
-
-        lines.append(f"- 检测次数: {stats.get('detection_count', 0)}")
-        lines.append(f"- 手势次数: {stats.get('gesture_count', 0)}")
-
-        last_gesture = stats.get('last_gesture_time', 0)
-        if last_gesture > 0:
-            time_ago = time.time() - last_gesture
-            lines.append(f"- 上次手势: {time_ago:.1f} 秒前")
-        else:
-            lines.append("- 上次手势: 未检测到")
-
-        lines.append(f"- 自动手势: {'启用' if stats.get('auto_gesture_enabled') else '禁用'}")
-        lines.append(f"- 自动在场: {'启用' if stats.get('auto_presence_enabled') else '禁用'}")
-
-        return "\n".join(lines)
 
     @function_tool
     async def toggle_vision_monitor(self, enable: bool = None) -> str:
@@ -768,11 +751,6 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
             由于本项目不使用 LiveKit 远程服务功能，主动监听已禁用以避免占用摄像头资源。
         """
         return f"主动监听服务已禁用（避免占用摄像头资源）。无法设置模式为 {mode}。请使用语音命令触发视觉检测。"
-                "sleep": "休眠模式 (暂停检测)"
-            }
-            return f"已切换到: {mode_names.get(mode, mode)}"
-        except Exception as e:
-            return f"模式切换失败: {str(e)}"
 
     # ==================== 系统工具方法 ====================
 
