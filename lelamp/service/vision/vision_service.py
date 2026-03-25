@@ -2,6 +2,7 @@ import asyncio
 import base64
 import threading
 import time
+import numpy as np
 from typing import Any, Callable, Optional
 
 from ..base import ServiceBase
@@ -333,6 +334,44 @@ class VisionService(ServiceBase):
         """
         self._privacy_manager.revoke_consent()
         self.logger.info("用户撤销摄像头使用同意")
+
+    def get_latest_frame(self):
+        """
+        获取最新的原始帧（用于边缘视觉处理）
+
+        Returns:
+            numpy.ndarray 或 None：BGR 格式的图像帧
+        """
+        if not self.enabled or not self._camera_thread:
+            return None
+
+        # 触发一次新的捕获
+        self.trigger_capture()
+
+        # 等待新帧可用（最多等待1秒）
+        import time
+        start_wait = time.time()
+        timeout = 1.0
+
+        while time.time() - start_wait < timeout:
+            with self._frame_lock:
+                if self._latest_jpeg_b64 and self._latest_ts > 0:
+                    # 解码 JPEG 获取原始帧
+                    import cv2
+                    import base64
+                    try:
+                        jpeg_bytes = base64.b64decode(self._latest_jpeg_b64)
+                        frame = cv2.imdecode(
+                            np.frombuffer(jpeg_bytes, dtype=np.uint8),
+                            cv2.IMREAD_COLOR
+                        )
+                        return frame
+                    except Exception as e:
+                        self.logger.warning(f"Failed to decode frame: {e}")
+                        return None
+            time.sleep(0.05)  # 短暂等待
+
+        return None
 
     def get_camera_stats(self) -> dict:
         """

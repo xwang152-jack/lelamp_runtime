@@ -281,8 +281,11 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
                     hybrid_vision=self._hybrid_vision,
                     state_manager=self._state_manager
                 )
-                
-                logger.info("边缘视觉服务已启用")
+
+                # 不启动主动监听服务，避免占用摄像头资源
+                # 改为语音触发模式：用户说话时才进行视觉检测
+                self._vision_monitor = None
+                logger.info("边缘视觉服务已启用（语音触发模式）")
             except Exception as e:
                 logger.warning(f"边缘视觉服务初始化失败: {e}")
                 self._hybrid_vision = None
@@ -625,19 +628,29 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
     @function_tool
     async def detect_gesture(self) -> str:
         """
-        检测当前画面中的手势（本地推理）。
-        Detect hand gestures in the current view (local inference).
-        
+        检测当前画面中的手势（本地推理，带LED和动作反馈）。
+        Detect hand gestures in the current view (local inference, with LED and motion feedback).
+
         支持的手势：👍 点赞、👎 踩、✌️ 耶、👋 挥手、✊ 握拳、👆 指向
+
+        检测到手势时会自动触发对应的LED效果和动作响应。
         """
         if self._edge_vision_tools is None:
             return "手势检测服务未启用。请设置环境变量 LELAMP_EDGE_VISION_ENABLED=1"
-        
+
+        # 检测前LED闪烁蓝色提示
+        self.rgb_service.dispatch("solid", (0, 140, 255), priority=Priority.HIGH)
+
         frame = None
         if self._vision_service:
             frame = self._vision_service.get_latest_frame()
-        
-        return await self._edge_vision_tools.detect_gesture(frame)
+
+        result = await self._edge_vision_tools.detect_gesture(frame)
+
+        # 恢复正常灯光
+        self.rgb_service.dispatch("solid", (255, 255, 255), priority=Priority.HIGH)
+
+        return result
 
     @function_tool
     async def check_presence(self) -> str:
@@ -679,8 +692,87 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
         lines.append(f"  - 手势追踪: {'启用' if services.get('hand_tracker') else '禁用'}")
         lines.append(f"  - 物体检测: {'启用' if services.get('object_detector') else '禁用'}")
         lines.append(f"  - 云端视觉: {'启用' if services.get('cloud_vision') else '禁用'}")
-        
+
         return "\n".join(lines)
+
+    @function_tool
+    async def quick_check(self) -> str:
+        """
+        快速检查 - 同时检测用户在场和手势（本地推理）。
+        Quick check - detect user presence and gestures simultaneously (local inference).
+
+        语音触发示例：说"检查一下"、"看看怎么样了"、"扫描一下"
+        """
+        if self._edge_vision_tools is None:
+            return "边缘视觉服务未启用。请设置环境变量 LELAMP_EDGE_VISION_ENABLED=1"
+
+        frame = None
+        if self._vision_service:
+            frame = self._vision_service.get_latest_frame()
+
+        return await self._edge_vision_tools.quick_check(frame)
+
+    @function_tool
+    async def get_vision_monitor_status(self) -> str:
+        """
+        获取主动监听服务状态（调试用）。
+        Get proactive vision monitor status (for debugging).
+
+        Note:
+            由于本项目不使用 LiveKit 远程服务功能，主动监听已禁用以避免占用摄像头资源。
+        """
+        return "主动监听服务已禁用（避免占用摄像头资源）。边缘视觉服务正常运行，可通过语音命令触发检测。"
+            duration = stats.get('user_present_duration', 0)
+            lines.append(f"- 在场时长: {duration:.1f} 秒")
+
+        lines.append(f"- 检测次数: {stats.get('detection_count', 0)}")
+        lines.append(f"- 手势次数: {stats.get('gesture_count', 0)}")
+
+        last_gesture = stats.get('last_gesture_time', 0)
+        if last_gesture > 0:
+            time_ago = time.time() - last_gesture
+            lines.append(f"- 上次手势: {time_ago:.1f} 秒前")
+        else:
+            lines.append("- 上次手势: 未检测到")
+
+        lines.append(f"- 自动手势: {'启用' if stats.get('auto_gesture_enabled') else '禁用'}")
+        lines.append(f"- 自动在场: {'启用' if stats.get('auto_presence_enabled') else '禁用'}")
+
+        return "\n".join(lines)
+
+    @function_tool
+    async def toggle_vision_monitor(self, enable: bool = None) -> str:
+        """
+        启用或禁用主动监听服务。
+        Toggle proactive vision monitoring service.
+
+        Args:
+            enable: True 启用，False 禁用，None 切换状态
+
+        Note:
+            由于本项目不使用 LiveKit 远程服务功能，主动监听已禁用以避免占用摄像头资源。
+            请使用语音命令触发视觉检测，如："检测手势"、"检查一下"等。
+        """
+        return "主动监听服务已禁用（避免占用摄像头资源）。请使用语音命令触发视觉检测，如说\"检测手势\"或\"检查一下\"。"
+
+    @function_tool
+    async def set_vision_monitor_mode(self, mode: str) -> str:
+        """
+        设置主动监听模式。
+        Set proactive vision monitoring mode.
+
+        Args:
+            mode: 监听模式 - "active"(主动), "idle"(空闲), "sleep"(休眠)
+
+        Note:
+            由于本项目不使用 LiveKit 远程服务功能，主动监听已禁用以避免占用摄像头资源。
+        """
+        return f"主动监听服务已禁用（避免占用摄像头资源）。无法设置模式为 {mode}。请使用语音命令触发视觉检测。"
+                "sleep": "休眠模式 (暂停检测)"
+            }
+            return f"已切换到: {mode_names.get(mode, mode)}"
+        except Exception as e:
+            return f"模式切换失败: {str(e)}"
 
     # ==================== 系统工具方法 ====================
 

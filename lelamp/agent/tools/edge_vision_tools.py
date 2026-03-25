@@ -65,7 +65,7 @@ class EdgeVisionTools:
 
     async def detect_gesture(self, frame=None) -> str:
         """
-        检测手势（本地推理）
+        检测手势（本地推理）- 增强版，带LED和动作反馈
 
         Args:
             frame: 图像帧
@@ -81,7 +81,17 @@ class EdgeVisionTools:
 
             if result["gestures"]:
                 gestures = [g.value for g in result["gestures"]]
-                return f"检测到手势: {', '.join(gestures)}"
+                gesture_names = ', '.join(gestures)
+
+                # 触发手势回调（如果有）
+                for gesture in result["gestures"]:
+                    if hasattr(self._hybrid_vision, 'gesture_callback') and self._hybrid_vision.gesture_callback:
+                        try:
+                            self._hybrid_vision.gesture_callback(gesture, {})
+                        except Exception as callback_error:
+                            logger.error(f"Gesture callback error: {callback_error}")
+
+                return f"检测到手势: {gesture_names}"
             else:
                 return "未检测到手势"
 
@@ -130,3 +140,47 @@ class EdgeVisionTools:
             "enabled": True,
             **self._hybrid_vision.get_stats()
         }
+
+    async def quick_check(self, frame=None) -> str:
+        """
+        快速检查 - 同时检测用户在场和手势
+
+        Args:
+            frame: 图像帧（可选）
+
+        Returns:
+            综合检查结果
+        """
+        if self._hybrid_vision is None:
+            return "边缘视觉服务未启用"
+
+        try:
+            results = []
+
+            # 1. 检测用户在场
+            presence_result = self._hybrid_vision.detect_faces(frame)
+            if presence_result.get("presence"):
+                count = presence_result.get("count", 0)
+                results.append(f"用户在场 (检测到 {count} 人)")
+            else:
+                results.append("用户不在场")
+
+            # 2. 检测手势
+            gesture_result = self._hybrid_vision.track_hands(frame)
+            if gesture_result.get("gestures"):
+                gestures = [g.value for g in gesture_result["gestures"]]
+                results.append(f"检测到手势: {', '.join(gestures)}")
+
+                # 触发手势回调
+                for gesture in gesture_result["gestures"]:
+                    if hasattr(self._hybrid_vision, 'gesture_callback') and self._hybrid_vision.gesture_callback:
+                        try:
+                            self._hybrid_vision.gesture_callback(gesture, {})
+                        except Exception as callback_error:
+                            logger.error(f"Gesture callback error: {callback_error}")
+
+            return " | ".join(results) if results else "一切正常"
+
+        except Exception as e:
+            logger.error(f"Quick check error: {e}")
+            return f"检查失败: {str(e)}"
