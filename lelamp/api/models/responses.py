@@ -158,9 +158,9 @@ class AppSettingsResponse(BaseModel):
     modelscope_timeout_s: float
 
     # Edge Vision 边缘视觉
-    edge_vision_enabled: bool
-    edge_vision_prefer_local: bool
-    edge_vision_local_threshold: float
+    edge_vision_enabled: bool = False
+    edge_vision_prefer_local: bool = True
+    edge_vision_local_threshold: float = 0.7
 
     # Camera
     camera_width: int
