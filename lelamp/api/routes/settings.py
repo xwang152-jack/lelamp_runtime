@@ -167,6 +167,14 @@ async def get_setting_fields() -> dict:
                     {"name": "modelscope_timeout_s", "type": "float", "default": 60.0},
                 ]
             },
+            "edge_vision": {
+                "name": "边缘视觉 (Edge Vision)",
+                "fields": [
+                    {"name": "edge_vision_enabled", "type": "boolean", "default": False},
+                    {"name": "edge_vision_prefer_local", "type": "boolean", "default": True},
+                    {"name": "edge_vision_local_threshold", "type": "float", "default": 0.7, "min": 0.1, "max": 1.0},
+                ]
+            },
             "camera": {
                 "name": "摄像头",
                 "fields": [

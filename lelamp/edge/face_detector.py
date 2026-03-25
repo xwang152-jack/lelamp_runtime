@@ -1,0 +1,246 @@
+"""
+MediaPipe 人脸检测服务
+
+用于用户在场检测、自动唤醒/休眠功能。
+"""
+import logging
+import time
+from typing import Optional, Callable, List, Dict, Any
+from dataclasses import dataclass
+
+logger = logging.getLogger("lelamp.edge.face")
+
+# MediaPipe 是可选依赖，优雅降级
+try:
+    import mediapipe as mp
+    import cv2
+    MEDIAPIPE_AVAILABLE = True
+except ImportError:
+    MEDIAPIPE_AVAILABLE = False
+    logger.warning("MediaPipe not available, FaceDetector will run in NoOp mode")
+
+
+@dataclass
+class FaceInfo:
+    """人脸信息"""
+    bbox: List[int]  # [x, y, width, height]
+    confidence: float
+    center: tuple  # (x, y) 归一化坐标
+
+
+class FaceDetector:
+    """
+    基于 MediaPipe 的人脸检测服务
+    
+    用途：
+    - 用户在场检测 → 自动唤醒/休眠
+    - 多人检测 → 区分主用户
+    - 视线追踪 → 台灯跟随
+    
+    使用示例:
+        detector = FaceDetector(
+            presence_callback=lambda present: print(f"用户{'在场' if present else '离开'}")
+        )
+        
+        while True:
+            ret, frame = cap.read()
+            result = detector.detect(frame)
+            if result["presence"]:
+                print(f"检测到 {result['count']} 个人")
+    """
+    
+    def __init__(
+        self,
+        model_selection: int = 0,
+        min_detection_confidence: float = 0.5,
+        presence_callback: Optional[Callable[[bool], None]] = None,
+        presence_threshold_s: float = 2.0,
+        absence_threshold_s: float = 5.0,
+    ):
+        """
+        初始化人脸检测器
+        
+        Args:
+            model_selection: 模型选择
+                0: 短距离模型（适合 2 米内）
+                1: 远距离模型（适合 5 米内）
+            min_detection_confidence: 最小检测置信度 (0.0-1.0)
+            presence_callback: 在场状态变化回调
+            presence_threshold_s: 持续检测到人脸的时长阈值（秒）
+            absence_threshold_s: 持续未检测到人脸的时长阈值（秒）
+        """
+        self._noop = not MEDIAPIPE_AVAILABLE
+        
+        if not self._noop:
+            self.mp_face_detection = mp.solutions.face_detection
+            self.detector = self.mp_face_detection.FaceDetection(
+                model_selection=model_selection,
+                min_detection_confidence=min_detection_confidence
+            )
+        
+        self.presence_callback = presence_callback
+        self._last_presence = False
+        self._presence_threshold_s = presence_threshold_s
+        self._absence_threshold_s = absence_threshold_s
+        self._first_seen_time: Optional[float] = None
+        self._last_seen_time: float = 0
+        self._last_absent_time: float = time.time()
+        
+        # 统计信息
+        self._total_detections = 0
+        self._presence_changes = 0
+        
+        mode = "NoOp" if self._noop else "MediaPipe"
+        logger.info(f"FaceDetector initialized ({mode} mode)")
+    
+    def detect(self, frame) -> Dict[str, Any]:
+        """
+        检测帧中的人脸
+        
+        Args:
+            frame: BGR 格式的图像帧 (OpenCV 格式)
+            
+        Returns:
+            {
+                "faces": [FaceInfo, ...],
+                "count": int,
+                "presence": bool,
+                "main_face_center": (x, y) or None,
+                "presence_duration": float  # 在场持续时间（秒）
+            }
+        """
+        if self._noop:
+            return self._noop_detect()
+        
+        # 转换为 RGB
+        rgb_frame = frame
+        if len(frame.shape) == 3 and frame.shape[2] == 3:
+            # 假设输入是 BGR，转换为 RGB
+            import cv2
+            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        
+        results = self.detector.process(rgb_frame)
+        
+        faces: List[FaceInfo] = []
+        main_face_center: Optional[tuple] = None
+        
+        if results.detections:
+            self._total_detections += 1
+            
+            for i, detection in enumerate(results.detections):
+                bboxC = detection.location_data.relative_bounding_box
+                h, w = frame.shape[:2]
+                
+                bbox = [
+                    int(bboxC.xmin * w),
+                    int(bboxC.ymin * h),
+                    int(bboxC.width * w),
+                    int(bboxC.height * h)
+                ]
+                confidence = detection.score[0]
+                center = (
+                    bboxC.xmin + bboxC.width / 2,
+                    bboxC.ymin + bboxC.height / 2
+                )
+                
+                faces.append(FaceInfo(
+                    bbox=bbox,
+                    confidence=confidence,
+                    center=center
+                ))
+                
+                # 主人脸（第一个检测到的，通常是最大/最近的）
+                if i == 0:
+                    main_face_center = center
+        
+        presence = len(faces) > 0
+        presence_duration = self._update_presence_state(presence)
+        
+        return {
+            "faces": faces,
+            "count": len(faces),
+            "presence": presence,
+            "main_face_center": main_face_center,
+            "presence_duration": presence_duration
+        }
+    
+    def _update_presence_state(self, current_presence: bool) -> float:
+        """
+        更新在场状态，带防抖
+        
+        Returns:
+            当前在场持续时间（秒）
+        """
+        now = time.time()
+        presence_duration = 0.0
+        
+        if current_presence:
+            if self._first_seen_time is None:
+                self._first_seen_time = now
+            self._last_seen_time = now
+            presence_duration = now - self._first_seen_time
+            
+            # 持续检测到人脸超过阈值 → 触发在场回调
+            if not self._last_presence:
+                if presence_duration >= self._presence_threshold_s:
+                    self._last_presence = True
+                    self._presence_changes += 1
+                    logger.info(f"用户在场 (持续 {presence_duration:.1f}s)")
+                    if self.presence_callback:
+                        try:
+                            self.presence_callback(True)
+                        except Exception as e:
+                            logger.error(f"Presence callback error: {e}")
+        else:
+            self._first_seen_time = None
+            absence_duration = now - self._last_seen_time
+            presence_duration = 0.0
+            
+            # 持续未检测到人脸超过阈值 → 触发离场回调
+            if self._last_presence:
+                if absence_duration >= self._absence_threshold_s:
+                    self._last_presence = False
+                    self._presence_changes += 1
+                    logger.info(f"用户离开 (离开 {absence_duration:.1f}s)")
+                    if self.presence_callback:
+                        try:
+                            self.presence_callback(False)
+                        except Exception as e:
+                            logger.error(f"Presence callback error: {e}")
+        
+        return presence_duration
+    
+    def _noop_detect(self) -> Dict[str, Any]:
+        """NoOp 模式的默认返回"""
+        return {
+            "faces": [],
+            "count": 0,
+            "presence": False,
+            "main_face_center": None,
+            "presence_duration": 0.0
+        }
+    
+    @property
+    def is_present(self) -> bool:
+        """当前用户是否在场"""
+        return self._last_presence
+    
+    def get_stats(self) -> Dict[str, Any]:
+        """获取统计信息"""
+        return {
+            "total_detections": self._total_detections,
+            "presence_changes": self._presence_changes,
+            "current_presence": self._last_presence,
+            "noop_mode": self._noop
+        }
+    
+    def reset_stats(self):
+        """重置统计信息"""
+        self._total_detections = 0
+        self._presence_changes = 0
+    
+    def close(self):
+        """释放资源"""
+        if not self._noop:
+            self.detector.close()
+            logger.info("FaceDetector closed")

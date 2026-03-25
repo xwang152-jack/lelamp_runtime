@@ -2,7 +2,97 @@
 
 ## 🎯 概述
 
-LeLamp Runtime v2.0 提供完整的企业级功能,包括对话式 AI、视觉识别、动作控制、灯光效果和 RESTful API 系统。
+LeLamp Runtime v3.1 提供完整的企业级功能,包括对话式 AI、视觉识别、动作控制、灯光效果、**边缘推理**和 RESTful API 系统。
+
+---
+
+## 🆕 边缘推理 (Edge Vision) 🆕
+
+基于 MediaPipe 的本地 AI 推理功能，实现低延迟、隐私保护的视觉交互。
+
+### 功能特性
+
+| 功能 | 说明 | 延迟 |
+|------|------|------|
+| **人脸检测** | 用户在场检测、自动唤醒/休眠 | < 50ms |
+| **手势追踪** | 8种手势识别、手势控制 | < 100ms |
+| **物体检测** | 80类COCO物体本地识别 | < 300ms |
+| **混合推理** | 智能路由本地/云端 | 自动选择 |
+
+### 启用方式
+
+```bash
+# 设置环境变量启用边缘视觉
+export LELAMP_EDGE_VISION_ENABLED=1
+
+# 可选：安装 MediaPipe（完整功能）
+pip install mediapipe opencv-python
+```
+
+### 支持的手势
+
+| 手势 | 触发动作 |
+|------|----------|
+| 👍 点赞 | 点头 (nod) |
+| 👎 踩 | 摇头 (shake) |
+| ✌️ 耶 | 兴奋 (excited) |
+| 👋 挥手 | 开关灯 |
+| ✊ 握拳 | 静音/取消静音 |
+| 👆 指向 | 台灯看向指定方向 |
+| 👌 OK | 确认 |
+| 👐 张开 | 恢复默认 |
+
+### 混合推理策略
+
+```
+用户问："这是什么？"
+    ↓
+HybridVisionService 分析查询复杂度
+    ↓
+┌─────────────────────────────────────┐
+│ QueryComplexity.SIMPLE              │
+│ → 本地 MediaPipe 物体检测 (< 200ms) │
+│ → 能识别？直接回答                   │
+└─────────────────────────────────────┘
+    ↓ 无法识别
+┌─────────────────────────────────────┐
+│ QueryComplexity.COMPLEX             │
+│ → 云端 Qwen VL (3-8s)               │
+│ → 详细回答                          │
+└─────────────────────────────────────┘
+```
+
+### Agent 工具
+
+边缘推理提供以下 Agent 工具：
+
+```python
+# 快速识别物体（本地推理）
+await quick_identify()
+
+# 检测手势
+await detect_gesture()
+
+# 检测用户在场
+await check_presence()
+
+# 获取边缘视觉统计
+await get_edge_vision_stats()
+```
+
+### 配置选项
+
+| 环境变量 | 默认值 | 说明 |
+|---------|--------|------|
+| `LELAMP_EDGE_VISION_ENABLED` | `0` | 启用边缘视觉 |
+| `LELAMP_EDGE_VISION_PREFER_LOCAL` | `1` | 优先本地推理 |
+| `LELAMP_EDGE_VISION_LOCAL_THRESHOLD` | `0.7` | 本地置信度阈值 |
+
+### 优雅降级
+
+- **MediaPipe 不可用**: 自动降级到 NoOp 模式，不影响其他功能
+- **物体检测模型缺失**: 降级到云端 Qwen VL
+- **云端服务不可用**: 使用本地结果（如有）
 
 ---
 
@@ -297,7 +387,6 @@ curl -X POST http://localhost:8000/api/auth/bind-device \
 - [安全指南](SECURITY.md) - 安全最佳实践
 - [部署指南](DEPLOYMENT_GUIDE.md) - 生产部署说明
 
----
 
-**最后更新**: 2026-03-19
-**版本**: v2.0
+**最后更新**: 2026-03-25
+**版本**: v3.1 (新增边缘推理模块)

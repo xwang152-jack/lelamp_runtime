@@ -157,6 +157,11 @@ class AppSettingsResponse(BaseModel):
     modelscope_api_key_masked: Optional[str]
     modelscope_timeout_s: float
 
+    # Edge Vision 边缘视觉
+    edge_vision_enabled: bool
+    edge_vision_prefer_local: bool
+    edge_vision_local_threshold: float
+
     # Camera
     camera_width: int
     camera_height: int

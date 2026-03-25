@@ -67,6 +67,11 @@ export interface AppSettings {
   modelscope_api_key_masked: string | null
   modelscope_timeout_s: number
 
+  // Edge Vision 边缘视觉
+  edge_vision_enabled: boolean
+  edge_vision_prefer_local: boolean
+  edge_vision_local_threshold: number
+
   // Camera
   camera_width: number
   camera_height: number
@@ -102,6 +107,11 @@ export interface SettingsUpdate {
   modelscope_model?: string
   modelscope_api_key?: string
   modelscope_timeout_s?: number
+
+  // Edge Vision 边缘视觉
+  edge_vision_enabled?: boolean
+  edge_vision_prefer_local?: boolean
+  edge_vision_local_threshold?: number
 
   // Camera
   camera_width?: number

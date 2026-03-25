@@ -19,8 +19,15 @@ from livekit.agents import Agent, function_tool
 
 from lelamp.service import Priority
 from lelamp.agent.states import ConversationState, StateColors, StateManager
-from lelamp.agent.tools import MotorTools, RGBTools, VisionTools, SystemTools
+from lelamp.agent.tools import MotorTools, RGBTools, VisionTools, SystemTools, EdgeVisionTools
 from lelamp.utils import get_rate_limiter, get_all_rate_limiter_stats
+
+# 边缘视觉服务（可选依赖）
+try:
+    from lelamp.edge.hybrid_vision import HybridVisionService
+    EDGE_VISION_AVAILABLE = True
+except ImportError:
+    EDGE_VISION_AVAILABLE = False
 
 if TYPE_CHECKING:
     from lelamp.service.motors.motors_service import MotorsService
@@ -225,6 +232,61 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
             state_manager=self._state_manager,
             get_rate_limit_stats_func=get_all_rate_limiter_stats
         )
+
+        # 初始化边缘视觉服务（可选）
+        self._hybrid_vision: Optional["HybridVisionService"] = None
+        self._edge_vision_tools: Optional[EdgeVisionTools] = None
+        
+        edge_vision_enabled = (os.getenv("LELAMP_EDGE_VISION_ENABLED") or "0").strip().lower() in (
+            "1", "true", "yes", "on"
+        )
+        if edge_vision_enabled and EDGE_VISION_AVAILABLE:
+            try:
+                # 手势回调：检测到手势时触发动作
+                def on_gesture(gesture, context):
+                    logger.info(f"检测到手势: {gesture.value}")
+                    # 可以在这里添加手势触发的动作
+                    if gesture.value == "thumbs_up":
+                        self.motors_service.dispatch("play", "nod")
+                    elif gesture.value == "thumbs_down":
+                        self.motors_service.dispatch("play", "shake")
+                    elif gesture.value == "peace":
+                        self.motors_service.dispatch("play", "excited")
+                    elif gesture.value == "wave":
+                        # 挥手开关灯
+                        if self.rgb_service.is_on():
+                            self.rgb_service.dispatch("off")
+                        else:
+                            self.rgb_service.dispatch("solid", (255, 255, 255))
+                
+                # 在场回调：用户在场状态变化
+                def on_presence(present: bool):
+                    if present:
+                        logger.info("用户到场")
+                        self.motors_service.dispatch("play", "wake_up")
+                    else:
+                        logger.info("用户离开")
+                        # 可以在这里添加自动休眠逻辑
+                
+                self._hybrid_vision = HybridVisionService(
+                    cloud_vision_client=qwen_client,
+                    enable_face=True,
+                    enable_hand=True,
+                    enable_object=True,
+                    gesture_callback=on_gesture,
+                    presence_callback=on_presence,
+                )
+                
+                self._edge_vision_tools = EdgeVisionTools(
+                    hybrid_vision=self._hybrid_vision,
+                    state_manager=self._state_manager
+                )
+                
+                logger.info("边缘视觉服务已启用")
+            except Exception as e:
+                logger.warning(f"边缘视觉服务初始化失败: {e}")
+                self._hybrid_vision = None
+                self._edge_vision_tools = None
 
         # 用户输入追踪
         self._last_user_text = ""
@@ -538,6 +600,87 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
     async def capture_to_feishu(self) -> str:
         """拍照并通过飞书机器人推送（直接上传图片），拍照前会锁定动作并停止以确保清晰度。"""
         return await self._vision_tools.capture_to_feishu()
+
+    # ==================== 边缘视觉工具方法 ====================
+
+    @function_tool
+    async def quick_identify(self) -> str:
+        """
+        快速识别当前画面中的物体（本地推理，低延迟）。
+        Quick identify objects in the current view (local inference, low latency).
+        
+        适用于简单问题如"这是什么"，无需调用云端 API。
+        """
+        if self._edge_vision_tools is None:
+            # 降级到云端视觉
+            return await self.vision_answer("这是什么")
+        
+        # 获取当前帧
+        frame = None
+        if self._vision_service:
+            frame = self._vision_service.get_latest_frame()
+        
+        return await self._edge_vision_tools.quick_identify(frame)
+
+    @function_tool
+    async def detect_gesture(self) -> str:
+        """
+        检测当前画面中的手势（本地推理）。
+        Detect hand gestures in the current view (local inference).
+        
+        支持的手势：👍 点赞、👎 踩、✌️ 耶、👋 挥手、✊ 握拳、👆 指向
+        """
+        if self._edge_vision_tools is None:
+            return "手势检测服务未启用。请设置环境变量 LELAMP_EDGE_VISION_ENABLED=1"
+        
+        frame = None
+        if self._vision_service:
+            frame = self._vision_service.get_latest_frame()
+        
+        return await self._edge_vision_tools.detect_gesture(frame)
+
+    @function_tool
+    async def check_presence(self) -> str:
+        """
+        检测用户是否在场（本地推理）。
+        Check if user is present (local inference).
+        
+        用于自动唤醒/休眠功能。
+        """
+        if self._edge_vision_tools is None:
+            return "在场检测服务未启用。请设置环境变量 LELAMP_EDGE_VISION_ENABLED=1"
+        
+        frame = None
+        if self._vision_service:
+            frame = self._vision_service.get_latest_frame()
+        
+        return await self._edge_vision_tools.check_presence(frame)
+
+    @function_tool
+    async def get_edge_vision_stats(self) -> str:
+        """
+        获取边缘视觉服务统计信息（调试用）。
+        Get edge vision service statistics (for debugging).
+        """
+        if self._edge_vision_tools is None:
+            return "边缘视觉服务未启用"
+        
+        stats = self._edge_vision_tools.get_stats()
+        
+        lines = ["边缘视觉服务统计:"]
+        lines.append(f"- 总查询数: {stats.get('total_queries', 0)}")
+        lines.append(f"- 本地查询: {stats.get('local_queries', 0)}")
+        lines.append(f"- 云端查询: {stats.get('cloud_queries', 0)}")
+        lines.append(f"- 混合查询: {stats.get('hybrid_queries', 0)}")
+        
+        services = stats.get('services', {})
+        lines.append(f"- 服务状态:")
+        lines.append(f"  - 人脸检测: {'启用' if services.get('face_detector') else '禁用'}")
+        lines.append(f"  - 手势追踪: {'启用' if services.get('hand_tracker') else '禁用'}")
+        lines.append(f"  - 物体检测: {'启用' if services.get('object_detector') else '禁用'}")
+        lines.append(f"  - 云端视觉: {'启用' if services.get('cloud_vision') else '禁用'}")
+        
+        return "\n".join(lines)
 
     # ==================== 系统工具方法 ====================
 

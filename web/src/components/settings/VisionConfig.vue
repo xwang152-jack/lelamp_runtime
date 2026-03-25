@@ -54,6 +54,94 @@
       </el-form>
     </el-card>
 
+    <!-- 边缘视觉配置 -->
+    <el-card header="边缘视觉 (Edge Vision)" class="edge-vision-card">
+      <template #header>
+        <div class="card-header">
+          <span>边缘视觉 (Edge Vision)</span>
+          <el-tag type="success" size="small">低延迟</el-tag>
+        </div>
+      </template>
+      
+      <el-form
+        :model="edgeForm"
+        label-width="140px"
+        label-position="left"
+      >
+        <el-form-item label="启用边缘视觉">
+          <el-switch v-model="edgeForm.edge_vision_enabled" />
+          <span class="form-hint">启用本地 AI 推理，降低延迟并保护隐私</span>
+        </el-form-item>
+
+        <el-form-item label="优先本地推理">
+          <el-switch 
+            v-model="edgeForm.edge_vision_prefer_local" 
+            :disabled="!edgeForm.edge_vision_enabled"
+          />
+          <span class="form-hint">简单问题优先使用本地模型，降低云端 API 调用</span>
+        </el-form-item>
+
+        <el-form-item label="本地置信度阈值">
+          <el-slider
+            v-model="edgeForm.edge_vision_local_threshold"
+            :min="0.1"
+            :max="1.0"
+            :step="0.1"
+            :disabled="!edgeForm.edge_vision_enabled"
+            show-input
+            :show-input-controls="false"
+          />
+          <span class="form-hint">高于此阈值时直接返回本地结果，低于则调用云端</span>
+        </el-form-item>
+
+        <el-form-item>
+          <el-button 
+            type="primary" 
+            @click="handleEdgeSave" 
+            :loading="edgeSaving"
+            :disabled="!edgeForm.edge_vision_enabled"
+          >
+            保存边缘视觉配置
+          </el-button>
+        </el-form-item>
+      </el-form>
+
+      <el-divider />
+
+      <div class="edge-features">
+        <h4>功能特性</h4>
+        <el-row :gutter="16">
+          <el-col :span="8">
+            <div class="feature-item">
+              <el-icon :size="24" color="#67c23a"><User /></el-icon>
+              <div class="feature-info">
+                <span class="feature-title">人脸检测</span>
+                <span class="feature-desc">用户在场检测 < 50ms</span>
+              </div>
+            </div>
+          </el-col>
+          <el-col :span="8">
+            <div class="feature-item">
+              <el-icon :size="24" color="#409eff"><Pointer /></el-icon>
+              <div class="feature-info">
+                <span class="feature-title">手势追踪</span>
+                <span class="feature-desc">8种手势识别 < 100ms</span>
+              </div>
+            </div>
+          </el-col>
+          <el-col :span="8">
+            <div class="feature-item">
+              <el-icon :size="24" color="#e6a23c"><Box /></el-icon>
+              <div class="feature-info">
+                <span class="feature-title">物体检测</span>
+                <span class="feature-desc">80类COCO物体 < 300ms</span>
+              </div>
+            </div>
+          </el-col>
+        </el-row>
+      </div>
+    </el-card>
+
     <el-alert
       type="info"
       :closable="false"
@@ -62,6 +150,7 @@
     >
       <template #default>
         <p>视觉识别功能需要摄像头支持。配置修改后需要重启服务才能生效。</p>
+        <p>边缘视觉需要安装 MediaPipe：pip install mediapipe opencv-python</p>
       </template>
     </el-alert>
   </div>
@@ -70,16 +159,24 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
+import { User, Pointer, Box } from '@element-plus/icons-vue'
 import { useSettingsStore } from '@/stores'
 
 const settingsStore = useSettingsStore()
 const saving = ref(false)
+const edgeSaving = ref(false)
 
 const form = ref({
   vision_enabled: true,
   modelscope_model: '',
   modelscope_api_key: '',
   modelscope_timeout_s: 60,
+})
+
+const edgeForm = ref({
+  edge_vision_enabled: false,
+  edge_vision_prefer_local: true,
+  edge_vision_local_threshold: 0.7,
 })
 
 const apiKeyConfigured = computed(() => settingsStore.settings?.modelscope_api_key_configured || false)
@@ -96,6 +193,11 @@ async function loadSettings() {
       modelscope_model: settings.modelscope_model || '',
       modelscope_api_key: '',
       modelscope_timeout_s: settings.modelscope_timeout_s || 60,
+    }
+    edgeForm.value = {
+      edge_vision_enabled: settings.edge_vision_enabled ?? false,
+      edge_vision_prefer_local: settings.edge_vision_prefer_local ?? true,
+      edge_vision_local_threshold: settings.edge_vision_local_threshold ?? 0.7,
     }
   }
 }
@@ -123,6 +225,25 @@ async function handleSave() {
   }
 }
 
+async function handleEdgeSave() {
+  edgeSaving.value = true
+
+  try {
+    const updates: any = {
+      edge_vision_enabled: edgeForm.value.edge_vision_enabled,
+      edge_vision_prefer_local: edgeForm.value.edge_vision_prefer_local,
+      edge_vision_local_threshold: edgeForm.value.edge_vision_local_threshold,
+    }
+
+    await settingsStore.saveSettings(updates)
+    ElMessage.success('边缘视觉配置已保存，重启后生效')
+  } catch (e) {
+    ElMessage.error('保存失败')
+  } finally {
+    edgeSaving.value = false
+  }
+}
+
 function handleReset() {
   loadSettings()
 }
@@ -144,5 +265,48 @@ function handleReset() {
 
 .info-alert p {
   margin: 4px 0;
+}
+
+.edge-vision-card {
+  .card-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+}
+
+.edge-features {
+  h4 {
+    margin: 0 0 16px 0;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--el-text-color-primary);
+  }
+
+  .feature-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
+    background: var(--el-fill-color-light);
+    border-radius: 8px;
+
+    .feature-info {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+
+      .feature-title {
+        font-size: 14px;
+        font-weight: 500;
+        color: var(--el-text-color-primary);
+      }
+
+      .feature-desc {
+        font-size: 12px;
+        color: var(--el-text-color-secondary);
+      }
+    }
+  }
 }
 </style>

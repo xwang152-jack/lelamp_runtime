@@ -74,6 +74,11 @@ class AppSettingsUpdateRequest(BaseModel):
     modelscope_api_key: Optional[str] = Field(None, min_length=1, max_length=200)
     modelscope_timeout_s: Optional[float] = Field(None, ge=1.0, le=300.0)
 
+    # Edge Vision 边缘视觉配置
+    edge_vision_enabled: Optional[bool] = None
+    edge_vision_prefer_local: Optional[bool] = None
+    edge_vision_local_threshold: Optional[float] = Field(None, ge=0.1, le=1.0)
+
     # 摄像头配置
     camera_width: Optional[int] = Field(None, ge=320, le=1920)
     camera_height: Optional[int] = Field(None, ge=240, le=1080)

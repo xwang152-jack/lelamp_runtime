@@ -554,7 +554,125 @@ class EventPriority(IntEnum):
 
 ---
 
-### 5. 集成层 (`lelamp/integrations/`)
+### 5. 边缘推理层 (`lelamp/edge/`) 🆕
+
+**设计理念**: 本地优先、低延迟、优雅降级
+
+```
+lelamp/edge/
+├── __init__.py            # 模块入口
+├── face_detector.py       # 人脸检测 → 用户在场
+├── hand_tracker.py        # 手势追踪 → 手势控制
+├── object_detector.py     # 物体检测 → 本地识别
+└── hybrid_vision.py       # 混合推理路由
+```
+
+#### 核心组件
+
+**FaceDetector** - 人脸检测服务
+```python
+class FaceDetector:
+    """
+    基于 MediaPipe 的人脸检测
+    
+    功能:
+    - 用户在场检测 → 自动唤醒/休眠
+    - 多人检测 → 区分主用户
+    - 防抖机制 → 可配置阈值
+    """
+```
+
+**HandTracker** - 手势追踪服务
+```python
+class HandTracker:
+    """
+    基于 MediaPipe 的手势追踪
+    
+    支持手势:
+    - 👍 点赞 → 触发 nod 动作
+    - 👎 踩 → 触发 shake 动作
+    - ✌️ 耶 → 触发 excited 动作
+    - 👋 挥手 → 开关灯
+    - ✊ 握拳 → 静音/取消静音
+    - 👆 指向 → 台灯看向指定方向
+    """
+```
+
+**ObjectDetector** - 物体检测服务
+```python
+class ObjectDetector:
+    """
+    基于 MediaPipe EfficientDet 的物体检测
+    
+    特性:
+    - 80 类 COCO 物体
+    - 中文标签映射
+    - 低延迟 (100-300ms)
+    """
+```
+
+**HybridVisionService** - 混合推理路由
+```python
+class HybridVisionService:
+    """
+    智能路由：简单任务本地推理，复杂任务云端推理
+    
+    路由策略:
+    - 简单查询 ("这是什么") → 本地物体检测
+    - 复杂查询 ("检查作业") → 云端 Qwen VL
+    - 中等查询 → 混合推理
+    """
+```
+
+#### 混合推理流程
+
+```
+用户问："这是什么？"
+    ↓
+HybridVisionService.analyze_query()
+    ↓
+QueryComplexity.SIMPLE
+    ↓
+本地 MediaPipe 物体检测 (< 200ms)
+    ↓
+能识别？ ──是──→ 直接回答 "这是苹果"
+    │
+    否
+    ↓
+云端 Qwen VL (3-8s) → 详细回答
+```
+
+#### 配置选项
+
+| 环境变量 | 默认值 | 说明 |
+|---------|--------|------|
+| `LELAMP_EDGE_VISION_ENABLED` | `0` | 启用边缘视觉 |
+| `LELAMP_EDGE_VISION_PREFER_LOCAL` | `1` | 优先本地推理 |
+| `LELAMP_EDGE_VISION_LOCAL_THRESHOLD` | `0.7` | 本地置信度阈值 |
+
+#### Agent 工具集成
+
+```python
+@function_tool()
+async def quick_identify() -> str:
+    """快速识别物体（本地推理）"""
+
+@function_tool()
+async def detect_gesture() -> str:
+    """检测手势"""
+
+@function_tool()
+async def check_presence() -> str:
+    """检测用户在场"""
+
+@function_tool()
+async def get_edge_vision_stats() -> str:
+    """获取边缘视觉统计"""
+```
+
+---
+
+### 6. 集成层 (`lelamp/integrations/`)
 
 **设计理念**: 统一错误处理、重试机制、降级策略
 
@@ -1005,6 +1123,11 @@ FastAPI Workers (4+ instances)
 | `lelamp/service/rgb/rgb_service.py` | RGB 服务 |
 | `lelamp/service/vision/vision_service.py` | 视觉服务 |
 | `lelamp/service/vision/privacy.py` | 隐私保护管理 |
+| `lelamp/edge/face_detector.py` | 人脸检测服务 |
+| `lelamp/edge/hand_tracker.py` | 手势追踪服务 |
+| `lelamp/edge/object_detector.py` | 物体检测服务 |
+| `lelamp/edge/hybrid_vision.py` | 混合推理路由 |
+| `lelamp/agent/tools/edge_vision_tools.py` | 边缘视觉工具 |
 | `lelamp/config.py` | 配置管理 |
 | `lelamp/utils/rate_limiter.py` | 速率限制 |
 | `lelamp/utils/ota.py` | OTA 更新 |
@@ -1012,5 +1135,5 @@ FastAPI Workers (4+ instances)
 
 ---
 
-**最后更新**: 2026-03-19
-**版本**: v3.0 (整合 LiveKit 集成、百度语音、隐私保护、商业化功能)
+**最后更新**: 2026-03-25
+**版本**: v3.1 (新增边缘推理模块、MediaPipe 集成)
