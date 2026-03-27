@@ -1,5 +1,7 @@
 # LeLamp Runtime v2.0
 
+> ⚙️ 状态已更新：本地仓库已同步 `main` 分支并清理了临时 Markdown 文档（保留核心文档）。
+>
 ![](./assets/images/Banner.png)
 
 **LeLamp Runtime** 是一个完整的 Python 控制系统，为 [LeLamp 机器人台灯](https://github.com/humancomputerlab/LeLamp)提供对话式 AI、视觉识别、动作表情、灯光效果等功能。基于 [Apple 的 Elegnt 研究](https://machinelearning.apple.com/research/elegnt-expressive-functional-movement)，由 [[Human Computer Lab]](https://www.humancomputerlab.com/) 开发。

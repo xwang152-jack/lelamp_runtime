@@ -37,6 +37,7 @@ def mock_config():
         lamp_id="test_lamp",
         noise_cancellation_enabled=True,
         greeting_text="Test greeting",
+        ota_url=None,
     )
 
 
