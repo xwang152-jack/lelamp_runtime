@@ -25,9 +25,11 @@ from lelamp.utils import get_rate_limiter, get_all_rate_limiter_stats
 # 边缘视觉服务（可选依赖）
 try:
     from lelamp.edge.hybrid_vision import HybridVisionService
+    from lelamp.service.vision.proactive_vision_monitor import ProactiveVisionMonitor
     EDGE_VISION_AVAILABLE = True
 except ImportError:
     EDGE_VISION_AVAILABLE = False
+    ProactiveVisionMonitor = None  # type: ignore
 
 if TYPE_CHECKING:
     from lelamp.service.motors.motors_service import MotorsService
@@ -282,10 +284,32 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
                     state_manager=self._state_manager
                 )
 
-                # 不启动主动监听服务，避免占用摄像头资源
-                # 改为语音触发模式：用户说话时才进行视觉检测
-                self._vision_monitor = None
-                logger.info("边缘视觉服务已启用（语音触发模式）")
+                # 启动主动监听服务
+                # 检查是否通过环境变量禁用
+                enable_monitor = os.getenv("LELAMP_PROACTIVE_MONITOR", "1").strip().lower() in (
+                    "1", "true", "yes", "on"
+                )
+
+                if enable_monitor:
+                    # 获取监控配置
+                    active_fps = int(os.getenv("LELAMP_MONITOR_ACTIVE_FPS", "5"))
+                    idle_fps = int(os.getenv("LELAMP_MONITOR_IDLE_FPS", "1"))
+
+                    self._vision_monitor = ProactiveVisionMonitor(
+                        vision_service=self._vision_service,
+                        hybrid_vision=self._hybrid_vision,
+                        gesture_callback=on_gesture,
+                        presence_callback=on_presence,
+                        enable_auto_gesture=True,
+                        enable_auto_presence=True,
+                        active_fps=active_fps,
+                        idle_fps=idle_fps,
+                    )
+                    self._vision_monitor.start()
+                    logger.info(f"边缘视觉服务已启用（主动监听模式: {active_fps}/{idle_fps} FPS）")
+                else:
+                    self._vision_monitor = None
+                    logger.info("边缘视觉服务已启用（语音触发模式，通过 LELAMP_PROACTIVE_MONITOR=0 禁用主动监控）")
             except Exception as e:
                 logger.warning(f"边缘视觉服务初始化失败: {e}")
                 self._hybrid_vision = None
@@ -717,11 +741,21 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
         """
         获取主动监听服务状态（调试用）。
         Get proactive vision monitor status (for debugging).
-
-        Note:
-            由于本项目不使用 LiveKit 远程服务功能，主动监听已禁用以避免占用摄像头资源。
         """
-        return "主动监听服务已禁用（避免占用摄像头资源）。边缘视觉服务正常运行，可通过语音命令触发检测。"
+        if self._vision_monitor is None:
+            return "主动监听服务未启用。边缘视觉服务正常运行，可通过语音命令触发检测。"
+
+        import json
+        stats = self._vision_monitor.get_stats()
+        return f"""主动监听服务状态：
+- 运行中: {stats['running']}
+- 模式: {stats['mode']}
+- 用户在场: {stats['user_present']}
+- 在场时长: {stats['user_present_duration']:.1f}秒
+- 检测次数: {stats['detection_count']}
+- 手势次数: {stats['gesture_count']}
+- 手势检测: {'启用' if stats['auto_gesture_enabled'] else '禁用'}
+- 在场检测: {'启用' if stats['auto_presence_enabled'] else '禁用'}"""
 
     @function_tool
     async def toggle_vision_monitor(self, enable: bool = None) -> str:
@@ -731,12 +765,26 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
 
         Args:
             enable: True 启用，False 禁用，None 切换状态
-
-        Note:
-            由于本项目不使用 LiveKit 远程服务功能，主动监听已禁用以避免占用摄像头资源。
-            请使用语音命令触发视觉检测，如："检测手势"、"检查一下"等。
         """
-        return "主动监听服务已禁用（避免占用摄像头资源）。请使用语音命令触发视觉检测，如说\"检测手势\"或\"检查一下\"。"
+        if self._vision_monitor is None:
+            return "主动监听服务未初始化。请检查边缘视觉服务是否正常启动。"
+
+        current_running = self._vision_monitor._running
+
+        if enable is None:
+            # 切换状态
+            enable = not current_running
+
+        if enable and not current_running:
+            self._vision_monitor.start()
+            return "主动监听服务已启用。现在会自动检测用户在场和手势。"
+        elif not enable and current_running:
+            self._vision_monitor.stop()
+            return "主动监听服务已禁用。现在只能通过语音命令触发视觉检测。"
+        elif enable and current_running:
+            return "主动监听服务已经在运行中。"
+        else:
+            return "主动监听服务已经停止。"
 
     @function_tool
     async def set_vision_monitor_mode(self, mode: str) -> str:
@@ -746,11 +794,19 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
 
         Args:
             mode: 监听模式 - "active"(主动), "idle"(空闲), "sleep"(休眠)
-
-        Note:
-            由于本项目不使用 LiveKit 远程服务功能，主动监听已禁用以避免占用摄像头资源。
         """
-        return f"主动监听服务已禁用（避免占用摄像头资源）。无法设置模式为 {mode}。请使用语音命令触发视觉检测。"
+        if self._vision_monitor is None:
+            return f"主动监听服务未初始化，无法设置模式为 {mode}。"
+
+        mode_lower = mode.strip().lower()
+        valid_modes = ["active", "idle", "sleep"]
+
+        if mode_lower not in valid_modes:
+            return f"无效的模式: {mode}。有效模式为: {', '.join(valid_modes)}"
+
+        self._vision_monitor.set_mode(mode_lower)
+        mode_name = {"active": "主动", "idle": "空闲", "sleep": "休眠"}[mode_lower]
+        return f"主动监听模式已设置为: {mode_name}"
 
     # ==================== 系统工具方法 ====================
 
@@ -1022,3 +1078,18 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
                 logger.debug(f"更新摄像头状态: {active}")
         except Exception as e:
             logger.error(f"更新摄像头状态失败: {e}")
+
+    def shutdown(self) -> None:
+        """
+        关闭 agent，清理资源
+
+        停止主动监听服务等后台线程
+        """
+        logger.info("LeLamp agent shutting down...")
+
+        # 停止主动监听服务
+        if self._vision_monitor is not None and self._vision_monitor._running:
+            logger.info("Stopping proactive vision monitor...")
+            self._vision_monitor.stop()
+
+        logger.info("LeLamp agent shutdown complete")
