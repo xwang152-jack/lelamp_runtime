@@ -222,6 +222,33 @@ async def lifespan(app: FastAPI):
         rgb_service.start()
         app.state.rgb_service = rgb_service
 
+    # 初始化 VisionService（用于边缘视觉监控）
+    vision_service = None
+    try:
+        from lelamp.service.vision.vision_service import VisionService
+        from lelamp.config import load_vision_config
+
+        vision_cfg = load_vision_config()
+        if vision_cfg.enabled:
+            vision_service = VisionService(
+                enabled=vision_cfg.enabled,
+                index_or_path=vision_cfg.index_or_path,
+                width=vision_cfg.width,
+                height=vision_cfg.height,
+                capture_interval_s=0.5,  # API 模式下平衡性能（2fps捕获）
+                jpeg_quality=85,  # 降低质量以减少带宽
+                max_age_s=vision_cfg.max_age_s,
+                rotate_deg=vision_cfg.rotate_deg,
+                flip=vision_cfg.flip,
+                enable_privacy_protection=False,  # API 模式下不需要隐私保护
+            )
+            vision_service.start()
+            app.state.vision_service = vision_service
+            logger.info("VisionService started")
+    except Exception as e:
+        logger.error(f"VisionService start failed: {e}")
+        vision_service = None
+
     # 初始化 LeLamp Agent
     try:
         from lelamp.agent.lelamp_agent import LeLamp
@@ -230,6 +257,7 @@ async def lifespan(app: FastAPI):
             lamp_id="lelamp",
             motors_service=app.state.motors_service,
             rgb_service=app.state.rgb_service,
+            vision_service=vision_service,  # 传入 vision_service
         )
 
         async def broadcast_callback(msg):
@@ -245,6 +273,18 @@ async def lifespan(app: FastAPI):
     # 启动后台状态轮询任务
     polling_task = asyncio.create_task(state_polling_task())
 
+    # 启动摄像头流推送服务
+    camera_stream_task = None
+    if vision_service:
+        try:
+            from lelamp.api.services.camera_stream_service import get_camera_stream_service
+            camera_stream = get_camera_stream_service("lelamp")
+            camera_stream.set_vision_service(vision_service)
+            camera_stream_task = asyncio.create_task(camera_stream.start())
+            logger.info("Camera stream service started")
+        except Exception as e:
+            logger.error(f"Camera stream service start failed: {e}")
+
     yield
 
     # 关闭时执行
@@ -257,11 +297,27 @@ async def lifespan(app: FastAPI):
     except asyncio.CancelledError:
         pass
 
+    # 停止摄像头流推送服务
+    if camera_stream_task:
+        camera_stream_task.cancel()
+        try:
+            await camera_stream_task
+        except asyncio.CancelledError:
+            pass
+        try:
+            from lelamp.api.services.camera_stream_service import get_camera_stream_service
+            camera_stream = get_camera_stream_service("lelamp")
+            await camera_stream.stop()
+        except Exception as e:
+            logger.error(f"Camera stream stop failed: {e}")
+
     # 停止硬件服务
     if getattr(app.state, "motors_service", None):
         app.state.motors_service.stop()
     if getattr(app.state, "rgb_service", None):
         app.state.rgb_service.stop()
+    if getattr(app.state, "vision_service", None):
+        app.state.vision_service.stop()
 
 
 app.router.lifespan_context = lifespan

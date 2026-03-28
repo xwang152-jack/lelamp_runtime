@@ -79,9 +79,14 @@
         </section>
       </div>
 
-      <!-- Right Panel - Chat -->
-      <div class="chat-panel">
-        <div class="chat-header">
+      <!-- Right Panel - Camera & Chat -->
+      <div class="right-panel">
+        <!-- Camera Panel -->
+        <CameraPanel ref="cameraPanelRef" />
+
+        <!-- Chat Panel -->
+        <div class="chat-panel">
+          <div class="chat-header">
           <h3 class="chat-title">
             <span class="title-icon">💬</span>
             对话
@@ -136,20 +141,22 @@
           </button>
         </div>
       </div>
+      </div>
     </main>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, nextTick, watch } from 'vue'
+import { ref, computed, onMounted, nextTick, watch, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useChatStore, useConnectionStore, useDeviceStore, useAuthStore } from '@/stores'
 import { useWebSocket } from '@/composables/useWebSocket'
 import LightPanel from '@/components/room/LightPanel.vue'
+import CameraPanel from '@/components/room/CameraPanel.vue'
 import { getUserInitial } from '@/utils/device'
 
 const router = useRouter()
-const { disconnect, sendChat: sendWSChat } = useWebSocket()
+const { disconnect, sendChat: sendWSChat, onCameraFrame, offCameraFrame } = useWebSocket()
 const chatStore = useChatStore()
 const connectionStore = useConnectionStore()
 const deviceStore = useDeviceStore()
@@ -157,6 +164,7 @@ const authStore = useAuthStore()
 
 const inputText = ref('')
 const messagesContainer = ref<HTMLElement>()
+const cameraPanelRef = ref<InstanceType<typeof CameraPanel> | null>(null)
 
 const quickActions = [
   { id: 1, emoji: '👋', label: '打招呼', text: '你好' },
@@ -231,6 +239,18 @@ function formatTime(timestamp: number): string {
 
 onMounted(() => {
   scrollToBottom()
+
+  // 注册摄像头帧回调
+  onCameraFrame((frameB64, info) => {
+    if (cameraPanelRef.value) {
+      cameraPanelRef.value.updateFrame(frameB64, info)
+    }
+  })
+})
+
+onUnmounted(() => {
+  // 清理摄像头帧回调
+  offCameraFrame()
 })
 
 watch(
@@ -514,6 +534,14 @@ watch(
 }
 
 /* === Chat Panel === */
+.right-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lelamp-space-md);
+  flex: 1;
+  min-height: 0;
+}
+
 .chat-panel {
   background: var(--lelamp-bg-white);
   border-radius: var(--lelamp-radius-xl);
@@ -521,6 +549,8 @@ watch(
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  flex: 1;
+  min-height: 0;
 }
 
 .chat-header {
@@ -570,6 +600,7 @@ watch(
   overflow-y: auto;
   padding: var(--lelamp-space-lg);
   background: var(--lelamp-bg-gray);
+  min-height: 0;
 }
 
 .empty-state {

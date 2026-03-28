@@ -11,12 +11,19 @@ from dataclasses import dataclass
 logger = logging.getLogger("lelamp.edge.object")
 
 # MediaPipe 是可选依赖，优雅降级
+MEDIAPIPE_AVAILABLE = False
 try:
     import mediapipe as mp
     import cv2
-    MEDIAPIPE_AVAILABLE = True
+    # 检查是否有 solutions API 或 tasks API（新版 MediaPipe）
+    if hasattr(mp, 'solutions'):
+        MEDIAPIPE_AVAILABLE = True
+    elif hasattr(mp, 'tasks'):
+        MEDIAPIPE_AVAILABLE = True
+    else:
+        logger.warning("MediaPipe installed but required API not available. "
+                      "ObjectDetector will run in NoOp mode.")
 except ImportError:
-    MEDIAPIPE_AVAILABLE = False
     logger.warning("MediaPipe not available, ObjectDetector will run in NoOp mode")
 
 

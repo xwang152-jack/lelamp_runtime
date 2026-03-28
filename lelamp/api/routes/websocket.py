@@ -573,6 +573,26 @@ async def execute_direct_command(action: str, params: dict, rgb_service, motors_
                 asyncio.create_task(agent._set_system_volume(volume_percent))
                 return True
 
+        # 摄像头激活命令
+        elif action == "activate_camera":
+            vision_service = getattr(websocket.app.state, "vision_service", None)
+            if vision_service:
+                try:
+                    # 检查是否需要隐私保护
+                    if hasattr(vision_service, 'enable_privacy_protection') and vision_service.enable_privacy_protection:
+                        # 授予用户同意
+                        vision_service.grant_camera_consent()
+                    # 激活摄像头
+                    result = await vision_service.activate_camera()
+                    # 推送状态更新
+                    from lelamp.api.routes.websocket import push_camera_status
+                    await push_camera_status(lamp_id, True, True)
+                    return result
+                except Exception as e:
+                    logger.error(f"Camera activation failed: {e}")
+                    return False
+            return False
+
         # 不支持的命令
         logger.warning(f"不支持的命令: {action}")
         return False
@@ -672,6 +692,63 @@ async def push_notification(
     return await manager.broadcast_to_device(lamp_id, notification, channel="notifications")
 
 
+async def push_camera_frame(
+    lamp_id: str,
+    frame_b64: str,
+    width: Optional[int] = None,
+    height: Optional[int] = None
+) -> int:
+    """
+    推送摄像头帧到设备订阅者
+
+    Args:
+        lamp_id: 设备 ID
+        frame_b64: Base64 编码的 JPEG 图像数据
+        width: 图像宽度（可选）
+        height: 图像高度（可选）
+
+    Returns:
+        推送成功的连接数
+    """
+    message = {
+        "type": "camera_frame",
+        "frame_b64": frame_b64,
+        "width": width,
+        "height": height,
+        "timestamp": datetime.utcnow().isoformat()
+    }
+    # 不使用频道过滤，直接推送给所有连接的客户端
+    return await manager.broadcast_to_device(lamp_id, message)
+
+
+async def push_camera_status(
+    lamp_id: str,
+    active: bool,
+    privacy_granted: Optional[bool] = None
+) -> int:
+    """
+    推送摄像头状态到设备订阅者
+
+    Args:
+        lamp_id: 设备 ID
+        active: 摄像头是否激活
+        privacy_granted: 隐私同意状态（可选）
+
+    Returns:
+        推送成功的连接数
+    """
+    message = {
+        "type": "camera_status",
+        "active": active,
+        "timestamp": datetime.utcnow().isoformat()
+    }
+
+    if privacy_granted is not None:
+        message["privacy_granted"] = privacy_granted
+
+    return await manager.broadcast_to_device(lamp_id, message)
+
+
 # 导出管理器和辅助函数
 __all__ = [
     "manager",
@@ -679,4 +756,6 @@ __all__ = [
     "push_event",
     "push_log",
     "push_notification",
+    "push_camera_frame",
+    "push_camera_status",
 ]

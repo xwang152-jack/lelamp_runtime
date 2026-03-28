@@ -12,13 +12,19 @@ from enum import Enum
 logger = logging.getLogger("lelamp.edge.hand")
 
 # MediaPipe 是可选依赖，优雅降级
+MEDIAPIPE_AVAILABLE = False
 try:
     import mediapipe as mp
     import cv2
     import numpy as np
-    MEDIAPIPE_AVAILABLE = True
+    # 检查是否有 solutions API（旧版 MediaPipe）
+    if hasattr(mp, 'solutions'):
+        MEDIAPIPE_AVAILABLE = True
+    else:
+        logger.warning("MediaPipe installed but 'solutions' API not available. "
+                      "HandTracker will run in NoOp mode. "
+                      "Consider downgrading: pip install 'mediapipe<0.10'")
 except ImportError:
-    MEDIAPIPE_AVAILABLE = False
     logger.warning("MediaPipe not available, HandTracker will run in NoOp mode")
 
 

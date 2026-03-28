@@ -154,6 +154,34 @@ class AIMessage(BaseModel):
 
 
 # =============================================================================
+# 摄像头相关消息
+# =============================================================================
+
+
+class WSCameraFrame(BaseModel):
+    """摄像头帧消息"""
+    type: Literal["camera_frame"]
+    frame_b64: str = Field(
+        ...,
+        description="Base64 编码的 JPEG 图像数据"
+    )
+    width: Optional[int] = Field(None, description="图像宽度")
+    height: Optional[int] = Field(None, description="图像高度")
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+
+
+class WSCameraStatus(BaseModel):
+    """摄像头状态消息"""
+    type: Literal["camera_status"]
+    active: bool = Field(
+        ...,
+        description="摄像头是否激活"
+    )
+    privacy_granted: Optional[bool] = Field(None, description="隐私同意状态")
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+
+
+# =============================================================================
 # 健康和诊断相关消息
 # =============================================================================
 
@@ -219,7 +247,9 @@ ServerMessage = (
     WSHealthUpdate |
     WSWarning |
     WSError |
-    WSConnected
+    WSConnected |
+    WSCameraFrame |
+    WSCameraStatus
 )
 
 

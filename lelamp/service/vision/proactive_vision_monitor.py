@@ -198,6 +198,8 @@ class ProactiveVisionMonitor:
         frame = None
         if self._vision_service:
             frame = self._vision_service.get_latest_frame()
+        else:
+            logger.warning("VisionMonitor: _vision_service is None")
 
         if frame is None:
             if self._detection_count % 20 == 0:

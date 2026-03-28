@@ -215,6 +215,7 @@ class VisionService(ServiceBase):
         return base64.b64encode(buf.tobytes()).decode("ascii")
 
     def _camera_loop(self):
+        self.logger.info("VisionService _camera_loop started")
         try:
             import cv2
         except Exception as e:
@@ -393,7 +394,9 @@ class VisionService(ServiceBase):
         Returns:
             numpy.ndarray 或 None：BGR 格式的图像帧
         """
-        if not self.enabled or not self._camera_thread:
+        if not self.enabled:
+            return None
+        if not self._camera_thread:
             return None
 
         # 触发一次新的捕获
@@ -422,6 +425,7 @@ class VisionService(ServiceBase):
                         return None
             time.sleep(0.05)  # 短暂等待
 
+        self.logger.debug(f"VisionService.get_latest_frame timeout: _latest_jpeg_b64={bool(self._latest_jpeg_b64)}, _latest_ts={self._latest_ts}")
         return None
 
     def get_camera_stats(self) -> dict:

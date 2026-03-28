@@ -3,11 +3,27 @@ import type { DataMessage } from '@/types'
 import { ElMessage } from 'element-plus'
 import { WS_CONNECTION_TIMEOUT } from '@/utils/auth-constants'
 
+// 摄像头帧回调函数类型
+type CameraFrameCallback = (frameB64: string, info: { width?: number; height?: number; timestamp: number }) => void
+
+// 全局摄像头帧回调
+let cameraFrameCallback: CameraFrameCallback | null = null
+
 export function useWebSocket() {
   const connectionStore = useConnectionStore()
   const chatStore = useChatStore()
   const deviceStore = useDeviceStore()
   const authStore = useAuthStore()
+
+  // 注册摄像头帧回调
+  function onCameraFrame(callback: CameraFrameCallback) {
+    cameraFrameCallback = callback
+  }
+
+  // 取消注册摄像头帧回调
+  function offCameraFrame() {
+    cameraFrameCallback = null
+  }
 
   async function connect(url: string, lampId: string = 'lelamp') {
     try {
@@ -35,6 +51,10 @@ export function useWebSocket() {
         // 设置连接标记，让路由守卫知道用户已连接
         sessionStorage.setItem('lelamp_connected', 'true')
         sessionStorage.setItem('lelamp_server_url', url)
+
+        // 连接成功后，默认认为摄像头可用（API 模式下没有隐私保护）
+        // 如果后端推送了状态，这里会被覆盖
+        deviceStore.setCameraActive(true)
       }
 
       ws.onclose = () => {
@@ -93,6 +113,17 @@ export function useWebSocket() {
         case 'camera_status':
           if (data.active !== undefined) {
             deviceStore.setCameraActive(data.active)
+          }
+          break
+        case 'camera_frame':
+          // 处理摄像头帧消息
+          if (data.frame_b64 && cameraFrameCallback) {
+            const frameInfo = {
+              width: data.width,
+              height: data.height,
+              timestamp: data.timestamp ? Date.parse(data.timestamp) : Date.now()
+            }
+            cameraFrameCallback(data.frame_b64, frameInfo)
           }
           break
         case 'state_update':
@@ -158,6 +189,8 @@ export function useWebSocket() {
     connect,
     disconnect,
     sendCommand,
-    sendChat
+    sendChat,
+    onCameraFrame,
+    offCameraFrame
   }
 }

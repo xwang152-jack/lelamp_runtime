@@ -9,7 +9,7 @@ export interface ConnectionState {
 }
 
 export interface DataMessage {
-  type: 'chat' | 'command' | 'camera_status' | 'vision_result' | 'connected' | 'state_update' | 'event' | 'log' | 'notification' | 'command_result' | 'subscription_confirmed' | 'error' | 'pong'
+  type: 'chat' | 'command' | 'camera_status' | 'vision_result' | 'connected' | 'state_update' | 'event' | 'log' | 'notification' | 'command_result' | 'subscription_confirmed' | 'error' | 'pong' | 'camera_frame'
   content?: string
   action?: string
   params?: Record<string, any>
@@ -26,4 +26,17 @@ export interface DataMessage {
   channels?: string[]
   code?: string
   conversation_state?: 'idle' | 'listening' | 'thinking' | 'speaking'
+  // camera_frame 消息专用字段
+  frame_b64?: string
+  width?: number
+  height?: number
+}
+
+// 摄像头帧消息
+export interface CameraFrameMessage {
+  type: 'camera_frame'
+  frame_b64: string
+  width?: number
+  height?: number
+  timestamp: number
 }
