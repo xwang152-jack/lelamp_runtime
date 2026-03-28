@@ -9,6 +9,7 @@ import os
 import logging
 import socket
 import re
+import platform
 from datetime import datetime, timedelta, UTC
 from typing import List, Optional
 
@@ -42,6 +43,10 @@ _restart_scheduled_at: datetime | None = None
 # ============================================================================
 # 设置模式端点（Setup Mode / Onboarding）
 # ============================================================================
+
+def health_check() -> dict:
+    return {"status": "healthy", "timestamp": datetime.now(UTC).isoformat()}
+
 
 class APStartRequest(BaseModel):
     """启动 AP 模式请求"""
@@ -367,23 +372,37 @@ async def disconnect_wifi() -> dict:
 
 
 # ============================================================================
-# 系统信息端点
+# 系统信息端点与工具函数
 # ============================================================================
 
-@router.get("/info", response_model=SystemInfoResponse)
-async def get_system_info() -> SystemInfoResponse:
-    """
-    获取系统信息
+def get_system_info() -> dict:
+    """返回简要系统信息（同步，供单元测试使用）"""
+    try:
+        return {
+            "platform": platform.platform(),
+            "python_version": platform.python_version(),
+            "cpu_count": os.cpu_count() or 0,
+        }
+    except Exception:
+        return {
+            "platform": "unknown",
+            "python_version": "unknown",
+            "cpu_count": 0,
+        }
 
-    Returns:
-        SystemInfoResponse: 系统信息
+
+@router.get("/info", response_model=SystemInfoResponse)
+async def get_system_info_api() -> SystemInfoResponse:
+    """
+    获取系统信息（用于 API 返回，异步并包含更多指标）
     """
     try:
         import psutil
-        import platform
 
-        # WiFi 可用性检查
-        wifi_available = await wifi_manager.check_available()
+        try:
+            wifi_available = await wifi_manager.check_available()
+        except Exception:
+            wifi_available = False
 
         return SystemInfoResponse(
             hostname=socket.gethostname(),
@@ -394,7 +413,6 @@ async def get_system_info() -> SystemInfoResponse:
             wifi_available=wifi_available
         )
     except ImportError:
-        # psutil 未安装，返回基本信息
         return SystemInfoResponse(
             hostname=socket.gethostname(),
             uptime_seconds=0,

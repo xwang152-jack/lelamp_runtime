@@ -430,6 +430,8 @@ def create_captive_portal_app() -> FastAPI:
     return app
 
 
+app = create_captive_portal_app()
+
 def main():
     """启动 Captive Portal 服务"""
     import uvicorn

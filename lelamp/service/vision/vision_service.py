@@ -156,13 +156,51 @@ class VisionService(ServiceBase):
 
     def _open_camera(self):
         import cv2
+        import time
 
-        cap = cv2.VideoCapture(self.index_or_path)
-        if self.width:
-            cap.set(cv2.CAP_PROP_FRAME_WIDTH, float(self.width))
-        if self.height:
-            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, float(self.height))
-        return cap
+        def _try_open(source):
+            cap = cv2.VideoCapture(source)
+            if not cap or not cap.isOpened():
+                try:
+                    cap.release()
+                except Exception:
+                    pass
+                return None
+            # 摄像头预热（macOS USB 摄像头需要额外初始化时间）
+            time.sleep(0.3)
+            # 验证可以读取帧
+            for _ in range(3):
+                ok, frame = cap.read()
+                if ok and frame is not None:
+                    break
+                time.sleep(0.1)
+            else:
+                cap.release()
+                return None
+            # 设置分辨率
+            if self.width:
+                cap.set(cv2.CAP_PROP_FRAME_WIDTH, float(self.width))
+            if self.height:
+                cap.set(cv2.CAP_PROP_FRAME_HEIGHT, float(self.height))
+            return cap
+
+        # 首选配置的索引或路径
+        candidates: list[int | str] = [self.index_or_path]
+        # 在 macOS 或多摄像头环境中，0 可能不可用，尝试备用索引
+        if isinstance(self.index_or_path, int):
+            for alt in (0, 1, 2, 3):
+                if alt not in candidates:
+                    candidates.append(alt)
+
+        for cand in candidates:
+            cap = _try_open(cand)
+            if cap is not None:
+                if cand != self.index_or_path:
+                    self.logger.info(f"Camera auto-detected at index/path: {cand} (was {self.index_or_path})")
+                    self.index_or_path = cand
+                return cap
+
+        raise RuntimeError(f"无法打开摄像头（尝试: {candidates}）")
 
     def _encode_bgr_to_jpeg_b64(self, frame_bgr) -> str:
         import cv2
@@ -203,14 +241,26 @@ class VisionService(ServiceBase):
                 time.sleep(0.02)
                 continue
 
+            if self._camera is None or not self._camera.isOpened():
+                self.logger.warning(f"Vision 摄像头未打开或已关闭, isOpened={self._camera.isOpened() if self._camera else 'camera is None'}")
+                try:
+                    if self._camera:
+                        self._camera.release()
+                except Exception:
+                    pass
+                self._camera = None
+                time.sleep(0.2)
+                continue
+
             self._force_capture = False
 
             # Flush camera buffer: grab several frames to get the latest one
             for _ in range(5):
                 self._camera.grab()
-                
+
             ok, frame = self._camera.read()
             if not ok or frame is None:
+                self.logger.warning(f"Vision 读取帧失败: ok={ok}, frame={frame is None}, 重新打开摄像头")
                 try:
                     self._camera.release()
                 except Exception:
@@ -227,6 +277,7 @@ class VisionService(ServiceBase):
                 time.sleep(0.1)
                 continue
 
+            self.logger.debug(f"Vision 成功捕获帧: {len(jpeg_b64)} bytes")
             with self._frame_lock:
                 self._latest_jpeg_b64 = jpeg_b64
                 self._latest_ts = now

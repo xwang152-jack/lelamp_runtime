@@ -198,6 +198,27 @@ class OnboardingManager:
 
         return status
 
+    def get_status(self) -> dict:
+        """
+        同步包装：获取配置状态（供单元测试/同步场景使用）
+        """
+        try:
+            status = asyncio.run(self.get_setup_status())
+            enriched = {"completed": status.get("setup_completed", False)}
+            enriched.update(status)
+            return enriched
+        except Exception:
+            return {
+                "completed": False,
+                "setup_completed": False,
+                "setup_completed_at": None,
+                "wifi_ssid": None,
+                "last_mode": "unknown",
+                "reset_at": None,
+                "ap_mode_entered_at": None,
+                "last_updated": None
+            }
+
     async def update_wifi_status(self, connected: bool, ssid: Optional[str] = None) -> bool:
         """
         更新 WiFi 连接状态
@@ -275,6 +296,8 @@ class OnboardingManager:
             self._status_file
         )
 
+
+OnboardingService = OnboardingManager
 
 # 全局单例实例
 onboarding_manager = OnboardingManager()

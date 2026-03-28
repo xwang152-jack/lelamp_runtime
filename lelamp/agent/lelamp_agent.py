@@ -238,6 +238,7 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
         # 初始化边缘视觉服务（可选）
         self._hybrid_vision: Optional["HybridVisionService"] = None
         self._edge_vision_tools: Optional[EdgeVisionTools] = None
+        self._vision_monitor = None
         
         edge_vision_enabled = (os.getenv("LELAMP_EDGE_VISION_ENABLED") or "0").strip().lower() in (
             "1", "true", "yes", "on"

@@ -200,7 +200,13 @@ class ProactiveVisionMonitor:
             frame = self._vision_service.get_latest_frame()
 
         if frame is None:
+            if self._detection_count % 20 == 0:
+                logger.warning(f"VisionMonitor 未获取到帧（已检测 {self._detection_count} 次）")
             return
+
+        self._detection_count += 1
+        if self._detection_count % 20 == 1:
+            logger.info(f"VisionMonitor 运行中（检测 {self._detection_count} 次，帧 shape={frame.shape}）")
 
         # 1. 用户在场检测（优先级高，频率低）
         if self._enable_auto_presence and \
@@ -219,9 +225,17 @@ class ProactiveVisionMonitor:
                 return
 
             result = self._hybrid_vision.detect_faces(frame)
-            present = result.get("presence", False) or result.get("faces", 0) > 0
-
-            self._detection_count += 1
+            present = bool(result.get("presence", False))
+            if not present:
+                faces_val = result.get("faces", [])
+                if isinstance(faces_val, list):
+                    present = len(faces_val) > 0
+                else:
+                    count_val = result.get("count", 0)
+                    try:
+                        present = int(count_val) > 0
+                    except (TypeError, ValueError):
+                        present = False
 
             with self._state_lock:
                 # 用户状态变化

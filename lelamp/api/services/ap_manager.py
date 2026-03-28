@@ -277,6 +277,15 @@ class APManager:
         self._is_running = False
         return False
 
+    def is_ap_mode(self) -> bool:
+        """
+        同步包装：检查当前是否在 AP 模式（供单元测试使用）
+        """
+        try:
+            return asyncio.run(self.is_in_ap_mode())
+        except Exception:
+            return False
+
     async def get_connected_clients(self) -> List[ClientInfo]:
         """
         获取已连接的客户端列表
