@@ -29,3 +29,7 @@ node_modules
 .coverage
 htmlcov/
 .pytest_cache/
+
+# Edge AI model files (download via scripts/download_models.sh)
+models/*.tflite
+models/*.task
