@@ -4,7 +4,18 @@ import { ElMessage } from 'element-plus'
 import { WS_CONNECTION_TIMEOUT } from '@/utils/auth-constants'
 
 // 摄像头帧回调函数类型
-type CameraFrameCallback = (frameB64: string, info: { width?: number; height?: number; timestamp: number }) => void
+type Detections = {
+  faces?: { center?: [number, number]; confidence?: number }[]
+  hands?: { x?: number; y?: number; gesture?: string; handedness?: string; confidence?: number }[]
+  presence?: boolean
+  mode?: string
+}
+
+type CameraFrameCallback = (
+  frameB64: string,
+  info: { width?: number; height?: number; timestamp: number },
+  detections?: Detections
+) => void
 
 // 全局摄像头帧回调
 let cameraFrameCallback: CameraFrameCallback | null = null
@@ -123,7 +134,7 @@ export function useWebSocket() {
               height: data.height,
               timestamp: data.timestamp ? Date.parse(data.timestamp) : Date.now()
             }
-            cameraFrameCallback(data.frame_b64, frameInfo)
+            cameraFrameCallback(data.frame_b64, frameInfo, data.detections)
           }
           break
         case 'state_update':

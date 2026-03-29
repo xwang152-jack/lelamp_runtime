@@ -42,6 +42,7 @@ class CameraStreamService:
         self._running = False
         self._task: Optional[asyncio.Task] = None
         self._vision_service = None
+        self._proactive_monitor = None  # ProactiveVisionMonitor (optional)
         self._push_interval = 1.0 / push_fps if push_fps > 0 else 0.2
 
         logger.info(
@@ -53,6 +54,11 @@ class CameraStreamService:
         """设置视觉服务实例"""
         self._vision_service = vision_service
         logger.info("VisionService linked to CameraStreamService")
+
+    def set_proactive_monitor(self, monitor):
+        """设置主动视觉监控器（可选，用于获取检测结果）"""
+        self._proactive_monitor = monitor
+        logger.info("ProactiveVisionMonitor linked to CameraStreamService")
 
     async def start(self):
         """启动摄像头流推送"""
@@ -174,12 +180,21 @@ class CameraStreamService:
                     if frame_data:
                         frame_b64, timestamp = frame_data
 
+                        # 获取边缘视觉检测结果（可选）
+                        detections = None
+                        if self._proactive_monitor:
+                            try:
+                                detections = self._proactive_monitor.get_latest_detections()
+                            except Exception:
+                                detections = None
+
                         # 推送帧
                         await push_camera_frame(
                             self.lamp_id,
                             frame_b64,
                             width=self._vision_service.width,
                             height=self._vision_service.height,
+                            detections=detections,
                         )
 
                         # 调试日志（每30帧打印一次）

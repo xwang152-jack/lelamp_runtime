@@ -150,36 +150,32 @@ sudo uv run main.py console
 lelamp_runtime/
 ├── main.py                      # Entry point for LiveKit agent
 ├── pyproject.toml              # UV package manager configuration
-├── CLAUDE.md                   # This file - developer guide
-├── README.md                   # User documentation
 ├── VERSION                     # Runtime version for OTA updates
+├── models/                     # Edge AI models (.tflite, .task)
 │
 ├── lelamp/                     # Core package
-│   ├── agent/                  # NEW: Agent architecture
+│   ├── agent/                  # LiveKit Agent architecture
 │   │   ├── lelamp_agent.py     # Main LeLamp Agent class
 │   │   ├── states.py           # Conversation state management
-│   │   └── tools/              # Function tools (motor, rgb, vision, system)
-│   ├── api/                    # NEW: FastAPI REST API & WebSocket
-│   │   ├── app.py              # FastAPI application
-│   │   ├── routes/             # API route handlers
-│   │   ├── models/             # Pydantic models for API
-│   │   └── services/           # API business logic (WiFi, AP manager, etc.)
-│   ├── database/               # NEW: Database layer
-│   │   ├── models.py           # SQLAlchemy ORM models
-│   │   ├── crud.py             # Database operations
-│   │   └── session.py          # Database session management
-│   ├── config.py               # Configuration management
-│   ├── service/                # Service architecture
-│   │   ├── base.py             # Service base class
-│   │   ├── motors/             # Motor service with health monitoring
-│   │   ├── rgb.py              # RGB LED service
-│   │   └── vision/             # Vision service with privacy
-│   ├── integrations/           # External AI services
-│   ├── utils/                  # Utilities (rate limiting, security, OTA)
-│   ├── cache/                  # Response caching
+│   │   └── tools/              # Function tools (motor, rgb, vision, edge_vision, system)
+│   ├── edge/                   # Edge AI inference (MediaPipe Tasks API)
+│   │   ├── face_detector.py    # Face detection + presence
+│   │   ├── hand_tracker.py     # Hand tracking + gesture recognition
+│   │   ├── object_detector.py  # Object detection (COCO 80 classes)
+│   │   └── hybrid_vision.py    # Smart routing: local vs cloud
+│   ├── api/                    # FastAPI REST API & WebSocket
+│   ├── database/               # SQLAlchemy ORM layer
+│   ├── config.py               # Centralized configuration (frozen dataclasses)
+│   ├── service/                # Priority-based event dispatch services
+│   │   ├── base.py             # ServiceBase with heapq priority queue
+│   │   ├── motors/             # Motor service + health monitoring
+│   │   ├── rgb/                # RGB LED matrix service
+│   │   └── vision/             # Camera capture + privacy + proactive monitor
+│   ├── integrations/           # External AI clients (Baidu Speech, Qwen VL)
+│   ├── utils/                  # Rate limiting, security, OTA
 │   └── recordings/             # Motor animation CSV files
 │
-├── web/                        # Vue 3 frontend (deprecated)
+├── web/                        # Vue 3 frontend
 └── scripts/                    # Build and deployment scripts
 ```
 
@@ -227,6 +223,7 @@ The system uses a priority-based event dispatch architecture built on `ServiceBa
 - When accessing shared state between agent (asyncio) and services (threaded), use `threading.Lock`
 - Example: `self._conversation_state_lock = threading.Lock()` in main.py
 - Never use `asyncio.Lock` for state shared across threads - it won't work
+- Edge vision callbacks (gesture/presence) run in background threads — motor/RGB dispatches from callbacks are thread-safe
 
 **Async Subprocess Calls**: Use `asyncio.create_subprocess_exec` instead of `subprocess.run` to avoid blocking the event loop.
 
@@ -448,8 +445,47 @@ async def websocket_endpoint(websocket: WebSocket, lamp_id: str, token: Optional
 - `tools/`: Function tools organized by domain
   - `motor_tools.py`: Motor control and health monitoring
   - `rgb_tools.py`: LED effects and color control
-  - `vision_tools.py`: Camera capture and vision AI
+  - `vision_tools.py`: Camera capture and cloud vision AI (Qwen VL)
+  - `edge_vision_tools.py`: Local edge vision (face, gesture, object)
   - `system_tools.py`: System utilities (volume, web search, OTA)
+
+### Edge Vision Architecture (`lelamp/edge/`)
+
+Local AI inference using **MediaPipe Tasks API** (0.10+) for low-latency, privacy-preserving visual processing.
+
+**Components** (all use `mediapipe.tasks.vision` API):
+
+| Component | API Class | Model File | Purpose |
+|-----------|-----------|------------|---------|
+| `FaceDetector` | `FaceDetector` | `blaze_face_full_range.tflite` | Presence detection with debouncing |
+| `HandTracker` | `HandLandmarker` | `hand_landmarker.task` | 21-point hand tracking + gesture recognition |
+| `ObjectDetector` | `ObjectDetector` | `efficientdet_lite0.tflite` | 80-class COCO object detection |
+| `HybridVisionService` | Orchestrator | — | Routes queries: local vs cloud vs hybrid |
+
+**Graceful Degradation**: All components check `hasattr(mp, 'tasks')` at import time. If unavailable, they run in NoOp mode returning empty results — the system never crashes due to missing MediaPipe.
+
+**Hybrid Routing** (`hybrid_vision.py`):
+- `SIMPLE` queries ("这是什么") → local `ObjectDetector` only
+- `COMPLEX` queries ("检查作业") → cloud Qwen VL only
+- `MODERATE` queries → try local first, fall back to cloud if confidence < threshold
+
+**Proactive Vision Monitor** (`lelamp/service/vision/proactive_vision_monitor.py`):
+- Background thread that continuously monitors camera for gestures and presence
+- Activated by `LELAMP_PROACTIVE_MONITOR=true` (default) when edge vision is enabled
+- Auto-adjusts FPS: ACTIVE (5 fps) when user present, IDLE (1 fps) when absent
+- Triggers motor/LED callbacks on gesture recognition (thumbs up → nod, wave → toggle light)
+
+**Gesture Recognition** (`hand_tracker.py`):
+- Recognizes 8 gestures: OPEN, FIST, POINT, PEACE, THUMBS_UP, THUMBS_DOWN, OK, WAVE
+- Wave detection uses temporal analysis (horizontal wrist movement over N frames)
+- Per-gesture cooldown (default 1s) prevents repeated triggering
+- Handedness-aware thumb detection (left vs right hand)
+
+**Model Files** (in `models/` directory):
+- `blaze_face_full_range.tflite` — Face detection
+- `hand_landmarker.task` — Hand landmarks + tracking
+- `efficientdet_lite0.tflite` — Object detection
+- `gesture_recognizer.task` — Available but not used (gesture recognition is done via landmark analysis)
 
 ### API & Database Layer (`lelamp/api/` & `lelamp/database/`)
 
@@ -537,6 +573,10 @@ Required in `.env` file (create from template):
 
 **Vision** (optional):
 - `LELAMP_VISION_ENABLED` (default: true)
+- `LELAMP_EDGE_VISION_ENABLED` (default: false) — Enable local edge vision (face, hand, object)
+- `LELAMP_PROACTIVE_MONITOR` (default: true) — Auto-detect presence and gestures without voice trigger
+- `LELAMP_MONITOR_ACTIVE_FPS` (default: 5) — Proactive monitor FPS when user present
+- `LELAMP_MONITOR_IDLE_FPS` (default: 1) — Proactive monitor FPS when user absent
 - `MODELSCOPE_API_KEY`
 - `MODELSCOPE_MODEL` (default: "Qwen/Qwen3-VL-235B-A22B-Instruct")
 - `MODELSCOPE_BASE_URL` (default: "https://api-inference.modelscope.cn/v1")
@@ -587,6 +627,9 @@ Required in `.env` file (create from template):
 - `LELAMP_BOOT_ANIMATION` (default: 1)
 - `LELAMP_NOISE_CANCELLATION` (default: true)
 - `LELAMP_STT_INPUT_GAIN` (default: 3.0)
+- `LELAMP_PROACTIVE_MONITOR` (default: true) — Proactive vision monitoring
+- `LELAMP_MONITOR_ACTIVE_FPS` (default: 5) — Monitor FPS when user present
+- `LELAMP_MONITOR_IDLE_FPS` (default: 1) — Monitor FPS when idle
 - `LOG_LEVEL` (default: "INFO")
 
 **API & Database Configuration**:
@@ -733,6 +776,14 @@ When debugging agent issues:
 - Monitor motor health: `motors_service.get_motor_health_summary()`
 - Test vision independently: call `vision_answer()` tool directly
 - Verify service event queues: check for dropped events in logs
+
+When working with edge vision:
+- MediaPipe uses **Tasks API** (`mediapipe.tasks.python.vision`), NOT the deprecated `mediapipe.solutions`
+- Models are in `models/` directory — download via scripts or directly from Google Cloud Storage
+- All edge components have NoOp fallback: set `_noop = True` when MediaPipe unavailable
+- To add a new edge capability: create in `lelamp/edge/`, register in `__init__.py`, expose via `edge_vision_tools.py`
+- Edge vision tests: `uv run pytest tests/test_edge_vision.py -v`
+- Suppress MediaPipe C++ logs: `export GLOG_minloglevel=2`
 
 ## Important Implementation Notes
 

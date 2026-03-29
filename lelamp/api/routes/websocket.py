@@ -696,7 +696,8 @@ async def push_camera_frame(
     lamp_id: str,
     frame_b64: str,
     width: Optional[int] = None,
-    height: Optional[int] = None
+    height: Optional[int] = None,
+    detections: Optional[Dict] = None,
 ) -> int:
     """
     推送摄像头帧到设备订阅者
@@ -706,6 +707,7 @@ async def push_camera_frame(
         frame_b64: Base64 编码的 JPEG 图像数据
         width: 图像宽度（可选）
         height: 图像高度（可选）
+        detections: 边缘视觉检测结果（可选）
 
     Returns:
         推送成功的连接数
@@ -717,6 +719,8 @@ async def push_camera_frame(
         "height": height,
         "timestamp": datetime.utcnow().isoformat()
     }
+    if detections:
+        message["detections"] = detections
     # 不使用频道过滤，直接推送给所有连接的客户端
     return await manager.broadcast_to_device(lamp_id, message)
 

@@ -241,9 +241,9 @@ onMounted(() => {
   scrollToBottom()
 
   // 注册摄像头帧回调
-  onCameraFrame((frameB64, info) => {
+  onCameraFrame((frameB64, info, detections) => {
     if (cameraPanelRef.value) {
-      cameraPanelRef.value.updateFrame(frameB64, info)
+      cameraPanelRef.value.updateFrame(frameB64, info, detections)
     }
   })
 })

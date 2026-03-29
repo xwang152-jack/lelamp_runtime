@@ -10,7 +10,7 @@ import asyncio
 import threading
 import time
 import logging
-from typing import Optional, Callable, Dict, Any
+from typing import Optional, Callable, Dict, Any, List
 from enum import Enum
 
 logger = logging.getLogger("lelamp.vision.monitor")
@@ -104,6 +104,10 @@ class ProactiveVisionMonitor:
         self._last_presence_check = 0.0
         self._detection_count = 0
         self._gesture_count = 0
+
+        # 最新检测结果缓存（线程安全，供外部读取）
+        self._last_face_result: Optional[Dict[str, Any]] = None
+        self._last_hand_result: Optional[Dict[str, Any]] = None
 
         # 线程安全
         self._state_lock = threading.Lock()
@@ -228,6 +232,16 @@ class ProactiveVisionMonitor:
 
             result = self._hybrid_vision.detect_faces(frame)
             present = bool(result.get("presence", False))
+
+            # 缓存帧尺寸（供 get_latest_detections 归一化使用）
+            if hasattr(frame, 'shape'):
+                fh, fw = frame.shape[:2]
+                result["width"] = fw
+                result["height"] = fh
+
+            # 缓存人脸检测结果
+            with self._state_lock:
+                self._last_face_result = result
             if not present:
                 faces_val = result.get("faces", [])
                 if isinstance(faces_val, list):
@@ -286,6 +300,10 @@ class ProactiveVisionMonitor:
             result = self._hybrid_vision.track_hands(frame)
             gestures = result.get("gestures", [])
 
+            # 缓存手势检测结果
+            with self._state_lock:
+                self._last_hand_result = result
+
             if gestures:
                 self._gesture_count += 1
                 self._last_gesture_time = current_time
@@ -339,3 +357,53 @@ class ProactiveVisionMonitor:
                 self._set_mode(MonitorMode.IDLE)
             elif mode == "sleep":
                 self._set_mode(MonitorMode.SLEEP)
+
+    def get_latest_detections(self) -> Dict[str, Any]:
+        """
+        获取最新检测结果（线程安全）
+
+        返回归一化坐标 (0-1) 的检测结果，供前端绘制标注。
+        - faces: 包含 bbox 矩形框归一化坐标
+        - hands: 包含 21 个手部关键点归一化坐标
+        """
+        with self._state_lock:
+            result: Dict[str, Any] = {
+                "faces": [],
+                "hands": [],
+                "presence": self._user_present,
+                "mode": self._mode.value,
+            }
+
+            # 人脸检测结果 — 返回归一化 bbox 矩形框
+            if self._last_face_result:
+                for face in self._last_face_result.get("faces", []):
+                    if hasattr(face, "bbox") and face.bbox:
+                        # bbox 是像素坐标 [x, y, w, h]，需要归一化
+                        # 从 _last_face_result 中获取帧尺寸
+                        fw = self._last_face_result.get("width", 1)
+                        fh = self._last_face_result.get("height", 1)
+                        if fw <= 0:
+                            fw = 1
+                        if fh <= 0:
+                            fh = 1
+                        result["faces"].append({
+                            "x": face.bbox[0] / fw,
+                            "y": face.bbox[1] / fh,
+                            "w": face.bbox[2] / fw,
+                            "h": face.bbox[3] / fh,
+                            "confidence": face.confidence,
+                        })
+
+            # 手势检测结果 — 返回完整 21 个关键点
+            if self._last_hand_result:
+                for hand in self._last_hand_result.get("hands", []):
+                    if hasattr(hand, "landmarks") and hand.landmarks:
+                        # landmarks: [(x, y, z), ...] 共 21 个，归一化坐标
+                        result["hands"].append({
+                            "landmarks": [{"x": lm[0], "y": lm[1], "z": lm[2]} for lm in hand.landmarks],
+                            "gesture": hand.gesture.value if hasattr(hand.gesture, "value") else str(hand.gesture),
+                            "handedness": hand.handedness,
+                            "confidence": hand.confidence,
+                        })
+
+            return result

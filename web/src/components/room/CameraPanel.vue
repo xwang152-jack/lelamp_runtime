@@ -19,6 +19,13 @@
         :alt="'摄像头画面'"
         class="camera-frame"
         @error="handleFrameError"
+        @load="drawDetections"
+      />
+      <!-- 检测结果标注层 -->
+      <canvas
+        v-if="cameraActive && currentFrame"
+        ref="overlayCanvas"
+        class="detection-overlay"
       />
 
       <!-- 未激活状态 - 显示隐私占位符 -->
@@ -67,6 +74,8 @@ const { sendCommand } = useWebSocket()
 const currentFrame = ref<string | null>(null)
 const frameInfo = ref<{ width?: number; height?: number; timestamp?: number }>({})
 const frameError = ref(false)
+const lastDetections = ref<any>(null)
+const overlayCanvas = ref<HTMLCanvasElement | null>(null)
 
 // 监听摄像头状态
 const cameraActive = computed(() => deviceStore.cameraActive)
@@ -115,16 +124,158 @@ function formatTime(timestamp: number): string {
 }
 
 // 暴露更新画面的方法（供外部调用）
-function updateFrame(frameB64: string, info: { width?: number; height?: number; timestamp?: number }) {
+function updateFrame(
+  frameB64: string,
+  info: { width?: number; height?: number; timestamp?: number },
+  detections?: any
+) {
   currentFrame.value = frameB64
   frameInfo.value = info
   frameError.value = false
+  lastDetections.value = detections || null
 }
 
 // 清除画面
 function clearFrame() {
   currentFrame.value = null
   frameInfo.value = {}
+  lastDetections.value = null
+}
+
+// 在 canvas overlay 上绘制检测结果标注
+function drawDetections() {
+  const canvas = overlayCanvas.value
+  const img = document.querySelector('.camera-frame') as HTMLImageElement
+  if (!canvas || !img || !lastDetections.value) return
+
+  // 使 canvas 尺寸匹配 img 显示尺寸
+  const rect = img.getBoundingClientRect()
+  canvas.width = rect.width
+  canvas.height = rect.height
+
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height)
+
+  const det = lastDetections.value
+  const W = canvas.width
+  const H = canvas.height
+
+  // ========== 人脸：矩形框 ==========
+  if (det.faces?.length) {
+    for (const face of det.faces) {
+      if (face.x == null || face.y == null) continue
+      const fx = face.x * W
+      const fy = face.y * H
+      const fw = (face.w ?? 0) * W
+      const fh = (face.h ?? 0) * H
+
+      // 绿色矩形框
+      ctx.strokeStyle = '#4ade80'
+      ctx.lineWidth = 2
+      ctx.strokeRect(fx, fy, fw, fh)
+
+      // 角标记（更醒目）
+      const cornerLen = Math.min(fw, fh) * 0.15
+      ctx.lineWidth = 3
+      ctx.strokeStyle = '#22c55e'
+      // 左上
+      ctx.beginPath(); ctx.moveTo(fx, fy + cornerLen); ctx.lineTo(fx, fy); ctx.lineTo(fx + cornerLen, fy); ctx.stroke()
+      // 右上
+      ctx.beginPath(); ctx.moveTo(fx + fw - cornerLen, fy); ctx.lineTo(fx + fw, fy); ctx.lineTo(fx + fw, fy + cornerLen); ctx.stroke()
+      // 左下
+      ctx.beginPath(); ctx.moveTo(fx, fy + fh - cornerLen); ctx.lineTo(fx, fy + fh); ctx.lineTo(fx + cornerLen, fy + fh); ctx.stroke()
+      // 右下
+      ctx.beginPath(); ctx.moveTo(fx + fw - cornerLen, fy + fh); ctx.lineTo(fx + fw, fy + fh); ctx.lineTo(fx + fw, fy + fh - cornerLen); ctx.stroke()
+
+      // 置信度标签
+      ctx.font = '11px monospace'
+      ctx.fillStyle = '#22c55e'
+      const label = `Face ${(face.confidence * 100).toFixed(0)}%`
+      const textW = ctx.measureText(label).width
+      ctx.fillStyle = 'rgba(0,0,0,0.5)'
+      ctx.fillRect(fx, fy - 16, textW + 8, 16)
+      ctx.fillStyle = '#4ade80'
+      ctx.fillText(label, fx + 4, fy - 4)
+    }
+  }
+
+  // ========== 手部：关节连线和关键点 ==========
+  if (det.hands?.length) {
+    // 手部骨骼连接关系（MediaPipe 21 点标准）
+    const CONNECTIONS = [
+      // 手指
+      [0,1],[1,2],[2,3],[3,4],         // 拇指
+      [0,5],[5,6],[6,7],[7,8],         // 食指
+      [0,9],[9,10],[10,11],[11,12],    // 中指
+      [0,13],[13,14],[14,15],[15,16],  // 无名指
+      [0,17],[17,18],[18,19],[19,20],  // 小指
+      // 掌骨横连
+      [5,9],[9,13],[13,17],
+    ]
+
+    for (const hand of det.hands) {
+      if (!hand.landmarks?.length) continue
+      const pts = hand.landmarks
+
+      // 绘制骨骼连线
+      ctx.strokeStyle = '#22d3ee'
+      ctx.lineWidth = 1.5
+      for (const [a, b] of CONNECTIONS) {
+        if (a < pts.length && b < pts.length) {
+          ctx.beginPath()
+          ctx.moveTo(pts[a].x * W, pts[a].y * H)
+          ctx.lineTo(pts[b].x * W, pts[b].y * H)
+          ctx.stroke()
+        }
+      }
+
+      // 绘制关键点
+      for (let i = 0; i < pts.length; i++) {
+        const px = pts[i].x * W
+        const py = pts[i].y * H
+        // 指尖用大圆点，其他用小圆点
+        const isTip = [4, 8, 12, 16, 20].includes(i)
+        const r = isTip ? 4 : 2.5
+        ctx.beginPath()
+        ctx.arc(px, py, r, 0, Math.PI * 2)
+        ctx.fillStyle = isTip ? '#06b6d4' : '#67e8f9'
+        ctx.fill()
+      }
+
+      // 手势标签（手腕位置上方）
+      const wrist = pts[0]
+      if (hand.gesture) {
+        ctx.font = 'bold 12px sans-serif'
+        const gestureLabel = hand.gesture.replace(/_/g, ' ').toUpperCase()
+        const gestureW = ctx.measureText(gestureLabel).width
+        const gx = wrist.x * W - gestureW / 2
+        const gy = wrist.y * H + 18
+        ctx.fillStyle = 'rgba(0,0,0,0.6)'
+        ctx.fillRect(gx - 4, gy - 12, gestureW + 8, 16)
+        ctx.fillStyle = '#22d3ee'
+        ctx.fillText(gestureLabel, gx, gy)
+
+        // 左右手标识
+        if (hand.handedness) {
+          ctx.font = '10px sans-serif'
+          ctx.fillStyle = '#a5f3fc'
+          ctx.fillText(hand.handedness, wrist.x * W - 10, gy + 14)
+        }
+      }
+    }
+  }
+
+  // ========== 在场状态指示器（右上角）==========
+  const present = det.presence
+  ctx.beginPath()
+  ctx.arc(W - 16, 16, 6, 0, Math.PI * 2)
+  ctx.fillStyle = present ? '#4ade80' : '#f87171'
+  ctx.fill()
+  ctx.strokeStyle = 'rgba(255,255,255,0.8)'
+  ctx.lineWidth = 1
+  ctx.stroke()
 }
 
 // 监听摄像头状态变化，清空画面
@@ -236,6 +387,16 @@ defineExpose({
   height: 100%;
   object-fit: contain;
   background: #000;
+}
+
+.detection-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 2;
 }
 
 /* === Placeholder === */

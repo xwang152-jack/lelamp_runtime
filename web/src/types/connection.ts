@@ -30,6 +30,7 @@ export interface DataMessage {
   frame_b64?: string
   width?: number
   height?: number
+  detections?: EdgeDetections
 }
 
 // 摄像头帧消息
@@ -39,4 +40,24 @@ export interface CameraFrameMessage {
   width?: number
   height?: number
   timestamp: number
+  detections?: EdgeDetections
+}
+
+// 边缘视觉检测结果
+export interface EdgeDetections {
+  faces?: Array<{
+    x: number        // 归一化坐标 0-1
+    y: number
+    w: number        // 归一化宽高 0-1
+    h: number
+    confidence: number
+  }>
+  hands?: Array<{
+    landmarks?: Array<{ x: number; y: number; z: number }>  // 21 个关键点
+    gesture?: string
+    handedness?: string
+    confidence?: number
+  }>
+  presence?: boolean
+  mode?: string
 }

@@ -280,6 +280,14 @@ async def lifespan(app: FastAPI):
             from lelamp.api.services.camera_stream_service import get_camera_stream_service
             camera_stream = get_camera_stream_service("lelamp")
             camera_stream.set_vision_service(vision_service)
+
+            # 注入主动视觉监控器（如有）
+            if hasattr(app.state, 'agent') and app.state.agent:
+                monitor = getattr(app.state.agent, '_vision_monitor', None)
+                if monitor:
+                    camera_stream.set_proactive_monitor(monitor)
+                    logger.info("ProactiveVisionMonitor linked to camera stream")
+
             camera_stream_task = asyncio.create_task(camera_stream.start())
             logger.info("Camera stream service started")
         except Exception as e:
