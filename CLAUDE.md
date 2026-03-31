@@ -157,7 +157,7 @@ lelamp_runtime/
 │   ├── agent/                  # LiveKit Agent architecture
 │   │   ├── lelamp_agent.py     # Main LeLamp Agent class
 │   │   ├── states.py           # Conversation state management
-│   │   └── tools/              # Function tools (motor, rgb, vision, edge_vision, system)
+│   │   └── tools/              # Function tools (motor, rgb, vision, edge_vision, memory, system)
 │   ├── edge/                   # Edge AI inference (MediaPipe Tasks API)
 │   │   ├── face_detector.py    # Face detection + presence
 │   │   ├── hand_tracker.py     # Hand tracking + gesture recognition
@@ -172,6 +172,7 @@ lelamp_runtime/
 │   │   ├── rgb/                # RGB LED matrix service
 │   │   └── vision/             # Camera capture + privacy + proactive monitor
 │   ├── integrations/           # External AI clients (Baidu Speech, Qwen VL)
+│   ├── memory/                 # Memory system (long-term memory + conversation summaries)
 │   ├── utils/                  # Rate limiting, security, OTA
 │   └── recordings/             # Motor animation CSV files
 │
@@ -455,7 +456,40 @@ async def websocket_endpoint(websocket: WebSocket, lamp_id: str, token: Optional
   - `rgb_tools.py`: LED effects and color control
   - `vision_tools.py`: Camera capture and cloud vision AI (Qwen VL)
   - `edge_vision_tools.py`: Local edge vision (face, gesture, object)
+  - `memory_tools.py`: Memory tools (save/recall/forget long-term memories)
   - `system_tools.py`: System utilities (volume, web search, OTA)
+
+### Memory System (`lelamp/memory/`)
+
+Two-layer memory architecture inspired by [nanobot](https://github.com/HKUDS/nanobot), providing cross-session memory for the LeLamp agent.
+
+**Components**:
+
+| Component | File | Purpose |
+|-----------|------|---------|
+| `Memory` | `models.py` | SQLAlchemy model for long-term memories (category, importance 1-10, source) |
+| `ConversationSummary` | `models.py` | SQLAlchemy model for conversation summaries with key topics |
+| `MemoryStore` | `store.py` | Thread-safe CRUD with `threading.Lock`, token budget control, LIKE search |
+| `MemoryConsolidator` | `consolidator.py` | LLM-driven memory extraction from conversations via DeepSeek API |
+| `MemoryConfig` | `config.py` | Frozen dataclass loaded from `LELAMP_MEMORY_*` env vars |
+| `MemoryTools` | `agent/tools/memory_tools.py` | Agent tool methods (save/recall/forget) |
+
+**Key Design Decisions**:
+- **Storage**: SQLite (reuses existing `lelamp.database.base.SessionLocal`), no new dependencies
+- **Token Budget**: Memories sorted by importance, injected into dynamic system prompt within configurable token limit (~400 default)
+- **Deduplication**: Bigram Jaccard similarity for Chinese-friendly dedup (threshold 80%)
+- **Consolidation**: Triggered after 10+ conversation turns with 5-minute cooldown, runs via `asyncio.create_task()` (non-blocking)
+- **Dynamic Prompt**: `_build_dynamic_instructions()` combines static instructions with memory context
+- **Graceful Degradation**: 6-layer fallback — init failure, DB errors, LLM failures, JSON parse errors, tool errors, prompt build failures never break core conversation
+
+**Agent Integration** (in `lelamp_agent.py`):
+- `save_memory(content, category)`: `@function_tool` — save a memory (categories: preference, fact, relationship, context, general)
+- `recall_memory(query)`: `@function_tool` — search memories by keyword
+- `forget_memory(content_hint)`: `@function_tool` — soft-delete memories matching hint
+- `note_user_text()`: Appends turns to `_conversation_turns` buffer (hard cap 200), triggers consolidation check
+- `shutdown()`: Logs unconsolidated turns count
+
+**Testing**: `tests/test_memory.py` — 35 unit tests covering models, store CRUD, config, tools, and consolidator (LLM mocked).
 
 ### Edge Vision Architecture (`lelamp/edge/`)
 
@@ -539,6 +573,7 @@ The `LeLamp` class (imported from `lelamp.agent.lelamp_agent`) extends `Agent` f
   - Motor control: `play_recording`, `move_joint`, `get_joint_positions`
   - RGB effects: `set_rgb_solid`, `paint_rgb_pattern`, `rgb_effect_*`
   - Vision: `vision_answer`, `check_homework`, `capture_to_feishu`
+  - Memory: `save_memory`, `recall_memory`, `forget_memory`
   - System: `set_volume`, `web_search`
   - Commercial: `get_motor_health`, `tune_motor_pid`, `reset_motor_health_stats`, `check_for_updates`, `perform_ota_update`
 
@@ -640,6 +675,13 @@ Required in `.env` file (create from template):
 - `LELAMP_MONITOR_ACTIVE_FPS` (default: 5) — Monitor FPS when user present
 - `LELAMP_MONITOR_IDLE_FPS` (default: 1) — Monitor FPS when idle
 - `LOG_LEVEL` (default: "INFO")
+
+**Memory System**:
+- `LELAMP_MEMORY_ENABLED` (default: 1) — Enable/disable memory system
+- `LELAMP_MEMORY_TOKEN_BUDGET` (default: 400) — Max tokens for memory in system prompt
+- `LELAMP_MEMORY_CONSOLIDATION_MIN_TURNS` (default: 10) — Min conversation turns before consolidation
+- `LELAMP_MEMORY_CONSOLIDATION_COOLDOWN_S` (default: 300) — Cooldown between consolidations (seconds)
+- `LELAMP_MEMORY_MAX_CONTENT_LENGTH` (default: 500) — Max characters per memory entry
 
 **API & Database Configuration**:
 - `LELAMP_API_HOST` (default: "0.0.0.0")
@@ -795,6 +837,15 @@ When debugging agent issues:
 - Monitor motor health: `motors_service.get_motor_health_summary()`
 - Test vision independently: call `vision_answer()` tool directly
 - Verify service event queues: check for dropped events in logs
+
+When working with the memory system:
+- Memory system uses `lelamp.database.base.SessionLocal` — must `import lelamp.memory` before `init_db()` to register models
+- `MemoryStore` uses `threading.Lock` for all operations (same pattern as `StateManager`)
+- All returned ORM objects are `db.expunge()`'d to prevent `DetachedInstanceError`
+- Token budget estimation: ~0.67 chars per token for Chinese text (`_CHARS_PER_TOKEN`)
+- Consolidation runs via `asyncio.create_task()` — never blocks conversation
+- Disable with `LELAMP_MEMORY_ENABLED=0` for debugging
+- Memory tests: `uv run pytest tests/test_memory.py -v`
 
 When working with edge vision:
 - MediaPipe uses **Tasks API** (`mediapipe.tasks.python.vision`), NOT the deprecated `mediapipe.solutions`

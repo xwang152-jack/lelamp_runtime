@@ -33,6 +33,9 @@ from lelamp.config import (
 # 导入 LeLamp 代理类
 from lelamp.agent.lelamp_agent import LeLamp
 
+# 注册记忆模型到 SQLAlchemy Base（确保 create_all 包含记忆表）
+import lelamp.memory  # noqa: F401
+
 load_dotenv()
 
 logger = logging.getLogger("lelamp")
@@ -182,6 +185,13 @@ async def entrypoint(ctx: JobContext):
         motor_config=motor_config,
     )
 
+    # 注入记忆上下文到 system prompt
+    if agent._memory_initialized:
+        import uuid as _uuid
+        agent._session_id = str(_uuid.uuid4())[:8]
+        await agent.update_instructions(agent._build_dynamic_instructions())
+        logger.info(f"Memory context injected, session_id={agent._session_id}")
+
     async def _on_state(state: str) -> None:
         await agent.set_conversation_state(state)
 
@@ -215,10 +225,10 @@ async def entrypoint(ctx: JobContext):
 
     # 注册 Data Channel 事件监听器 (Web Client v2.0 support)
     @ctx.room.on("data_received")
-    def on_data_received(data: bytes, participant):
+    def on_data_received(data_packet):
         """处理来自 Web Client 的 Data Channel 消息"""
         import asyncio
-        asyncio.create_task(agent.handle_data_message(data, participant))
+        asyncio.create_task(agent.handle_data_message(data_packet.data, data_packet.participant))
 
     try:
         await session.start(

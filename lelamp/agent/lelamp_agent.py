@@ -19,7 +19,7 @@ from livekit.agents import Agent, function_tool
 
 from lelamp.service import Priority
 from lelamp.agent.states import ConversationState, StateColors, StateManager
-from lelamp.agent.tools import MotorTools, RGBTools, VisionTools, SystemTools, EdgeVisionTools
+from lelamp.agent.tools import MotorTools, RGBTools, VisionTools, SystemTools, EdgeVisionTools, MemoryTools
 from lelamp.utils import get_rate_limiter, get_all_rate_limiter_stats
 
 # 边缘视觉服务（可选依赖）
@@ -98,6 +98,9 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
             motor_config: 电机配置实例
         """
         super().__init__(instructions=self._INSTRUCTIONS)
+
+        # 保存 lamp_id（记忆系统需要）
+        self._lamp_id = lamp_id
 
         # 初始化速率限制器
         self._search_rate_limiter = get_rate_limiter(
@@ -337,6 +340,39 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
         # 用于运行 amixer 的用户名（可配置）
         self._amixer_user = os.getenv("LELAMP_AMIXER_USER", "pi")
 
+        # ==================== 记忆系统初始化 ====================
+        self._memory_initialized = False
+        self._memory_store = None  # type: ignore
+        self._memory_consolidator = None  # type: ignore
+        self._memory_tools = None  # type: ignore
+        self._conversation_turns: list[dict] = []
+        self._session_id: str = ""
+
+        memory_enabled = (os.getenv("LELAMP_MEMORY_ENABLED") or "1").strip().lower() in (
+            "1", "true", "yes", "on"
+        )
+        if memory_enabled:
+            try:
+                from lelamp.memory.store import MemoryStore
+                from lelamp.memory.consolidator import MemoryConsolidator
+
+                self._memory_store = MemoryStore()
+                self._memory_consolidator = MemoryConsolidator(
+                    base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
+                    api_key=os.getenv("DEEPSEEK_API_KEY", ""),
+                    model=os.getenv("DEEPSEEK_MODEL", "deepseek-chat"),
+                    memory_store=self._memory_store,
+                )
+                self._memory_tools = MemoryTools(
+                    memory_store=self._memory_store,
+                    lamp_id=lamp_id,
+                )
+                self._memory_initialized = True
+                logger.info("Memory system initialized")
+            except Exception as e:
+                logger.warning(f"Memory system init failed, continuing without memory: {e}")
+                self._memory_initialized = False
+
     # ==================== 核心方法 ====================
 
     async def _initialize_async(self) -> None:
@@ -362,6 +398,14 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
         with self._user_text_lock:
             self._last_user_text = text
             self._last_user_text_ts = time.time()
+
+        # 追踪对话轮用于记忆整合
+        if self._memory_initialized and self._session_id:
+            self._conversation_turns.append({"role": "user", "content": text, "ts": time.time()})
+            # 硬上限防止内存泄漏
+            if len(self._conversation_turns) > 200:
+                self._conversation_turns = self._conversation_turns[-100:]
+            await self._check_consolidation()
 
     async def set_conversation_state(self, state: str) -> None:
         """
@@ -441,6 +485,67 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
 
         except Exception as e:
             logger.warning(f"Failed to set system volume: {e}")
+
+    # ==================== 记忆系统方法 ====================
+
+    def _build_dynamic_instructions(self) -> str:
+        """构建带记忆上下文的动态 system prompt"""
+        base = self._INSTRUCTIONS
+
+        if not self._memory_initialized or not self._memory_store:
+            return base
+
+        try:
+            token_budget = int(os.getenv("LELAMP_MEMORY_TOKEN_BUDGET", "400"))
+            memories = self._memory_store.get_active_memories(
+                lamp_id=self._lamp_id,
+                max_tokens=token_budget,
+            )
+            if not memories:
+                return base
+
+            memory_section = "\n\n# Memory\nYou remember the following about this user:\n"
+            for m in memories:
+                memory_section += f"- [{m.category}] {m.content}\n"
+            memory_section += (
+                "\nUse these memories naturally in conversation. "
+                "Use save_memory() to remember new important things."
+            )
+
+            return base + memory_section
+        except Exception as e:
+            logger.warning(f"Failed to build memory context: {e}")
+            return base
+
+    async def _check_consolidation(self) -> None:
+        """检查是否需要触发记忆整合"""
+        if (
+            not self._memory_initialized
+            or not self._memory_consolidator
+            or not self._session_id
+        ):
+            return
+
+        if self._memory_consolidator.should_consolidate(self._conversation_turns):
+            asyncio.create_task(self._run_consolidation())
+
+    async def _run_consolidation(self) -> None:
+        """后台执行记忆整合（非阻塞）"""
+        try:
+            turns = list(self._conversation_turns)
+            result = await self._memory_consolidator.consolidate(
+                lamp_id=self._lamp_id,
+                session_id=self._session_id,
+                conversation_turns=turns,
+            )
+            if result and result.new_memories_count > 0:
+                new_instructions = self._build_dynamic_instructions()
+                await self.update_instructions(new_instructions)
+                logger.info(f"Memory consolidated: {result.new_memories_count} new memories")
+            # 整合后只保留最近几轮
+            self._conversation_turns = turns[-5:]
+        except Exception as e:
+            logger.warning(f"Background consolidation failed (non-critical): {e}")
 
     # ==================== 电机工具方法 ====================
 
@@ -856,6 +961,48 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
             asyncio.create_task(self._restart_later())
         return result
 
+    # ==================== 记忆工具方法 ====================
+
+    @function_tool
+    async def save_memory(self, content: str, category: str = "general") -> str:
+        """
+        记住一个重要信息（用户偏好、事实、上下文等）。
+        Remember an important piece of information (user preference, fact, context, etc.).
+
+        Args:
+            content: 要记住的内容 (max 500 chars)
+            category: 分类 - preference(偏好)/fact(事实)/relationship(关系)/context(上下文)/general(通用)
+        """
+        if self._memory_tools is None:
+            return "记忆功能未启用"
+        return await self._memory_tools.save_memory(content, category)
+
+    @function_tool
+    async def recall_memory(self, query: str) -> str:
+        """
+        搜索你的记忆，查找相关信息。
+        Search your memory for relevant information about past conversations or user preferences.
+
+        Args:
+            query: 搜索关键词
+        """
+        if self._memory_tools is None:
+            return "记忆功能未启用"
+        return await self._memory_tools.recall_memory(query)
+
+    @function_tool
+    async def forget_memory(self, content_hint: str) -> str:
+        """
+        删除一条记忆（当信息过时或不再相关时使用）。
+        Delete a memory (use when information is outdated or no longer relevant).
+
+        Args:
+            content_hint: 要删除的记忆的关键词
+        """
+        if self._memory_tools is None:
+            return "记忆功能未启用"
+        return await self._memory_tools.forget_memory(content_hint)
+
     async def _restart_later(self) -> None:
         """延迟重启服务"""
         try:
@@ -1092,5 +1239,12 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
         if self._vision_monitor is not None and self._vision_monitor._running:
             logger.info("Stopping proactive vision monitor...")
             self._vision_monitor.stop()
+
+        # 记录未整合的对话轮数
+        if self._memory_initialized and self._conversation_turns:
+            logger.info(
+                f"Session ending with {len(self._conversation_turns)} unconsolidated turns "
+                f"(will be consolidated next session if memory persists)"
+            )
 
         logger.info("LeLamp agent shutdown complete")
