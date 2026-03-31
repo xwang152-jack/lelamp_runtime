@@ -1,16 +1,14 @@
-# LeLamp Runtime v2.0
+# LeLamp Runtime
 
-> ⚙️ 状态已更新：本地仓库已同步 `main` 分支并清理了临时 Markdown 文档（保留核心文档）。
->
 ![](./docs/images/Banner.png)
 
-**LeLamp Runtime** 是一个完整的 Python 控制系统，为 [LeLamp 机器人台灯](https://github.com/humancomputerlab/LeLamp)提供对话式 AI、视觉识别、动作表情、灯光效果等功能。基于 [Apple 的 Elegnt 研究](https://machinelearning.apple.com/research/elegnt-expressive-functional-movement)，由 [[Human Computer Lab]](https://www.humancomputerlab.com/) 开发。
+**LeLamp Runtime** 是一个完整的 Python 控制系统，为 [LeLamp 机器人台灯](https://github.com/humancomputerlab/LeLamp)提供对话式 AI、视觉识别、动作表情、灯光效果等功能。基于 [Apple 的 Elegnt 研究](https://machinelearning.apple.com/research/elegnt-expressive-functional-movement)，由 [Human Computer Lab](https://www.humancomputerlab.com/) 开发。
 
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-See%20LeLamp%20Repo-green.svg)](https://github.com/humancomputerlab/LeLamp)
 [![UV](https://img.shields.io/badge/package%20manager-UV-orange.svg)](https://github.com/astral-sh/uv)
 
-> 📖 **新用户?** 查看 [用户快速指南](docs/USER_GUIDE_QUICK.md) | **首次设置?** 查看 [完整设置指南](docs/SETUP_GUIDE.md) | **开发部署?** 查看 [开发者指南](CLAUDE.md)
+> 📖 **新用户?** [用户快速指南](docs/USER_GUIDE_QUICK.md) | **首次设置?** [完整设置指南](docs/SETUP_GUIDE.md) | **开发?** [开发者指南](CLAUDE.md)
 
 ---
 
@@ -27,7 +25,7 @@
 - **作业检查**: AI 批改数学题、语文题
 - **飞书推送**: 拍照并发送到飞书群组
 - **隐私保护**: LED 指示灯 + 用户同意机制
-- **边缘视觉** ⭐ NEW: 本地人脸检测、手势追踪、物体检测
+- **边缘视觉**: 本地人脸检测、手势追踪、物体检测（MediaPipe）
 
 ### 🎭 动作表情
 - **预设动作**: 点头、摇头、兴奋、睡觉、跳舞、思考
@@ -42,7 +40,7 @@
 - **隐私指示**: 摄像头激活时红色警示
 
 ### 🌐 Web 客户端
-- **浏览器控制**: 现代化 Web 界面
+- **浏览器控制**: 现代化 Vue 3 界面（独立部署）
 - **实时视频**: WebRTC 视频流
 - **双向音频**: 语音通话功能
 - **全功能面板**: 视觉、动作、灯光、聊天全覆盖
@@ -51,33 +49,24 @@
 - **首次设置**: 无需知道 IP 地址即可配置 WiFi
 - **自动热点**: 创建 "LeLamp-Setup" WiFi 热点
 - **友好界面**: 响应式 Web 设置向导
-- **智能检测**: 自动检测是否需要进入设置模式
-- **错误恢复**: 友好的错误提示和重试机制
-
-详细说明请参考：[Captive Portal 设置指南](docs/CAPTIVE_PORTAL_GUIDE.md)
+- 详细说明: [Captive Portal 设置指南](docs/CAPTIVE_PORTAL_GUIDE.md)
 
 ### 🚀 RESTful API 系统
-- **完整的 REST API**: 认证端点、设备管理、设置管理
-- **实时 WebSocket 推送**: 13 种消息类型,频道订阅,可选认证
-- **数据持久化**: SQLite/PostgreSQL 支持,4 个 ORM 模型
-- **自动 API 文档**: Swagger UI + ReDoc
+- **纯 API 服务**: FastAPI 后端，不挂载前端静态文件
+- **实时 WebSocket 推送**: 13 种消息类型，频道订阅，可选认证
+- **数据持久化**: SQLite/PostgreSQL 支持，ORM 模型
+- **自动 API 文档**: Swagger UI (`/docs`) + ReDoc (`/redoc`)
 - **JWT 认证**: 访问令牌 + 刷新令牌机制
-- **速率限制**: 滑动窗口算法,可配置限制级别
-- **API 缓存**: TTL 缓存减少重复查询,提升性能
-- **61% 测试覆盖率**: 57 个测试全部通过
+- **速率限制**: 滑动窗口算法，可配置限制级别
+- **API 缓存**: TTL 缓存减少重复查询
 
 ### 🔐 安全与性能
 - **设备授权**: License Key 保护
-- **OTA 更新**: 远程固件升级,SHA256 验证
+- **OTA 更新**: 远程固件升级，SHA256 验证
 - **舵机健康监控**: 温度、电压、负载实时监控
-- **远程 PID 调参**: 无需上门即可优化动作性能
 - **隐私保护**: 摄像头使用同意机制
-- **JWT 认证系统**: 用户注册、登录、设备绑定
-- **速率限制**: 防止 API 滥用,可配置限制级别
 - **安全响应头**: X-Frame-Options, CSP, HSTS 等
-- **API 响应缓存**: 减少重复查询,提升响应速度
-- **数据库索引优化**: 复合索引加速查询
-- **边缘视觉** ⭐ NEW: 本地 AI 推理，保护隐私
+- **边缘视觉**: 本地 AI 推理，保护隐私
 
 ---
 
@@ -94,28 +83,27 @@
                       │ HTTP/HTTPS + WebSocket
                       ↓
 ┌─────────────────────────────────────────────────────────────┐
-│            FastAPI Server (API Layer) ⭐ NEW                │
+│            FastAPI Server (API Layer)                       │
 │  ┌─────────────────────────────────────────────────────┐   │
 │  │  REST API Endpoints                                │   │
-│  │  - /api/auth/*  (认证: 注册、登录、令牌刷新)        │   │
+│  │  - /api/auth/*     (认证: 注册、登录、令牌刷新)       │   │
 │  │  - /api/devices/*  (设备管理)                       │   │
 │  │  - /api/settings/* (设置管理)                       │   │
 │  │  - /api/system/*   (系统信息)                       │   │
 │  │  - /api/ws/{lamp_id} (WebSocket 实时推送)           │   │
 │  └──────────────────┬──────────────────────────────────┘   │
-│                     │                                          │
-│  ┌────────────────┴───────────────────────────────────┐  │
-│  │  Middleware Layer (安全与性能)                       │  │
-│  │  ┌────────────────┐  ┌──────────────┐  ┌───────────┐ │  │
-│  │  │ JWT 认证中间件│  │ 速率限制     │  │ API 缓存   │ │  │
-│  │  │ (访问/刷新令牌)│  │ (100 req/min) │  │ (内存缓存) │ │  │
-│  │  └────────────────┘  └──────────────┘  └───────────┘ │  │
-│  └────────────────┬───────────────────────────────────────┘  │
-└────────────────────┼──────────────────────────────────────────┘
-                     │
-                     ↓
+│                     │                                        │
+│  ┌────────────────┴───────────────────────────────────┐   │
+│  │  Middleware (安全与性能)                             │   │
+│  │  ┌────────────────┐  ┌──────────────┐  ┌─────────┐ │   │
+│  │  │ JWT 认证       │  │ 速率限制     │  │API 缓存  │ │   │
+│  │  └────────────────┘  └──────────────┘  └─────────┘ │   │
+│  └────────────────┬────────────────────────────────────┘   │
+└───────────────────┼─────────────────────────────────────────┘
+                    │
+                    ↓
 ┌─────────────────────────────────────────────────────────────┐
-│          LeLamp Runtime (Core System)                     │
+│          LeLamp Runtime (Core System)                       │
 │  ┌─────────────────────────────────────────────────────┐   │
 │  │  LeLamp Agent (main.py)                             │   │
 │  │  - DeepSeek LLM (对话引擎)                           │   │
@@ -133,10 +121,9 @@
 │  └─────────────────────────────────────────────────────┘   │
 │            │                 │                 │            │
 │  ┌─────────┴─────────────────┴─────────────────┴───────┐   │
-│  │  Database Layer (数据持久化) ⭐ NEW                    │   │
+│  │  Database (数据持久化)                               │   │
 │  │  - User, DeviceBinding, RefreshToken                  │   │
 │  │  - Conversation, OperationLog, DeviceState             │   │
-│  │  - UserSettings                                      │   │
 │  └─────────────────────────────────────────────────────┘   │
 │            │                 │                 │            │
 │  ┌─────────┴─────────────────┴─────────────────┴───────┐   │
@@ -147,12 +134,7 @@
 ```
 
 **核心技术栈**:
-- 🐍 Python 3.12+
-- 🎙️ LiveKit (实时通信)
-- 🤖 DeepSeek (大语言模型)
-- 👁️ Qwen VL (视觉识别)
-- 🗣️ Baidu Speech (语音服务)
-- 🔧 UV (包管理器)
+- Python 3.12+ | LiveKit (实时通信) | DeepSeek (LLM) | Qwen VL (视觉) | Baidu Speech (语音) | UV (包管理器)
 
 ---
 
@@ -160,20 +142,9 @@
 
 ### 前置要求
 
-#### 硬件
-- ✅ Raspberry Pi 4B+ (推荐 4GB RAM)
-- ✅ LeLamp 硬件套件 (电机、LED、摄像头)
-- ✅ 网络连接 (Wi-Fi / 有线)
-
-#### 软件
-- ✅ Python 3.12+
-- ✅ UV Package Manager
-- ✅ LiveKit Account (或自托管 LiveKit Server)
-
-#### 服务
-- ✅ DeepSeek API Key
-- ✅ ModelScope API Key (视觉功能)
-- ✅ Baidu Speech API Key (语音服务)
+- Raspberry Pi 4B+ (推荐 4GB RAM) + LeLamp 硬件套件
+- Python 3.12+ / UV Package Manager
+- LiveKit / DeepSeek / Baidu Speech API Key
 
 ### 安装步骤
 
@@ -183,7 +154,7 @@ git clone https://github.com/humancomputerlab/lelamp_runtime.git
 cd lelamp_runtime
 ```
 
-#### 2. 安装 UV (如果未安装)
+#### 2. 安装 UV
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
@@ -193,12 +164,10 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 # Raspberry Pi (包含硬件依赖)
 uv sync --extra hardware
 
-# 开发机 (仅电机控制,无硬件依赖)
+# 开发机 (无硬件依赖)
 uv sync
-```
 
-**提示**: 如果遇到 LFS 问题:
-```bash
+# 如遇 LFS 问题
 GIT_LFS_SKIP_SMUDGE=1 uv sync
 ```
 
@@ -208,123 +177,85 @@ cp .env.example .env
 nano .env
 ```
 
-**最小配置** (必填):
+**必填配置**:
 ```bash
-# LiveKit (实时通信)
 LIVEKIT_URL=wss://your-project.livekit.cloud
 LIVEKIT_API_KEY=your_api_key
 LIVEKIT_API_SECRET=your_api_secret
-
-# DeepSeek (LLM)
 DEEPSEEK_API_KEY=your_deepseek_key
-
-# Baidu Speech (语音服务)
 BAIDU_SPEECH_API_KEY=your_baidu_api_key
 BAIDU_SPEECH_SECRET_KEY=your_baidu_secret_key
-
-# ModelScope (视觉识别 - 可选)
-MODELSCOPE_API_KEY=your_modelscope_key
 ```
 
 #### 5. 硬件校准 (首次使用)
 ```bash
-# 查找串口
-uv run lerobot-find-port
-
-# 设置电机 ID
+uv run lerobot-find-port                              # 查找串口
 uv run -m lelamp.setup_motors --id lelamp --port /dev/ttyACM0
-
-# 校准电机
 sudo uv run -m lelamp.calibrate --id lelamp --port /dev/ttyACM0
 ```
 
-#### 6. 初始化数据库 (可选，用于设置界面)
+#### 6. 初始化数据库 (API 功能需要)
 ```bash
-# 创建数据库表
 uv run python -c "
 from lelamp.database.session import engine
 from lelamp.database.models import Base
 Base.metadata.create_all(bind=engine)
-print('✅ 数据库初始化完成')
+print('Database initialized')
 "
 ```
 
-**注意**: 如果不使用 Web 设置界面，可以跳过此步骤。
+#### 7. 启动服务
 
-#### 7. 启动 LeLamp 完整服务系统
+**方式一：完整双服务系统（推荐）**
 
-**方式一：完整服务系统（推荐用于日常使用）**
-
-使用 systemd 管理完整的三服务架构（LiveKit + API + Frontend）：
+LiveKit 语音交互 + API 后端，一键设置：
 
 ```bash
-# 一键设置完整服务系统
-./scripts/setup_all_services.sh
+./scripts/setup/setup_all_services.sh
 ```
 
-这将自动配置：
-- **LiveKit 服务**（语音交互）- 通过 tmux 后台运行
-- **API 服务**（后端 REST API）- 端口 8000
-- **Frontend 服务**（Web 界面）- 端口 5173
+这将配置：
+- **LiveKit 服务** — 语音交互，通过 tmux 后台运行
+- **API 服务** — 纯 REST API 服务器，端口 8000
 
-**管理所有服务：**
+**管理命令：**
 ```bash
-# 查看所有服务状态
-ssh pi@192.168.0.104 'sudo systemctl status lelamp-{livekit,api,frontend}.service'
+# 查看状态
+ssh pi@192.168.0.104 'sudo systemctl status lelamp-{livekit,api}.service'
 
-# 重启所有服务
-ssh pi@192.168.0.104 'sudo systemctl restart lelamp-{livekit,api,frontend}.service'
+# 重启
+ssh pi@192.168.0.104 'sudo systemctl restart lelamp-{livekit,api}.service'
 
-# 查看所有服务日志
-ssh pi@192.168.0.104 'sudo journalctl -u lelamp-{livekit,api,frontend}.service -f'
+# 查看日志
+ssh pi@192.168.0.104 'sudo journalctl -u lelamp-{livekit,api}.service -f'
 ```
 
 **访问地址：**
-- Web 界面：http://192.168.0.104:5173
 - API 文档：http://192.168.0.104:8000/docs
 - 健康检查：http://192.168.0.104:8000/health
+
+> 前端 (`web/`) 独立部署，需单独用 Nginx 等静态服务器托管。详见 [自动启动指南](docs/AUTO_STARTUP_GUIDE.md)。
 
 **方式二：仅 LiveKit 服务（纯语音交互）**
 
 ```bash
-# 仅设置 LiveKit Tmux 服务
-./scripts/setup_livekit_tmux_service.sh
-
-# 管理服务
-./scripts/livekit_service_manager.sh status    # 查看状态
-./scripts/livekit_service_manager.sh logs      # 查看日志
-./scripts/livekit_service_manager.sh attach    # 连接到 tmux
+./scripts/setup/setup_livekit_tmux_service.sh
 ```
 
 **方式三：手动启动（开发调试）**
 
 ```bash
+# 后端 API（开发模式，支持热重载）
+uv run uvicorn lelamp.api.app:app --host 0.0.0.0 --port 8000 --reload
+
+# 前端（独立开发服务器）
+cd web && pnpm install && pnpm dev
+
+# LiveKit 语音 Agent
 sudo uv run main.py console
 ```
 
-**预期输出**:
-```
-INFO:root:config ready: lamp_id=lelamp port=/dev/ttyACM0 vision=True
-INFO:root:MotorsService started
-INFO:root:RGBService started
-INFO:root:VisionService started
-INFO:livekit:Connected to LiveKit
-```
-
-在 Web Client 中自动连接到本地服务器，点击"连接设备"即可开始使用！🎉
-
-**开发模式下单独启动服务：**
-
-如果需要单独启动 API 或 Frontend 服务进行开发调试：
-
-```bash
-# API 服务器（开发模式）
-uv run uvicorn lelamp.api.app:app --host 0.0.0.0 --port 8000 --reload
-
-# Web Client（开发模式）
-cd web
-npm run dev
-```
+更多部署方式详见 [自动启动指南](docs/AUTO_STARTUP_GUIDE.md)。
 
 ---
 
@@ -332,327 +263,98 @@ npm run dev
 
 ### 1. 语音对话
 
-**使用方式**: 直接对着台灯说话
-
 **对话状态指示**:
-- 🤍 **白色**: 空闲状态 (Idle)
-- 🔵 **蓝色**: 正在倾听 (Listening)
-- 🟣 **紫色**: 思考中 (Thinking)
-- 🌈 **随机彩色**: 正在说话 (Speaking)
-
-**示例对话**:
-```
-用户: "你好"
-台灯: "你好呀，小主人！本灯又来陪你啦~"
-
-用户: "现在几点了"
-台灯: "现在是下午 3:45，怎么，还没写完作业就想着玩了？"
-
-用户: "讲个笑话"
-台灯: "好吧...为什么程序员总是搞混万圣节和圣诞节？因为 Oct 31 == Dec 25！"
-```
-
----
+- 白色: 空闲 | 蓝色: 倾听 | 紫色: 思考 | 彩色: 说话
 
 ### 2. 视觉识别
 
-#### 拍照识别
-```
-用户: "这是什么？" (举起一个苹果)
-台灯: "这是一个红苹果，看起来很新鲜。"
-```
-
-#### 检查作业
-```
-用户: "帮我检查作业"
-台灯: "好的，让我看看..."
-
-结果:
-✅ 第1题: 5 + 3 = 8 (正确)
-✅ 第2题: 12 - 7 = 5 (正确)
-❌ 第3题: 6 × 4 = 32 (错误，应该是 24)
-
-正确率: 67% (2/3)
-```
-
-#### 推送飞书
-```
-用户: "拍照发送到飞书"
-台灯: "好的，正在拍照..." (拍照并发送到飞书群组)
-```
-
----
+拍照识别物品、AI 批改作业、拍照推送飞书。支持本地边缘视觉（人脸检测、手势追踪、物体检测）。
 
 ### 3. 动作表情
 
-**6 个预设动作**:
-- 👍 **点头** (nod): 表示同意
-- 👎 **摇头** (shake): 表示否定
-- 🎉 **兴奋** (excited): 快速摆动
-- 😴 **睡觉** (sleep): 缓慢低头
-- 💃 **跳舞** (dance): 有节奏摆动
-- 🤔 **思考** (think): 缓慢转动
+6 个预设动作（点头、摇头、兴奋、睡觉、跳舞、思考），支持录制自定义动作。
 
-**使用方式**:
 ```bash
-# 语音指令
-用户: "点个头"
-台灯: (执行点头动作)
-
-# Web Client 按钮
-点击 "🎭 动作表情" Tab 中的按钮
-
-# 自动触发
-用户: "你真棒！"
-台灯: (自动执行 excited 动作)
-```
-
-**录制自定义动作**:
-```bash
-# 录制新动作
 uv run -m lelamp.record --id lelamp --port /dev/ttyACM0 --name my_action
-
-# 回放动作
 uv run -m lelamp.replay --id lelamp --port /dev/ttyACM0 --name my_action
-
-# 列出所有录制
 uv run -m lelamp.list_recordings --id lelamp
 ```
 
----
-
 ### 4. 灯光效果
 
-#### 纯色灯光
-- 🔴 暖红
-- 💖 粉红
-- 🟠 橙色
-- 🟡 金黄
-- 🟢 浅绿
-- 🔵 天蓝
-- 🟣 紫色
-- ⚪ 暖白 (护眼模式)
-
-#### 灯效动画
-- 💗 **呼吸灯**: 缓慢呼吸
-- 🌈 **彩虹**: 彩虹流动
-- 🌊 **波浪**: 波浪起伏
-- 🔥 **火焰**: 火焰跳动
-- 🎆 **烟花**: 烟花绽放
-- ⭐ **星空**: 星空闪烁
-
-**使用方式**:
-```bash
-# 语音指令
-用户: "打开红色灯光"
-台灯: (RGB 变为红色)
-
-用户: "来个彩虹灯效"
-台灯: (启动彩虹效果)
-
-# Web Client 控制
-在 "💡 灯光魔法" Tab 中使用调色盘或点击灯效按钮
-```
+纯色灯光 + 6 种灯效动画（呼吸、彩虹、波浪、火焰、烟花、星空）。
 
 ---
 
 ## 🧪 硬件测试
 
-### RGB LED 测试
 ```bash
-sudo uv run -m tests.hardware.test_rgb
-```
-
-### 音频系统测试
-```bash
-uv run -m tests.hardware.test_audio
-```
-
-### 电机测试
-```bash
-uv run -m tests.hardware.test_motors --id lelamp --port /dev/ttyACM0
+sudo uv run -m tests.hardware.test_rgb                  # RGB LED
+uv run -m tests.hardware.test_audio                      # 音频系统
+uv run -m tests.hardware.test_motors --id lelamp --port /dev/ttyACM0  # 电机
 ```
 
 ---
 
 ## ⚙️ 配置说明
 
-### 环境变量
+完整环境变量参见 `.env.example`。核心配置：
 
-完整的环境变量配置参见 `.env.example`。以下是核心配置：
+| 分类 | 变量 | 说明 |
+|------|------|------|
+| **LiveKit** | `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` | 实时通信 |
+| **LLM** | `DEEPSEEK_API_KEY`, `DEEPSEEK_MODEL` | 对话引擎 |
+| **语音** | `BAIDU_SPEECH_API_KEY`, `BAIDU_SPEECH_SECRET_KEY` | 语音服务 |
+| **视觉** | `LELAMP_VISION_ENABLED`, `MODELSCOPE_API_KEY` | 云端视觉 |
+| **边缘视觉** | `LELAMP_EDGE_VISION_ENABLED`, `LELAMP_PROACTIVE_MONITOR` | 本地 AI |
+| **硬件** | `LELAMP_PORT`, `LELAMP_ID`, `LELAMP_LED_BRIGHTNESS` | 电机/LED |
+| **商业** | `LELAMP_LICENSE_KEY`, `LELAMP_OTA_URL` | 授权/OTA |
 
-#### LiveKit 配置
-```bash
-LIVEKIT_URL=wss://your-project.livekit.cloud
-LIVEKIT_API_KEY=APIxxxxxxxxxxxx
-LIVEKIT_API_SECRET=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-```
-
-**获取方式**:
-```bash
-lk app env -w
-cat .env.local
-```
-
-#### DeepSeek LLM
-```bash
-DEEPSEEK_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-DEEPSEEK_MODEL=deepseek-chat  # 可选
-```
-
-#### Baidu Speech
-```bash
-BAIDU_SPEECH_API_KEY=xxxxxxxxxxxxxxxxxxxxxxxx
-BAIDU_SPEECH_SECRET_KEY=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-BAIDU_SPEECH_TTS_PER=4  # 0=度小美, 1=度小宇, 4=度丫丫
-```
-
-#### ModelScope 视觉
-```bash
-LELAMP_VISION_ENABLED=true
-MODELSCOPE_API_KEY=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-MODELSCOPE_MODEL=Qwen/Qwen3-VL-235B-A22B-Instruct
-```
-
-#### 摄像头配置
-```bash
-LELAMP_CAMERA_INDEX_OR_PATH=0
-LELAMP_CAMERA_WIDTH=1024
-LELAMP_CAMERA_HEIGHT=768
-LELAMP_CAMERA_ROTATE_DEG=0  # 0, 90, 180, 270
-LELAMP_CAMERA_FLIP=none  # none, horizontal, vertical, both
-```
-
-#### 硬件配置
-```bash
-LELAMP_PORT=/dev/ttyACM0
-LELAMP_ID=lelamp
-LELAMP_LED_BRIGHTNESS=25  # 0-255
-```
-
-#### 行为配置
-```bash
-LELAMP_GREETING_TEXT="Hello! 小宝贝上线了."
-LELAMP_BOOT_ANIMATION=1  # 启动动画
-LELAMP_MOTION_COOLDOWN_S=2  # 动作冷却时间
-LELAMP_LIGHT_OVERRIDE_S=10  # 灯光覆盖时长
-```
-
-#### 商业化配置
-```bash
-# 设备授权
-LELAMP_LICENSE_KEY=your_license_key_here
-LELAMP_DEV_MODE=1  # 开发模式 (跳过授权检查)
-
-# OTA 更新
-LELAMP_OTA_URL=https://api.lelamp.com/ota/check
-
-# 舵机健康监控 ⭐ NEW
-LELAMP_MOTOR_HEALTH_CHECK_ENABLED=true
-LELAMP_MOTOR_HEALTH_CHECK_INTERVAL_S=300.0  # 5分钟检查一次
-LELAMP_MOTOR_TEMP_WARNING_C=65.0            # 温度警告阈值
-LELAMP_MOTOR_TEMP_CRITICAL_C=75.0           # 温度危险阈值
-LELAMP_MOTOR_LOAD_STALL=0.95                # 堵转检测阈值
-```
-
-📖 **详细文档**: [舵机健康监控使用指南](./docs/MOTOR_HEALTH_MONITORING.md)
-
-### 安全注意事项
-
-⚠️ **重要**:
-- 切勿提交 `.env` 文件到 Git
-- 使用 `.env.example` 作为模板
-- `LELAMP_LICENSE_SECRET` 必须是强随机密钥 (生产环境必需)
-- 所有外部 API URL 会被验证防止 SSRF 攻击
+> 详细配置参见 [设置指南](docs/SETUP_GUIDE.md) 和 [开发者指南](CLAUDE.md)。
 
 ---
 
 ## 🏭 生产部署
 
-### Systemd 服务
+### 双服务架构（推荐）
 
-创建服务文件:
+使用 systemd 管理两个服务：
+
 ```bash
-sudo nano /etc/systemd/system/lelamp.service
+# 一键设置
+./scripts/setup/setup_all_services.sh
+
+# 或使用同步脚本推送代码后设置
+./scripts/tools/sync_to_pi.sh
 ```
 
-**服务配置**:
-```ini
-[Unit]
-Description=Lelamp Runtime Service
-After=network.target
+服务说明：
+- `lelamp-livekit.service` — LiveKit 语音 Agent（tmux 后台运行）
+- `lelamp-api.service` — FastAPI 纯 API 服务器（端口 8000）
 
-[Service]
-Type=simple
-User=pi
-WorkingDirectory=/home/pi/lelamp_runtime
-ExecStart=/usr/bin/sudo uv run main.py console
-Restart=always
-RestartSec=5
+> 前端需独立构建和部署：`cd web && pnpm build`，然后用 Nginx 托管 `web/dist/`。
 
-[Install]
-WantedBy=multi-user.target
-```
-
-**启动服务**:
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable lelamp.service
-sudo systemctl start lelamp.service
-
-# 查看状态
-sudo systemctl status lelamp.service
-
-# 查看日志
-sudo journalctl -u lelamp.service -f
-```
-
-### OTA 更新
-
-配置 OTA 服务器:
-```bash
-LELAMP_OTA_URL=https://api.lelamp.com/ota/check
-```
-
-**检查更新**:
-```
-用户: "检查更新"
-台灯: "发现新版本 1.2.0！是否现在更新？"
-
-用户: "确认更新"
-台灯: "更新成功！服务将在 5 秒后重启。"
-```
+详细管理命令见 [自动启动指南](docs/AUTO_STARTUP_GUIDE.md)。
 
 ---
 
 ## 📖 文档
 
-### 🌟 **新用户文档**
-- 📘 [用户使用指南](USER_GUIDE.md) - 完整的用户使用教程
-- 🚀 [部署指南](DEPLOYMENT_GUIDE.md) - 详细的部署和配置说明
-- 🔧 [设置快速参考](SETTINGS_QUICK_REFERENCE.md) - 设置界面快速参考
-
-### 🌟 **新用户文档**
-- 📘 [用户快速指南](docs/USER_GUIDE_QUICK.md) - 快速上手教程
-- 🚀 [完整设置指南](docs/SETUP_GUIDE.md) - 详细配置教程
-- 🔧 [Captive Portal 指南](docs/CAPTIVE_PORTAL_GUIDE.md) - 开箱配置说明
-- 🤖 [边缘视觉配置](docs/EDGE_VISION_SETUP.md) - 本地 AI 模型下载和配置
-- 🧪 [边缘视觉测试](docs/EDGE_VISION_TEST_SUMMARY.md) - 树莓派测试完整指南
-
-### 开发文档
-- 🔧 [开发者指南](CLAUDE.md) - 代码架构和开发规范
-- 🌐 [Web 前端](./web/) - Vue 3 前端应用
-- ✅ [测试清单](./docs/TESTING_CHECKLIST.md) - 系统化测试流程
-
-### 产品文档
-- 📊 [产品评审报告](./docs/PRODUCT_APP_REVIEW.md) - 完整产品评审
-- 🎨 [用户体验设计](./docs/PRODUCT_UX_JOURNEY.md) - UX Journey Map
-- 🗺️ [技术实现路线图](./docs/PRODUCT_IMPLEMENTATION_ROADMAP.md) - 开发规划
-
-### 技术文档
-- 🐍 [Python 升级指南](./docs/PYTHON312_UPGRADE.md) - Python 3.12 升级
-- 📦 [依赖管理](./pyproject.toml) - 项目配置
-- 🔐 [安全指南](./docs/SECURITY_GUIDE.md) - 安全最佳实践
+| 文档 | 说明 |
+|------|------|
+| [用户快速指南](docs/USER_GUIDE_QUICK.md) | 快速上手教程 |
+| [完整设置指南](docs/SETUP_GUIDE.md) | 详细安装和配置 |
+| [用户使用指南](docs/USER_GUIDE.md) | 完整功能说明 |
+| [自动启动指南](docs/AUTO_STARTUP_GUIDE.md) | 服务部署和管理 |
+| [Captive Portal 指南](docs/CAPTIVE_PORTAL_GUIDE.md) | 开箱 WiFi 配置 |
+| [功能说明](docs/FEATURES.md) | 所有功能详细说明 |
+| [安全指南](docs/SECURITY.md) | 安全最佳实践 |
+| [API 文档](docs/API.md) | REST API 接口文档 |
+| [架构说明](docs/ARCHITECTURE.md) | 系统架构详情 |
+| [GPIO 权限设置](docs/GPIO_PERMISSION_SETUP.md) | LED 硬件权限配置 |
+| [商业化设置](docs/COMMERCIAL_SETUP.md) | 商业部署配置 |
+| [开发者指南](CLAUDE.md) | 代码架构和开发规范 |
+| [Web 前端](./web/) | Vue 3 前端应用 |
 
 ---
 
@@ -660,165 +362,80 @@ LELAMP_OTA_URL=https://api.lelamp.com/ota/check
 
 ```
 lelamp_runtime/
-├── main.py                      # 主入口 (LeLamp Agent)
-├── pyproject.toml              # 项目配置和依赖
-├── .env.example                # 环境变量模板
-├── VERSION                     # 版本号
+├── main.py                      # 入口 (LiveKit Agent)
+├── pyproject.toml              # Python 项目配置
+├── VERSION                     # 运行时版本
 ├── CLAUDE.md                   # 开发者指南
-├── README.md                   # 本文档
-│
-├── docs/                       # 文档目录
-│   ├── images/                 # 文档图片资源
-│   ├── USER_GUIDE.md           # 完整使用指南
-│   ├── TESTING_CHECKLIST.md   # 测试清单
-│   ├── PRODUCT_*.md            # 产品评审文档
-│   └── PYTHON*.md              # Python 升级文档
-│
-├── web/                       # Vue 3 前端应用
-│   ├── index.html              # 主页面
-│   ├── style.css               # 样式表
-│   ├── app.js                  # 功能实现
-│   └── README.md               # Web Client 文档
 │
 ├── lelamp/                     # 核心包
-│   ├── config.py               # 配置管理
-│   ├── setup_motors.py         # 电机配置
-│   ├── calibrate.py            # 电机校准
-│   ├── record.py               # 动作录制
-│   ├── replay.py               # 动作回放
-│   ├── list_recordings.py      # 列出录制文件
-│   │
-│   ├── service/                # 服务架构
-│   │   ├── base.py             # 服务基类
-│   │   ├── motors.py           # 电机服务
-│   │   ├── rgb.py              # RGB 服务
-│   │   └── vision/             # 视觉服务
-│   │       ├── service.py      # 视觉服务
-│   │       └── privacy.py      # 隐私保护
-│   │
-│   ├── integrations/           # 外部服务集成
-│   │   ├── baidu_speech.py     # 百度语音
-│   │   ├── qwen_vl.py          # Qwen 视觉
-│   │   ├── exceptions.py       # 异常处理
-│   │   └── bocha.py            # 博查搜索
-│   │
-│   ├── utils/                  # 工具函数
-│   │   ├── rate_limiter.py     # 速率限制
-│   │   ├── security.py         # 设备授权
-│   │   ├── url_validation.py   # URL 验证
-│   │   └── ota.py              # OTA 更新
-│   │
-│   ├── cache/                  # 响应缓存
-│   │   └── cache_manager.py    # 缓存管理
-│   │
-│   ├── recordings/             # 动作录制文件
-│   │   ├── nod.csv             # 点头
-│   │   ├── shake.csv           # 摇头
-│   │   ├── excited.csv         # 兴奋
-│   │   ├── sleep.csv           # 睡觉
-│   │   ├── dance.csv           # 跳舞
-│   │   ├── think.csv           # 思考
-│   │   └── ...                 # 其他动作
-│   │
-│   ├── follower/               # Follower 模式配置
-│   └── leader/                 # Leader 模式配置
+│   ├── agent/                  # LiveKit Agent 架构
+│   │   ├── lelamp_agent.py     # 主 Agent 类
+│   │   ├── states.py           # 对话状态管理
+│   │   └── tools/              # 功能工具 (motor, rgb, vision, system)
+│   ├── edge/                   # 边缘 AI 推理 (MediaPipe)
+│   ├── api/                    # FastAPI REST API & WebSocket
+│   ├── database/               # SQLAlchemy ORM
+│   ├── config.py               # 集中配置管理
+│   ├── service/                # 优先级事件分发服务
+│   │   ├── motors/             # 电机服务 + 健康监控
+│   │   ├── rgb/                # RGB LED 矩阵服务
+│   │   └── vision/             # 摄像头 + 隐私保护
+│   ├── integrations/           # 外部 AI (Baidu, Qwen VL)
+│   ├── cache/                  # TTL 响应缓存
+│   ├── utils/                  # 速率限制、安全、OTA
+│   ├── recordings/             # 动作 CSV 文件
+│   ├── follower/               # Follower 模式
+│   └── leader/                 # Leader 模式
 │
-├── tests/                      # 测试目录
-│   ├── hardware/               # 硬件测试模块
-│   │   ├── test_rgb.py         # RGB 测试
-│   │   ├── test_audio.py       # 音频测试
-│   │   └── test_motors.py      # 电机测试
-│   └── test_*.py               # 其他测试
+├── web/                        # Vue 3 前端 (独立部署)
+│   ├── src/
+│   ├── package.json
+│   └── vite.config.ts
 │
-└── scripts/                    # 构建和工具脚本
-    ├── setup/                  # 安装和设置脚本
-    ├── services/               # 服务管理脚本
-    └── tools/                  # 工具脚本
+├── tests/                      # 测试
+│   ├── hardware/               # 硬件测试
+│   └── test_*.py               # 单元/集成测试
+│
+├── scripts/                    # 脚本
+│   ├── setup/                  # 安装和设置
+│   ├── services/               # systemd 服务文件
+│   └── tools/                  # 工具脚本
+│
+├── models/                     # Edge AI 模型 (.tflite, .task)
+└── docs/                       # 文档
+    ├── images/                 # 文档图片
+    └── plans/                  # 设计文档
 ```
 
 ---
 
 ## 🔧 故障排查
 
-### 问题 1: 连接失败
-
-**症状**: Web Client 显示 "连接失败"
-
-**解决方案**:
+### 服务无法启动
 ```bash
-# 1. 检查 Agent 是否运行
-ps aux | grep "main.py"
-
-# 2. 检查 LiveKit URL
-echo $LIVEKIT_URL
-
-# 3. 重新生成 Token
-uv run python scripts/tools/generate_client_token.py --room lelamp-room --user test
-
-# 4. 检查网络连接
-curl -v https://your-project.livekit.cloud
+ssh pi@192.168.0.104 'sudo systemctl status lelamp-api.service -l'
+ssh pi@192.168.0.104 'sudo journalctl -u lelamp-api.service -n 50'
 ```
 
-### 问题 2: 视频不显示
-
-**症状**: 连接成功但无视频
-
-**解决方案**:
+### 电机不动
 ```bash
-# 1. 检查摄像头设备
-ls -l /dev/video*
-
-# 2. 检查权限
-sudo usermod -a -G video pi
-
-# 3. 测试摄像头
-ffplay /dev/video0
+ls -l /dev/ttyACM*                                      # 检查串口
+sudo usermod -a -G dialout pi                           # 检查权限
+sudo uv run -m lelamp.calibrate --id lelamp --port /dev/ttyACM0  # 校准
+uv run -m tests.hardware.test_motors --id lelamp --port /dev/ttyACM0  # 测试
 ```
 
-### 问题 3: 电机不动
+### LED 不亮
+`ws281x` 需要 `/dev/mem` 访问权限，需 `sudo` 运行或配置 GPIO 权限。详见 [GPIO 权限设置](docs/GPIO_PERMISSION_SETUP.md)。
 
-**症状**: 动作按钮无响应
-
-**解决方案**:
+### 视频不显示
 ```bash
-# 1. 检查串口连接
-ls -l /dev/ttyACM*
-
-# 2. 检查权限
-sudo usermod -a -G dialout pi
-
-# 3. 校准电机
-sudo uv run -m lelamp.calibrate --id lelamp --port /dev/ttyACM0
-
-# 4. 测试电机
-uv run -m tests.hardware.test_motors --id lelamp --port /dev/ttyACM0
+ls -l /dev/video*                     # 检查摄像头
+sudo usermod -a -G video pi           # 添加权限
+ffplay /dev/video0                    # 测试摄像头
 ```
 
-### 问题 4: LED 不亮 ⚠️ 重要
-
-**症状**: 灯光指令返回成功但实际 LED 无响应
-
-**根本原因**: `ws281x` LED 驱动库需要 `/dev/mem` 访问权限，普通用户无权限。
-
-**解决方案**:
-```bash
-# 1. 使用 sudo 运行 API 服务器 (必需)
-sudo .venv/bin/python -m uvicorn lelamp.api.app:app --host 0.0.0.0 --port 8000
-
-# 2. 使用启动脚本
-start-lelamp-api
-
-# 3. 使用 systemd 服务 (生产环境推荐)
-sudo systemctl start lelamp-api
-
-# 4. 检查 RGB 服务状态
-tail -f /tmp/uvicorn.log | grep -E 'RGB|NoOpRGBService'
-# 如果看到 "fallback to NoOpRGBService"，说明权限不足
-```
-
-**详细文档**: [API 服务器设置指南](./docs/setup/api-server-setup.md)
-
-更多故障排查，请参见 [完整使用指南](./docs/USER_GUIDE.md)。
+更多问题见 [用户指南](docs/USER_GUIDE.md) 和 [自动启动指南](docs/AUTO_STARTUP_GUIDE.md)。
 
 ---
 
@@ -838,9 +455,6 @@ tail -f /tmp/uvicorn.log | grep -E 'RGB|NoOpRGBService'
 
 ## 🤝 贡献
 
-这是一个由 Human Computer Lab 开发的开源项目。欢迎通过 GitHub 仓库贡献代码。
-
-### 贡献方式
 1. Fork 项目
 2. 创建功能分支 (`git checkout -b feature/AmazingFeature`)
 3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
@@ -855,13 +469,6 @@ tail -f /tmp/uvicorn.log | grep -E 'RGB|NoOpRGBService'
 
 ---
 
-## 🙏 致谢与赞助
-
-- 贡献者列表: [CONTRIBUTORS.md](./CONTRIBUTORS.md)
-- 赞助商致谢: [SPONSORS.md](./SPONSORS.md)
-
----
-
 ## 📄 许可证
 
 查看主 [LeLamp 仓库](https://github.com/humancomputerlab/LeLamp) 获取许可证信息。
@@ -870,20 +477,8 @@ tail -f /tmp/uvicorn.log | grep -E 'RGB|NoOpRGBService'
 
 ## 🔗 相关链接
 
-- 🏠 [LeLamp 主仓库](https://github.com/humancomputerlab/LeLamp)
-- 📖 [LeLamp 控制教程](https://github.com/humancomputerlab/LeLamp/blob/master/docs/5.%20LeLamp%20Control.md)
-- 🌐 [Human Computer Lab 官网](https://www.humancomputerlab.com)
-- 📚 [LiveKit 文档](https://docs.livekit.io/agents/start/voice-ai/)
-- 🤖 [DeepSeek API 文档](https://api.deepseek.com)
-
----
-
-## ⭐ Star History
-
-如果这个项目对你有帮助，请给我们一个 Star！⭐
-
----
-
-**版本**: v0.1.0
-**最后更新**: 2026-03-25
-**Python 版本**: 3.12+
+- [LeLamp 主仓库](https://github.com/humancomputerlab/LeLamp)
+- [LeLamp 控制教程](https://github.com/humancomputerlab/LeLamp/blob/master/docs/5.%20LeLamp%20Control.md)
+- [Human Computer Lab](https://www.humancomputerlab.com)
+- [LiveKit 文档](https://docs.livekit.io/agents/start/voice-ai/)
+- [DeepSeek API](https://api.deepseek.com)
