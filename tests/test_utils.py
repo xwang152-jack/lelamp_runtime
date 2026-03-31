@@ -2,9 +2,10 @@
 测试工具类模块
 """
 import os
+import socket
 import pytest
 import asyncio
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, Mock
 from pathlib import Path
 
 from lelamp.utils.rate_limiter import (
@@ -247,19 +248,24 @@ class TestGlobalRateLimiter:
 class TestSecurity:
     """测试安全工具"""
 
-    @patch('platform.platform', return_value='Linux-armv7l-with-glibc2.35')
-    @patch('pathlib.Path.read_text', return_value='serial123')
-    def test_get_device_id_linux(self, mock_read, mock_platform):
+    @patch('os.path.exists', return_value=True)
+    @patch('builtins.open', create=True)
+    def test_get_device_id_linux(self, mock_open, mock_exists):
         """测试Linux设备ID获取"""
+        mock_file = MagicMock()
+        mock_file.__enter__ = Mock(return_value=mock_file)
+        mock_file.__exit__ = Mock(return_value=False)
+        mock_file.__iter__ = Mock(return_value=iter(["Serial\t: 00000000abcdef\n"]))
+        mock_open.return_value = mock_file
         device_id = get_device_id()
-        assert device_id == "serial123"
+        assert device_id == "00000000abcdef"
 
-    @patch('platform.platform', return_value='Darwin')
+    @patch('os.path.exists', return_value=False)
     @patch('uuid.getnode', return_value=12345)
-    def test_get_device_id_mac(self, mock_getnode, mock_platform):
+    def test_get_device_id_mac(self, mock_getnode, mock_exists):
         """测试Mac设备ID获取"""
         device_id = get_device_id()
-        assert device_id == "0000:0000:3039:0000"
+        assert device_id == "12345"
 
     def test_generate_license_key(self):
         """测试生成许可证密钥"""
@@ -281,14 +287,18 @@ class TestSecurity:
         """测试开发模式验证"""
         assert verify_license() is True
 
+    @patch('lelamp.utils.security.get_device_id', return_value='test_device')
     @patch.dict(os.environ, {}, clear=True)
-    def test_verify_license_no_key(self):
+    def test_verify_license_no_key(self, mock_dev):
         """测试无密钥验证"""
         assert verify_license() is False
 
-    @patch.dict(os.environ, {"LELAMP_LICENSE_SECRET": "test_secret"})
-    def test_verify_license_no_env_key(self):
+    @patch('lelamp.utils.security.get_device_id', return_value='test_device')
+    @patch.dict(os.environ, {"LELAMP_LICENSE_SECRET": "test_secret"}, clear=False)
+    def test_verify_license_no_env_key(self, mock_dev):
         """测试有secret但无license key"""
+        os.environ.pop("LELAMP_LICENSE_KEY", None)
+        os.environ.pop("LELAMP_DEV_MODE", None)
         assert verify_license() is False
 
     @patch.dict(os.environ, {"LELAMP_LICENSE_SECRET": "test_secret", "LELAMP_DEV_MODE": "1"})
@@ -332,12 +342,31 @@ class TestURLValidation:
         )
         assert result is False
 
-    def test_validate_external_url_subdomain(self):
+    @patch('socket.gethostbyname', return_value='93.184.216.34')
+    def test_validate_external_url_subdomain(self, mock_dns):
         """测试子域名匹配"""
-        # 添加包含通配符的白名单
         custom_whitelist = ["example.com", "api.example.com"]
         result = validate_external_url(
             "https://api.example.com/v1",
             custom_whitelist
         )
         assert result is True
+
+    @patch('socket.gethostbyname', return_value='10.0.0.1')
+    def test_validate_external_url_private_ip(self, mock_dns):
+        """测试私有IP拒绝"""
+        custom_whitelist = ["example.com"]
+        result = validate_external_url(
+            "https://example.com/api",
+            custom_whitelist
+        )
+        assert result is False
+
+    @patch('socket.gethostbyname', side_effect=socket.gaierror('DNS failed'))
+    def test_validate_external_url_dns_failure(self, mock_dns):
+        """测试DNS解析失败"""
+        result = validate_external_url(
+            "https://api.deepseek.com/v1/chat",
+            ALLOWED_API_DOMAINS
+        )
+        assert result is False

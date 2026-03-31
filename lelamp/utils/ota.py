@@ -26,6 +26,12 @@ except ImportError:
 
 logger = logging.getLogger("lelamp.ota")
 
+
+class OTAError(Exception):
+    """OTA 更新相关错误"""
+    pass
+
+
 class OTAManager:
     def __init__(self, current_version: str, update_url: str):
         self.current_version = current_version

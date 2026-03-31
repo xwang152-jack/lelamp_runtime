@@ -4,32 +4,32 @@ import argparse
 
 sys.path.append(os.path.dirname(__file__))
 
-from service.rgb import RGBService
-from follower import LeLampFollower, LeLampFollowerConfig
+from lelamp.service.rgb.rgb_service import RGBService
+from lelamp.follower.lelamp_follower import LeLampFollower, LeLampFollowerConfig
 
 def turn_off(port: str, lamp_id: str):
     # Initialize robot connection
     robot_config = LeLampFollowerConfig(port=port, id=lamp_id)
     robot = LeLampFollower(robot_config)
-    
+
     # Initialize RGB service
     rgb_service = RGBService()
-    
+
     try:
         # Connect to robot
         print(f"Connecting to robot on port {port} with ID {lamp_id}...")
         robot.connect(calibrate=False)
         print("Robot connected successfully")
-        
+
         # Start RGB service
         rgb_service.start()
-        
+
         # Turn off LED
         print("Turning off LED")
         rgb_service.dispatch("solid", (0, 0, 0))
-        
+
         print("Turn off complete")
-        
+
     except Exception as e:
         print(f"Error during turn off: {e}")
     finally:
@@ -38,7 +38,7 @@ def turn_off(port: str, lamp_id: str):
             print("Disconnecting robot...")
             robot.disconnect()
             print("Robot disconnected")
-        
+
         rgb_service.stop()
 
 def main():
