@@ -278,7 +278,8 @@ class VisionService(ServiceBase):
                 time.sleep(0.1)
                 continue
 
-            self.logger.debug(f"Vision 成功捕获帧: {len(jpeg_b64)} bytes")
+            # 移除频繁打印的日志，或将其改为 TRACE 级别
+            # self.logger.debug(f"Vision 成功捕获帧: {len(jpeg_b64)} bytes")
             with self._frame_lock:
                 self._latest_jpeg_b64 = jpeg_b64
                 self._latest_ts = now

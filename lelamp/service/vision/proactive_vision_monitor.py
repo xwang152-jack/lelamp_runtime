@@ -211,7 +211,8 @@ class ProactiveVisionMonitor:
             return
 
         self._detection_count += 1
-        if self._detection_count % 20 == 1:
+        # 降低心跳日志的打印频率，由每20次打印一次改为每500次打印一次，减少刷屏
+        if self._detection_count % 500 == 1:
             logger.info(f"VisionMonitor 运行中（检测 {self._detection_count} 次，帧 shape={frame.shape}）")
 
         # 1. 用户在场检测（优先级高，频率低）
