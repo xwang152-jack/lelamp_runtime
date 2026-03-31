@@ -8,7 +8,7 @@
 
 ```bash
 # 在树莓派上安装 Captive Portal
-./scripts/install_captive_portal.sh
+./scripts/services/install_captive_portal.sh
 
 # 清除设置状态（重新进入设置模式）
 ssh pi@192.168.0.104 'sudo rm /var/lib/lelamp/setup_status.json'
@@ -24,17 +24,17 @@ ssh pi@192.168.0.104 'sudo rm /var/lib/lelamp/setup_status.json'
 ### 方法一：完整服务系统（推荐）⭐
 
 ```bash
-# 一键设置完整三服务架构
-./scripts/setup_all_services.sh
+# 一键设置完整双服务架构
+./scripts/setup/setup_all_services.sh
 ```
 
 **服务包含：**
 - 📱 **LiveKit 服务**（语音交互）
 - 🔌 **API 服务**（后端 REST API）
-- 🌐 **Frontend 服务**（Web 用户界面）
+
+> 前端（`web/`）已独立部署，需单独用 Nginx 或其他静态服务器托管，不再作为 systemd 服务运行。
 
 **访问地址：**
-- Web 界面：http://192.168.0.104:5173
 - API 文档：http://192.168.0.104:8000/docs
 - 健康检查：http://192.168.0.104:8000/health
 
@@ -42,26 +42,26 @@ ssh pi@192.168.0.104 'sudo rm /var/lib/lelamp/setup_status.json'
 
 ```bash
 # 仅设置 LiveKit Tmux 服务
-./scripts/setup_livekit_tmux_service.sh
+./scripts/setup/setup_livekit_tmux_service.sh
 ```
 
 ### 方法三：使用部署脚本（完整流程）
 
 ```bash
-# 完整部署：构建前端 → 推送代码 → 配置自动启动
-./scripts/deploy_to_pi.sh
+# 完整部署：推送代码 → 配置自动启动
+./scripts/tools/sync_to_pi.sh
 ```
 
 ### 方法四：分步配置
 
-1. **构建并推送代码**
+1. **推送代码**
    ```bash
-   ./scripts/push_to_pi.sh
+   ./scripts/tools/sync_to_pi.sh
    ```
 
 2. **配置自动启动**
    ```bash
-   ./scripts/setup_lelamp_startup.sh
+   ./scripts/setup/setup_lelamp_startup.sh
    ```
 
 ## 📋 启动模式说明
@@ -69,30 +69,31 @@ ssh pi@192.168.0.104 'sudo rm /var/lib/lelamp/setup_status.json'
 ### 1. 完整服务模式（推荐）⭐
 - **适用场景**：日常使用、完整功能体验
 - **特点**：
-  - LiveKit 服务（语音交互）+ API 服务（后端）+ Frontend 服务（Web 界面）
-  - 三服务协同工作，提供完整功能
+  - LiveKit 服务（语音交互）+ API 服务（后端）
+  - 双服务协同工作，提供完整功能
   - systemd 统一管理，开机自动启动
   - 支持语音交互和 Web 控制两种方式
+  - 前端需独立部署（Nginx 等静态服务器托管 `web/` 目录）
 
 - **访问地址**：
-  - Web 界面：http://192.168.0.104:5173
   - API 文档：http://192.168.0.104:8000/docs
   - LiveKit 语音交互：通过 LiveKit 客户端
 
 ### 2. 简化模式
 - **适用场景**：资源受限环境、仅需 API 功能
 - **特点**：
-  - 仅启动后端 API 服务
-  - 前端静态文件由 API 服务
-  - 单一端口（8000）访问前后端
+  - 仅启动后端 API 服务（纯 API 服务器）
+  - 前端需要独立部署（Nginx 等静态服务器托管）
+  - 单一端口（8000）提供 API 服务
   - 占用资源少，启动快速
 
-- **访问地址**：http://192.168.0.104:8000
+- **访问地址**：http://192.168.0.104:8000（仅 API，前端需另行部署）
 
-### 3. 完整模式
+### 3. 开发模式
 - **适用场景**：开发调试、需要实时预览
 - **特点**：
-  - 后端 API + 前端开发服务器
+  - 后端 API（纯 API 服务器）+ 前端开发服务器（独立部署）
+  - 前后端完全解耦，通过 API 地址连接
   - 支持前端热更新
   - 占用资源较多，启动较慢
 
@@ -128,100 +129,52 @@ ssh pi@192.168.0.104 'sudo rm /var/lib/lelamp/setup_status.json'
 
 ```bash
 # 查看所有服务状态
-ssh pi@192.168.0.104 'sudo systemctl status lelamp-{livekit,api,frontend}.service'
+ssh pi@192.168.0.104 'sudo systemctl status lelamp-{livekit,api}.service'
 
 # 查看特定服务状态
 ssh pi@192.168.0.104 'sudo systemctl status lelamp-livekit.service'
 ssh pi@192.168.0.104 'sudo systemctl status lelamp-api.service'
-ssh pi@192.168.0.104 'sudo systemctl status lelamp-frontend.service'
 ```
 
 ### 服务控制
 
 ```bash
 # 重启所有服务
-ssh pi@192.168.0.104 'sudo systemctl restart lelamp-{livekit,api,frontend}.service'
+ssh pi@192.168.0.104 'sudo systemctl restart lelamp-{livekit,api}.service'
 
 # 重启特定服务
 ssh pi@192.168.0.104 'sudo systemctl restart lelamp-livekit.service'
 ssh pi@192.168.0.104 'sudo systemctl restart lelamp-api.service'
-ssh pi@192.168.0.104 'sudo systemctl restart lelamp-frontend.service'
 
 # 停止所有服务
-ssh pi@192.168.0.104 'sudo systemctl stop lelamp-{livekit,api,frontend}.service'
+ssh pi@192.168.0.104 'sudo systemctl stop lelamp-{livekit,api}.service'
 
 # 启动所有服务
-ssh pi@192.168.0.104 'sudo systemctl start lelamp-{livekit,api,frontend}.service'
+ssh pi@192.168.0.104 'sudo systemctl start lelamp-{livekit,api}.service'
 ```
 
 ### 日志查看
 
 ```bash
 # 实时查看所有服务日志
-ssh pi@192.168.0.104 'sudo journalctl -u lelamp-{livekit,api,frontend}.service -f'
+ssh pi@192.168.0.104 'sudo journalctl -u lelamp-{livekit,api}.service -f'
 
 # 查看特定服务日志
 ssh pi@192.168.0.104 'sudo journalctl -u lelamp-livekit.service -f'
 ssh pi@192.168.0.104 'sudo journalctl -u lelamp-api.service -f'
-ssh pi@192.168.0.104 'sudo journalctl -u lelamp-frontend.service -f'
-```
-
-### 自动启动控制
-
-```bash
-# 禁用所有服务开机自启
-ssh pi@192.168.0.104 'sudo systemctl disable lelamp-{livekit,api,frontend}.service'
-
-# 重新启用所有服务开机自启
-ssh pi@192.168.0.104 'sudo systemctl enable lelamp-{livekit,api,frontend}.service'
-```
-
-### 单个服务管理
-
-**服务状态查看**
-```bash
-# 查看所有服务状态
-ssh pi@192.168.0.104 'sudo systemctl status lelamp-*.service'
-
-# 查看特定服务状态
-ssh pi@192.168.0.104 'sudo systemctl status lelamp-api.service'
-ssh pi@192.168.0.104 'sudo systemctl status lelamp-frontend.service'
-```
-
-### 服务控制
-```bash
-# 重启服务
-ssh pi@192.168.0.104 'sudo systemctl restart lelamp-api.service'
-ssh pi@192.168.0.104 'sudo systemctl restart lelamp-frontend.service'
-
-# 停止服务
-ssh pi@192.168.0.104 'sudo systemctl stop lelamp-api.service'
-ssh pi@192.168.0.104 'sudo systemctl stop lelamp-frontend.service'
-
-# 启动服务
-ssh pi@192.168.0.104 'sudo systemctl start lelamp-api.service'
-ssh pi@192.168.0.104 'sudo systemctl start lelamp-frontend.service'
-```
-
-### 日志查看
-```bash
-# 实时查看日志
-ssh pi@192.168.0.104 'sudo journalctl -u lelamp-api.service -f'
-ssh pi@192.168.0.104 'sudo journalctl -u lelamp-frontend.service -f'
 
 # 查看最近 50 行日志
 ssh pi@192.168.0.104 'sudo journalctl -u lelamp-api.service -n 50'
 ```
 
 ### 自动启动控制
-```bash
-# 禁用开机自启
-ssh pi@192.168.0.104 'sudo systemctl disable lelamp-api.service'
-ssh pi@192.168.0.104 'sudo systemctl disable lelamp-frontend.service'
 
-# 重新启用开机自启
-ssh pi@192.168.0.104 'sudo systemctl enable lelamp-api.service'
-ssh pi@192.168.0.104 'sudo systemctl enable lelamp-frontend.service'
+```bash
+# 禁用所有服务开机自启
+ssh pi@192.168.0.104 'sudo systemctl disable lelamp-{livekit,api}.service'
+
+# 重新启用所有服务开机自启
+ssh pi@192.168.0.104 'sudo systemctl enable lelamp-{livekit,api}.service'
 ```
 
 ## 🔧 高级配置
@@ -258,16 +211,17 @@ ssh pi@192.168.0.104 'sudo systemctl status lelamp-api.service -l'
 ssh pi@192.168.0.104 'sudo journalctl -u lelamp-api.service -n 100'
 
 # 检查端口占用
-ssh pi@192.168.0.104 'sudo netstat -tlnp | grep -E "(8000|5173)"'
+ssh pi@192.168.0.104 'sudo netstat -tlnp | grep 8000'
 ```
 
 ### 前端无法访问
 ```bash
-# 检查静态文件是否存在
-ssh pi@192.168.0.104 'ls -la ~/lelamp_runtime/web/dist/'
+# 前端已独立部署，检查前端是否正确部署到静态服务器
+# 如使用 Nginx，检查 Nginx 配置
+ssh pi@192.168.0.104 'sudo nginx -t && sudo systemctl status nginx'
 
-# 重新部署前端
-./scripts/deploy_to_pi.sh
+# 本地构建前端
+cd web && pnpm build
 ```
 
 ### 依赖问题
@@ -276,12 +230,38 @@ ssh pi@192.168.0.104 'ls -la ~/lelamp_runtime/web/dist/'
 ssh pi@192.168.0.104 'cd ~/lelamp_runtime && sudo uv sync --extra api --extra hardware'
 ```
 
+### 完整服务系统故障排除
+
+```bash
+# 检查所有服务状态
+ssh pi@192.168.0.104 'sudo systemctl status lelamp-{livekit,api}.service'
+
+# 检查端口占用
+ssh pi@192.168.0.104 'sudo netstat -tlnp | grep 8000'
+
+# 重新设置完整服务系统
+./scripts/setup/setup_all_services.sh
+```
+
+### API 服务故障排除
+
+```bash
+# 检查 API 服务日志
+ssh pi@192.168.0.104 'sudo journalctl -u lelamp-api.service -n 50 --no-pager'
+
+# 测试 API 端点
+ssh pi@192.168.0.104 'curl -s http://localhost:8000/health'
+
+# 检查数据库文件
+ssh pi@192.168.0.104 'ls -la ~/lelamp_runtime/lelamp.db'
+```
+
 ## 🚀 LiveKit Tmux 模式设置
 
 ### 快速设置
 
 ```bash
-./scripts/setup_livekit_tmux_service.sh
+./scripts/setup/setup_livekit_tmux_service.sh
 ```
 
 ### 管理命令
@@ -317,86 +297,27 @@ ssh pi@192.168.0.104 'tmux new-session -s test -d "cd /home/pi/lelamp_runtime &&
 ssh pi@192.168.0.104 'sudo journalctl -u lelamp-livekit.service -n 100 --no-pager'
 ```
 
-## 🔧 高级配置
-
-### 完整服务系统故障排除
-
-```bash
-# 检查所有服务状态
-ssh pi@192.168.0.104 'sudo systemctl status lelamp-{livekit,api,frontend}.service'
-
-# 检查端口占用
-ssh pi@192.168.0.104 'sudo netstat -tlnp | grep -E "(8000|5173)"'
-
-# 检查服务依赖关系
-ssh pi@192.168.0.104 'systemctl list-dependencies lelamp-frontend.service'
-
-# 重新设置完整服务系统
-./scripts/setup_all_services.sh
-```
-
-### API 服务故障排除
-
-```bash
-# 检查 API 服务日志
-ssh pi@192.168.0.104 'sudo journalctl -u lelamp-api.service -n 50 --no-pager'
-
-# 测试 API 端点
-ssh pi@192.168.0.104 'curl -s http://localhost:8000/health'
-
-# 检查数据库文件
-ssh pi@192.168.0.104 'ls -la ~/lelamp_runtime/lelamp.db'
-```
-
-### Frontend 服务故障排除
-
-```bash
-# 检查 Frontend 服务日志
-ssh pi@192.168.0.104 'sudo journalctl -u lelamp-frontend.service -n 50 --no-pager'
-
-# 检查前端构建文件
-ssh pi@192.168.0.104 'ls -la ~/lelamp_runtime/web/dist/'
-
-# 手动启动前端服务测试
-ssh pi@192.168.0.104 'cd ~/lelamp_runtime/web && npm run dev'
-```
-
-### 服务依赖问题
-
-```bash
-# 查看服务启动顺序
-ssh pi@192.168.0.104 'systemd-analyze critical-chain lelamp-frontend.service'
-
-# 手动按顺序启动服务
-ssh pi@192.168.0.104 'sudo systemctl start lelamp-livekit.service'
-ssh pi@192.168.0.104 'sudo systemctl start lelamp-api.service'
-ssh pi@192.168.0.104 'sudo systemctl start lelamp-frontend.service'
-```
-
 ## 🎯 推荐工作流
 
 ### 日常开发
 1. 本地开发测试
-2. `./scripts/deploy_to_pi.sh` 部署到树莓派
-3. 访问 http://192.168.0.104:5173 测试完整功能
-4. 访问 http://192.168.0.104:8000/docs 查看 API 文档
+2. `./scripts/tools/sync_to_pi.sh` 部署到树莓派
+3. 访问 http://192.168.0.104:8000/docs 查看 API 文档
 
 ### 快速更新
 1. 修改代码后 `git commit`
-2. `./scripts/push_to_pi.sh` 推送代码
+2. `./scripts/tools/sync_to_pi.sh` 推送代码
 3. 树莓派自动重启服务
 
 ### 生产环境
-1. 使用简化模式（低资源占用）
+1. 使用完整服务系统（推荐）或仅 API 服务 + 独立前端部署
 2. 定期检查服务状态
 3. 监控日志文件大小
 
 ## 📞 获取帮助
 
-- **查看服务状态**：`./scripts/sync_status.sh`
-- **API 测试**：`./scripts/test_api_on_pi.sh`
-- **依赖检查**：`./scripts/ensure_dependencies.sh`
+- **依赖检查**：`./scripts/setup/ensure_dependencies.sh`
 
 ---
 
-**提示**：首次设置建议使用简化模式，如需开发调试可切换到完整模式。
+**提示**：前端 (`web/`) 与后端 API 完全解耦，独立部署。后端是纯 API 服务器，不再提供前端静态文件。首次设置建议使用完整服务系统，如需开发调试可分别启动 API 服务和前端开发服务器。

@@ -175,7 +175,7 @@ lelamp_runtime/
 │   ├── utils/                  # Rate limiting, security, OTA
 │   └── recordings/             # Motor animation CSV files
 │
-├── web/                        # Vue 3 frontend
+├── web/                        # Vue 3 frontend (independently deployed, no pnpm workspace at root)
 ├── scripts/                    # Build and deployment scripts
 │   ├── setup/                  # System setup and installation scripts
 │   ├── services/               # Systemd service files
@@ -497,12 +497,13 @@ Local AI inference using **MediaPipe Tasks API** (0.10+) for low-latency, privac
 
 ### API & Database Layer (`lelamp/api/` & `lelamp/database/`)
 
-**RESTful API System**:
+**RESTful API System** (pure API server, does not serve frontend static files):
 - FastAPI application with auto-generated OpenAPI docs (`/docs`, `/redoc`)
 - 9 REST endpoints for device management, settings, and history
 - WebSocket support for real-time state updates (`/api/ws/{lamp_id}`)
 - CORS enabled for web client integration
 - 13 WebSocket message types for event pushing
+- The frontend (`web/`) is independently deployed and connects to this API server via its own URL
 
 **Database Models** (`lelamp/database/models.py`):
 - `Conversation`: Chat history with messages, duration, and AI responses
@@ -695,7 +696,11 @@ Silero VAD can be customized via environment variables:
   - `session.py`: Database session management
 
 ### Frontend & Deployment
-- `web/`: Vue 3 frontend (standalone HTML/JS/CSS)
+- `web/`: Vue 3 frontend (independently deployed, no pnpm workspace at root)
+  - Has its own `package.json` and dependency management (pnpm)
+  - Connects to the backend API server via configurable base URL
+  - Development: `cd web && pnpm install && pnpm dev`
+  - Production: build with `cd web && pnpm build`, deploy the `dist/` output separately
 - `scripts/`: Build, deployment, and systemd service scripts for commercial deployment
   - `setup/`: System setup and installation scripts
   - `services/`: Systemd service files

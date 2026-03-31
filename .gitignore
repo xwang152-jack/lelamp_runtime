@@ -18,7 +18,10 @@ wheels/
 
 # Git worktrees
 .worktrees/
+
+# Node.js (root level, web/ manages its own)
 node_modules
+pnpm-lock.yaml
 
 # Database files
 *.db

@@ -1,5 +1,5 @@
 #!/bin/bash
-# LeLamp 简化版自动启动设置（仅后端 + 静态前端）
+# LeLamp 简化版自动启动设置（仅后端 API）
 
 set -e
 
@@ -20,34 +20,8 @@ fi
 echo "✅ 树莓派连接正常"
 echo ""
 
-# 1. 构建前端
-echo "🏗️  1. 构建前端静态文件..."
-echo "   这将在本地构建前端，然后部署到树莓派"
-echo ""
-
-# 检查前端是否已构建
-if [ ! -d "web/dist" ]; then
-    echo "   正在构建前端..."
-    cd web
-    npm run build
-    cd ..
-    echo "   ✅ 前端构建完成"
-else
-    echo "   ℹ️  前端已构建，跳过"
-fi
-
-echo ""
-
-# 2. 复制前端文件到树莓派
-echo "📦 2. 部署前端文件到树莓派..."
-ssh $PI_HOST "mkdir -p $PROJECT_DIR/web/dist"
-scp -r web/dist/* $PI_HOST:$PROJECT_DIR/web/dist/
-echo "✅ 前端文件已部署"
-
-echo ""
-
-# 3. 创建后端服务（包含静态文件服务）
-echo "📝 3. 创建 systemd 服务..."
+# 1. 创建后端 API 服务
+echo "📝 1. 创建 systemd 服务..."
 ssh $PI_HOST "sudo tee /etc/systemd/system/lelamp-api.service > /dev/null << 'EOF'
 [Unit]
 Description=LeLamp API Server
@@ -72,19 +46,21 @@ EOF
 
 echo "✅ 服务文件已创建"
 
-# 4. 清理旧服务
-echo "🔧 4. 清理旧服务..."
+# 2. 清理旧服务
+echo "🔧 2. 清理旧服务..."
 ssh $PI_HOST "sudo systemctl stop lelamp-api.service 2>/dev/null || true"
+ssh $PI_HOST "sudo systemctl stop lelamp-frontend.service 2>/dev/null || true"
 ssh $PI_HOST "sudo systemctl disable lelamp-api.service 2>/dev/null || true"
+ssh $PI_HOST "sudo systemctl disable lelamp-frontend.service 2>/dev/null || true"
 
-# 5. 重新加载并启用
-echo "🔄 5. 配置自动启动..."
+# 3. 重新加载并启用
+echo "🔄 3. 配置自动启动..."
 ssh $PI_HOST "sudo systemctl daemon-reload"
 ssh $PI_HOST "sudo systemctl enable lelamp-api.service"
 echo "✅ 服务已设置为开机自启"
 
-# 6. 启动服务
-echo "▶️  6. 启动服务..."
+# 4. 启动服务
+echo "▶️  4. 启动服务..."
 ssh $PI_HOST "sudo systemctl start lelamp-api.service"
 echo "✅ 服务已启动"
 
@@ -94,7 +70,6 @@ echo "✅ 自动启动设置完成！"
 echo "================================================"
 echo ""
 echo "🌐 访问地址："
-echo "   前端: http://192.168.0.104:8000/index.html"
 echo "   API:  http://192.168.0.104:8000/api"
 echo "   文档: http://192.168.0.104:8000/docs"
 echo ""

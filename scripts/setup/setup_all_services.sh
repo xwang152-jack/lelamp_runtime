@@ -13,7 +13,6 @@ echo ""
 echo "将设置以下服务："
 echo "  1. LiveKit 服务（语音交互）"
 echo "  2. API 服务（后端）"
-echo "  3. Frontend 服务（Web 界面）"
 echo ""
 
 # 检查是否可以连接到树莓派
@@ -45,6 +44,7 @@ echo "🔧 1. 停止并清理旧服务..."
 ssh $PI_HOST "sudo systemctl stop lelamp-livekit.service 2>/dev/null || true"
 ssh $PI_HOST "sudo systemctl stop lelamp-api.service 2>/dev/null || true"
 ssh $PI_HOST "sudo systemctl stop lelamp-frontend.service 2>/dev/null || true"
+echo "   注意: lelamp-frontend.service 已废弃（前后端已分离）"
 ssh $PI_HOST "sudo systemctl disable lelamp-livekit.service 2>/dev/null || true"
 ssh $PI_HOST "sudo systemctl disable lelamp-api.service 2>/dev/null || true"
 ssh $PI_HOST "sudo systemctl disable lelamp-frontend.service 2>/dev/null || true"
@@ -53,7 +53,7 @@ echo ""
 
 # 创建 LiveKit 服务
 echo "📝 2. 创建 LiveKit 服务..."
-cat scripts/lelamp-livekit.service | ssh $PI_HOST "sudo tee /etc/systemd/system/lelamp-livekit.service > /dev/null"
+cat scripts/services/lelamp-livekit.service | ssh $PI_HOST "sudo tee /etc/systemd/system/lelamp-livekit.service > /dev/null"
 echo "✅ LiveKit 服务文件已创建"
 echo ""
 
@@ -87,36 +87,6 @@ EOF
 echo "✅ API 服务文件已创建"
 echo ""
 
-# 创建 Frontend 服务
-echo "📝 4. 创建 Frontend 服务..."
-ssh $PI_HOST "sudo tee /etc/systemd/system/lelamp-frontend.service > /dev/null << 'EOF'
-[Unit]
-Description=LeLamp Frontend Server (Web UI)
-Documentation=https://github.com/xwang152-jack/lelamp_runtime
-After=network.target lelamp-api.service
-
-[Service]
-Type=simple
-User=pi
-WorkingDirectory=/home/pi/lelamp_runtime/web
-Environment=PATH=/usr/local/bin:/usr/bin:/bin
-Environment=NODE_ENV=production
-ExecStart=/usr/bin/npm run dev -- --host 0.0.0.0 --port 5173
-Restart=on-failure
-RestartSec=5
-StartLimitInterval=120
-StartLimitBurst=5
-StandardOutput=journal
-StandardError=journal
-SyslogIdentifier=lelamp-frontend
-
-[Install]
-WantedBy=multi-user.target
-EOF
-"
-echo "✅ Frontend 服务文件已创建"
-echo ""
-
 # 重新加载 systemd
 echo "🔄 5. 重新加载 systemd..."
 ssh $PI_HOST "sudo systemctl daemon-reload"
@@ -127,7 +97,6 @@ echo ""
 echo "🚀 6. 启用开机自启..."
 ssh $PI_HOST "sudo systemctl enable lelamp-livekit.service"
 ssh $PI_HOST "sudo systemctl enable lelamp-api.service"
-ssh $PI_HOST "sudo systemctl enable lelamp-frontend.service"
 echo "✅ 所有服务已设置为开机自启"
 echo ""
 
@@ -139,10 +108,6 @@ sleep 3
 
 echo "启动 API 服务..."
 ssh $PI_HOST "sudo systemctl start lelamp-api.service"
-sleep 3
-
-echo "启动 Frontend 服务..."
-ssh $PI_HOST "sudo systemctl start lelamp-frontend.service"
 sleep 3
 
 echo "✅ 所有服务已启动"
@@ -163,10 +128,6 @@ echo "📊 API 服务状态:"
 ssh $PI_HOST "sudo systemctl status lelamp-api.service --no-pager" | head -10
 echo ""
 
-echo "📊 Frontend 服务状态:"
-ssh $PI_HOST "sudo systemctl status lelamp-frontend.service --no-pager" | head -10
-echo ""
-
 # 测试连接
 echo "================================================"
 echo "🧪 连接测试"
@@ -185,17 +146,6 @@ else
 fi
 
 echo ""
-echo "测试 Frontend 服务..."
-sleep 2
-if ssh $PI_HOST "curl -s http://localhost:5173 > /dev/null"; then
-    echo "✅ Frontend 服务响应正常"
-    echo "   地址: http://192.168.0.104:5173"
-else
-    echo "⏳ Frontend 服务启动中（首次启动可能需要较长时间）"
-    echo "   地址: http://192.168.0.104:5173"
-fi
-
-echo ""
 echo "================================================"
 echo "✅ 完整服务设置完成！"
 echo "================================================"
@@ -205,7 +155,7 @@ echo ""
 echo "📱 LiveKit 服务（语音交互）:"
 echo "  状态: ssh $PI_HOST 'sudo systemctl status lelamp-livekit.service'"
 echo "  日志: ssh $PI_HOST 'sudo journalctl -u lelamp-livekit.service -f'"
-echo "  管理: ./scripts/livekit_service_manager.sh <command>"
+echo "  管理: ./scripts/services/livekit_service_manager.sh <command>"
 echo ""
 echo "🔌 API 服务（后端）:"
 echo "  状态: ssh $PI_HOST 'sudo systemctl status lelamp-api.service'"
@@ -213,22 +163,7 @@ echo "  日志: ssh $PI_HOST 'sudo journalctl -u lelamp-api.service -f'"
 echo "  地址: http://192.168.0.104:8000"
 echo "  文档: http://192.168.0.104:8000/docs"
 echo ""
-echo "🌐 Frontend 服务（Web 界面）:"
-echo "  状态: ssh $PI_HOST 'sudo systemctl status lelamp-frontend.service'"
-echo "  日志: ssh $PI_HOST 'sudo journalctl -u lelamp-frontend.service -f'"
-echo "  地址: http://192.168.0.104:5173"
-echo ""
-echo "🎮 批量管理命令："
-echo ""
-echo "查看所有服务状态:"
-echo "  ssh $PI_HOST 'sudo systemctl status lelamp-{livekit,api,frontend}.service'"
-echo ""
-echo "重启所有服务:"
-echo "  ssh $PI_HOST 'sudo systemctl restart lelamp-{livekit,api,frontend}.service'"
-echo ""
-echo "查看所有服务日志:"
-echo "  ssh $PI_HOST 'sudo journalctl -u lelamp-{livekit,api,frontend}.service -f'"
-echo ""
-echo "停止所有服务:"
-echo "  ssh $PI_HOST 'sudo systemctl stop lelamp-{livekit,api,frontend}.service'"
+echo "💡 前端（web/）已独立，请单独部署："
+echo "  cd web && pnpm build  # 构建"
+echo "  部署到 Nginx 或其他静态服务器"
 echo ""

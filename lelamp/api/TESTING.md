@@ -46,13 +46,13 @@ uv run pytest -v --tb=short
 
 ```bash
 # 运行特定测试文件
-uv run pytest lelamp/test/integration/test_e2e.py
+uv run pytest tests/integration/test_e2e.py
 
 # 运行特定测试类
-uv run pytest lelamp/test/integration/test_e2e.py::TestDeviceLifecycle
+uv run pytest tests/integration/test_e2e.py::TestDeviceLifecycle
 
 # 运行特定测试函数
-uv run pytest lelamp/test/integration/test_e2e.py::TestDeviceLifecycle::test_complete_lifecycle
+uv run pytest tests/integration/test_e2e.py::TestDeviceLifecycle::test_complete_lifecycle
 
 # 运行匹配模式的测试
 uv run pytest -k "test_device"
@@ -118,10 +118,10 @@ def test_command_request_missing_fields():
 
 ```bash
 # 运行所有单元测试
-uv run pytest lelamp/test/unit/
+uv run pytest tests/unit/
 
 # 运行特定单元测试
-uv run pytest lelamp/test/unit/test_models.py
+uv run pytest tests/unit/test_models.py
 ```
 
 ---
@@ -236,10 +236,10 @@ def test_send_command(client):
 
 ```bash
 # 运行所有集成测试
-uv run pytest lelamp/test/integration/
+uv run pytest tests/integration/
 
 # 运行特定集成测试
-uv run pytest lelamp/test/integration/test_api.py
+uv run pytest tests/integration/test_api.py
 ```
 
 ---
@@ -356,10 +356,10 @@ def test_error_handling(client_with_db):
 
 ```bash
 # 运行 E2E 测试
-uv run pytest lelamp/test/integration/test_e2e.py -v
+uv run pytest tests/integration/test_e2e.py -v
 
 # 运行特定场景
-uv run pytest lelamp/test/integration/test_e2e.py::TestDeviceLifecycle -v
+uv run pytest tests/integration/test_e2e.py::TestDeviceLifecycle -v
 ```
 
 ---

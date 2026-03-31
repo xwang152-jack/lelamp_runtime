@@ -6,7 +6,6 @@ from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
-from fastapi.staticfiles import StaticFiles
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -332,14 +331,6 @@ app.router.lifespan_context = lifespan
 
 # 包含 API 路由
 app.include_router(api_router)
-
-# 静态文件服务（前端）
-frontend_dist = os.path.join(os.path.dirname(__file__), "..", "..", "web", "dist")
-if os.path.exists(frontend_dist):
-    app.mount("/", StaticFiles(directory=frontend_dist, html=True), name="frontend")
-    logger.info(f"Frontend static files mounted from: {frontend_dist}")
-else:
-    logger.warning(f"Frontend dist directory not found: {frontend_dist}")
 
 # 健康检查
 @app.get("/health")

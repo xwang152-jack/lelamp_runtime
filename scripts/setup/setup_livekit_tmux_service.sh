@@ -5,7 +5,7 @@ set -e
 
 PI_HOST="${PI_HOST:-pi@192.168.0.104}"
 PROJECT_DIR="/home/pi/lelamp_runtime"
-SERVICE_FILE="scripts/lelamp-livekit.service"
+SERVICE_FILE="scripts/services/lelamp-livekit.service"
 
 echo "================================================"
 echo "LeLamp LiveKit Tmux Service 设置"
