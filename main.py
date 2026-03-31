@@ -129,6 +129,10 @@ def _build_vad() -> object:
 
 async def entrypoint(ctx: JobContext):
     from livekit.agents import AgentSession
+    from lelamp.database.base import init_db
+
+    # 初始化数据库（确保记忆表等已创建）
+    init_db()
 
     config = _load_config()
     await ctx.connect()
