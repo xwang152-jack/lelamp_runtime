@@ -25,10 +25,18 @@ node_modules
 *.db-shm
 *.db-wal
 
+# Linting
+.ruff_cache/
+
 # Test coverage
 .coverage
 htmlcov/
 .pytest_cache/
+
+# Web build artifacts
+web/dist/
+web/playwright-report/
+web/test-results/
 
 # Edge AI model files (download via scripts/download_models.sh)
 models/*.tflite

@@ -64,4 +64,4 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["lelamp*"]
-exclude = ["tests*", "tools*", "scripts*", "web_client*"]
+exclude = ["tests*", "scripts*", "web*"]

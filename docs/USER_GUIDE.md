@@ -1051,7 +1051,7 @@ LELAMP_NOISE_CANCELLATION=false
 **步骤 1: 检查 GPIO 权限**
 ```bash
 # 运行测试脚本 (需要 sudo)
-sudo uv run -m lelamp.test.test_rgb
+sudo uv run -m tests.test_rgb
 
 # 预期输出:
 # Testing RGB LED...

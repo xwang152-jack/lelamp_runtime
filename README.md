@@ -2,7 +2,7 @@
 
 > ⚙️ 状态已更新：本地仓库已同步 `main` 分支并清理了临时 Markdown 文档（保留核心文档）。
 >
-![](./assets/images/Banner.png)
+![](./docs/images/Banner.png)
 
 **LeLamp Runtime** 是一个完整的 Python 控制系统，为 [LeLamp 机器人台灯](https://github.com/humancomputerlab/LeLamp)提供对话式 AI、视觉识别、动作表情、灯光效果等功能。基于 [Apple 的 Elegnt 研究](https://machinelearning.apple.com/research/elegnt-expressive-functional-movement)，由 [[Human Computer Lab]](https://www.humancomputerlab.com/) 开发。
 
@@ -460,17 +460,17 @@ uv run -m lelamp.list_recordings --id lelamp
 
 ### RGB LED 测试
 ```bash
-sudo uv run -m lelamp.test.test_rgb
+sudo uv run -m tests.hardware.test_rgb
 ```
 
 ### 音频系统测试
 ```bash
-uv run -m lelamp.test.test_audio
+uv run -m tests.hardware.test_audio
 ```
 
 ### 电机测试
 ```bash
-uv run -m lelamp.test.test_motors --id lelamp --port /dev/ttyACM0
+uv run -m tests.hardware.test_motors --id lelamp --port /dev/ttyACM0
 ```
 
 ---
@@ -668,6 +668,7 @@ lelamp_runtime/
 ├── README.md                   # 本文档
 │
 ├── docs/                       # 文档目录
+│   ├── images/                 # 文档图片资源
 │   ├── USER_GUIDE.md           # 完整使用指南
 │   ├── TESTING_CHECKLIST.md   # 测试清单
 │   ├── PRODUCT_*.md            # 产品评审文档
@@ -720,18 +721,19 @@ lelamp_runtime/
 │   │   └── ...                 # 其他动作
 │   │
 │   ├── follower/               # Follower 模式配置
-│   ├── leader/                 # Leader 模式配置
-│   └── test/                   # 硬件测试模块
-│       ├── test_rgb.py         # RGB 测试
-│       ├── test_audio.py       # 音频测试
-│       └── test_motors.py      # 电机测试
+│   └── leader/                 # Leader 模式配置
 │
-├── scripts/                    # 构建和工具脚本
-│   ├── generate_client_token.py  # Token 生成
-│   └── build_dist.sh           # 构建脚本
+├── tests/                      # 测试目录
+│   ├── hardware/               # 硬件测试模块
+│   │   ├── test_rgb.py         # RGB 测试
+│   │   ├── test_audio.py       # 音频测试
+│   │   └── test_motors.py      # 电机测试
+│   └── test_*.py               # 其他测试
 │
-└── assets/                     # 资源文件
-    └── images/                 # 图片资源
+└── scripts/                    # 构建和工具脚本
+    ├── setup/                  # 安装和设置脚本
+    ├── services/               # 服务管理脚本
+    └── tools/                  # 工具脚本
 ```
 
 ---
@@ -751,7 +753,7 @@ ps aux | grep "main.py"
 echo $LIVEKIT_URL
 
 # 3. 重新生成 Token
-uv run python scripts/generate_client_token.py --room lelamp-room --user test
+uv run python scripts/tools/generate_client_token.py --room lelamp-room --user test
 
 # 4. 检查网络连接
 curl -v https://your-project.livekit.cloud
@@ -789,7 +791,7 @@ sudo usermod -a -G dialout pi
 sudo uv run -m lelamp.calibrate --id lelamp --port /dev/ttyACM0
 
 # 4. 测试电机
-uv run -m lelamp.test.test_motors --id lelamp --port /dev/ttyACM0
+uv run -m tests.hardware.test_motors --id lelamp --port /dev/ttyACM0
 ```
 
 ### 问题 4: LED 不亮 ⚠️ 重要

@@ -334,7 +334,7 @@ uv run pytest
 uv run pytest --cov=lelamp --cov-report=html
 
 # 运行特定测试
-uv run pytest lelamp/test/integration/test_auth_routes.py
+uv run pytest tests/integration/test_auth_routes.py
 
 # 查看 HTML 覆盖率报告
 open htmlcov/index.html

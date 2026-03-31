@@ -1142,7 +1142,7 @@ pnpm dev --host 0.0.0.0 --port 5173
 cd ~/lelamp_runtime
 
 # 运行 LED 测试（需要 sudo）
-sudo uv run -m lelamp.test.test_rgb
+sudo uv run -m tests.test_rgb
 ```
 
 **预期结果**: LED 矩阵显示彩色动画（红色、绿色、蓝色依次切换）
@@ -1161,7 +1161,7 @@ sudo uv run -m lelamp.test.test_rgb
 cd ~/lelamp_runtime
 
 # 运行音频测试
-uv run -m lelamp.test.test_audio
+uv run -m tests.test_audio
 ```
 
 **预期结果**:
@@ -1181,7 +1181,7 @@ uv run -m lelamp.test.test_audio
 cd ~/lelamp_runtime
 
 # 运行电机测试
-uv run -m lelamp.test.test_motors --id lelamp --port /dev/ttyACM0
+uv run -m tests.hardware.test_motors --id lelamp --port /dev/ttyACM0
 ```
 
 **预期结果**: 电机执行一系列测试动作
@@ -1439,7 +1439,7 @@ RuntimeError: GPIO access not permitted. You need sudo access.
 
 ```bash
 # LED 测试需要 sudo 权限
-sudo uv run -m lelamp.test.test_rgb
+sudo uv run -m tests.test_rgb
 ```
 
 ### 问题 10: API Key 无效
@@ -1679,13 +1679,13 @@ sudo uv run python -m uvicorn lelamp.api.app:app --host 0.0.0.0 --port 8000
 **调试工具**：
 ```bash
 # API 诊断
-python diagnose_api.py
+python scripts/tools/diagnose_api.py
 
 # 灯光测试
 bash scripts/test_light.sh
 
 # 电机测试
-uv run -m lelamp.test.test_motors --id lelamp --port /dev/ttyACM0
+uv run -m tests.hardware.test_motors --id lelamp --port /dev/ttyACM0
 ```
 
 ### 场景 3：生产部署 - 远程访问

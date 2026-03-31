@@ -66,13 +66,13 @@ lerobot = { git = "https://github.com/huggingface/lerobot" }
 uv run lerobot-find-port
 
 # Test RGB LEDs (requires sudo)
-sudo uv run -m lelamp.test.hardware.test_rgb
+sudo uv run -m tests.hardware.test_rgb
 
 # Test audio system
-uv run -m lelamp.test.hardware.test_audio
+uv run -m tests.hardware.test_audio
 
 # Test motors
-uv run -m lelamp.test.hardware.test_motors --id <lamp_id> --port <port>
+uv run -m tests.hardware.test_motors --id <lamp_id> --port <port>
 
 # Run all tests with coverage
 uv run pytest tests/ --cov=lelamp --cov-report=html
@@ -176,7 +176,15 @@ lelamp_runtime/
 │   └── recordings/             # Motor animation CSV files
 │
 ├── web/                        # Vue 3 frontend
-└── scripts/                    # Build and deployment scripts
+├── scripts/                    # Build and deployment scripts
+│   ├── setup/                  # System setup and installation scripts
+│   ├── services/               # Systemd service files
+│   └── tools/                  # Utility scripts (token generation, etc.)
+├── tests/                      # Test suite
+│   └── hardware/               # Hardware testing utilities
+└── docs/                       # Technical documentation
+    ├── images/                 # Documentation images
+    └── plans/                  # Implementation plans and design documents
 ```
 
 ### Configuration Management
@@ -673,7 +681,7 @@ Silero VAD can be customized via environment variables:
 - `lelamp/cache/`: TTL caching for LLM responses
 - `lelamp/follower/` & `lelamp/leader/`: Motor control configurations
 - `lelamp/recordings/`: CSV files with motor animation sequences
-- `lelamp/test/`: Hardware testing utilities
+- `tests/`: Test suite with hardware testing utilities
 
 ### API & Database
 - `lelamp/api/`: FastAPI REST API and WebSocket server
@@ -689,7 +697,12 @@ Silero VAD can be customized via environment variables:
 ### Frontend & Deployment
 - `web/`: Vue 3 frontend (standalone HTML/JS/CSS)
 - `scripts/`: Build, deployment, and systemd service scripts for commercial deployment
+  - `setup/`: System setup and installation scripts
+  - `services/`: Systemd service files
+  - `tools/`: Utility scripts (token generation, etc.)
 - `docs/`: Technical documentation (CAPTIVE_PORTAL_GUIDE, ARCHITECTURE, SECURITY, API, etc.)
+  - `images/`: Documentation images
+  - `plans/`: Implementation plans and design documents
 - `VERSION`: Current runtime version string (used for OTA updates)
 
 ### Documentation
@@ -697,6 +710,7 @@ Silero VAD can be customized via environment variables:
 - `docs/ARCHITECTURE.md`: System architecture details
 - `docs/API.md`: REST API documentation
 - `docs/SECURITY.md`: Security guidelines
+- `docs/images/`: Documentation images
 - `docs/plans/`: Implementation plans and design documents
 
 ## Hardware-Specific Notes

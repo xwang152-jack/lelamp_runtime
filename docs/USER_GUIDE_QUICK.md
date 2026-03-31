@@ -204,7 +204,7 @@ journalctl -u lelamp-api -n 50
 **解决方案**：
 ```bash
 # 测试 LED（需要 sudo）
-sudo -u pi uv run -m lelamp.test.test_rgb
+sudo -u pi uv run -m tests.test_rgb
 ```
 
 ### Q4: 如何获取台灯 IP 地址？
