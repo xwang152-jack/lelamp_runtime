@@ -4,7 +4,7 @@
 
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { User, AuthState, StoredTokens } from '@/types/auth'
+import type { User, StoredTokens } from '@/types/auth'
 import * as authApi from '@/api/auth'
 import { useSubscriptionStore } from './subscription'
 import { TOKEN_ACCESS_EXPIRY_MS, TOKEN_REFRESH_THRESHOLD_MS, MAX_AUTH_RETRIES, STORAGE_KEYS } from '@/utils/auth-constants'

@@ -37,7 +37,7 @@
             <el-input
               v-model="bindForm.device_id"
               placeholder="设备 ID (例如: lelamp)"
-              :prefix-icon="Lamp"
+              :prefix-icon="Lock"
             />
           </el-form-item>
 
@@ -149,7 +149,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
-import { Lamp, Lock } from '@element-plus/icons-vue'
+import { Lock } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores'
 import type { DeviceBindResponse } from '@/types/auth'
 import { getPermissionLabel, formatDate } from '@/utils/device'
@@ -204,7 +204,7 @@ async function handleBind() {
         ElMessage.success('设备绑定成功')
         bindForm.device_id = ''
         bindForm.device_secret = ''
-        bindFormRef.value.resetFields()
+        bindFormRef.value?.resetFields()
         await loadDevices()
       } else {
         ElMessage.error(result.error || '设备绑定失败')
