@@ -419,6 +419,8 @@ class AuthService:
     - create_access_token(): 创建访问令牌
     - create_refresh_token(): 创建刷新令牌
     - verify_token(): 验证令牌
+    - bind_device(): 手动绑定设备（需 device_secret）
+    - auto_bind_device(): 自动绑定当前设备（Setup Wizard 使用）
     """
 ```
 
@@ -467,6 +469,8 @@ class MDnsService:
 
 设备首次 WiFi 配网时自动生成 `device_secret`（`secrets.token_hex(8)`，16 字符），存储在 `/var/lib/lelamp/setup_status.json`。
 
+#### 手动绑定流程
+
 ```
 用户打开前端 → GET /api/system/device 获取设备信息
    ↓
@@ -479,10 +483,54 @@ class MDnsService:
 绑定成功，建立 User ↔ Device 关联
 ```
 
+#### 自动绑定流程（Setup Wizard）
+
+```
+WiFi 连接成功 → SetupWizard 跳转到注册/登录步骤
+   ↓
+用户注册或登录 → 获得 JWT access_token
+   ↓
+POST /api/auth/auto-bind（自动从 setup_status.json 读取密钥）
+   ↓
+绑定成功，完成配置
+```
+
 **安全措施**:
 - `device_secret` 使用 `hmac.compare_digest()` 比较，防止时序攻击
 - 绑定后不存储明文 secret
 - 环境变量 `LELAMP_DEVICE_SECRET` 可作为 fallback
+- `GET /api/system/device` 不再返回 `device_secret`（安全改进）
+
+---
+
+### 4.1 出厂预配置脚本 🆕
+
+**设计理念**: 开箱即用、一键预配置
+
+`scripts/factory/prepare_factory_env.sh` 在树莓派上一次性完成所有出厂配置：
+
+```bash
+sudo bash scripts/factory/prepare_factory_env.sh
+```
+
+**功能**:
+1. 生成 `device_id`、`device_secret`、`JWT_SECRET`、`AP_PASSWORD`
+2. 生成 License Key（需预先配置 `LELAMP_LICENSE_SECRET`）
+3. 写入 `.env` 文件（不覆盖已有 API 密钥）
+4. 初始化 `setup_status.json`（含 device_secret、ap_password）
+5. 安装 systemd 服务（hostapd、dnsmasq、captive portal）
+6. 安装 first_boot 脚本
+
+**生成的 setup_status.json 示例**:
+```json
+{
+  "setup_completed": false,
+  "device_id": "208773663939684",
+  "device_secret": "a1b2c3d4e5f6g7h8",
+  "ap_password": "generated-random-pass",
+  "factory_configured_at": "2026-04-01T00:00:00Z"
+}
+```
 
 ---
 
@@ -1443,9 +1491,11 @@ FastAPI Workers (4+ instances)
 | `lelamp/utils/ota.py` | OTA 更新 |
 | `lelamp/api/app.py` | FastAPI 应用 |
 | `lelamp/api/services/mdns_service.py` | mDNS 设备发现服务 |
+| `scripts/factory/prepare_factory_env.sh` | 出厂预配置脚本 |
+| `scripts/setup/first_boot_setup.sh` | 首次启动检测脚本 |
 | `scripts/build_web.sh` | Vue 前端构建脚本 |
 
 ---
 
 **最后更新**: 2026-04-01
-**版本**: v3.3 (新增 mDNS 发现、设备绑定、AP 随机密码、Vue 托管、LiveKit Token API、JWT 加固)
+**版本**: v3.4 (新增自动绑定、出厂预配置脚本、Setup Wizard 6 步注册/登录、设备信息端点安全加固)

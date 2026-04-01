@@ -46,6 +46,9 @@ sudo uv run -m tests.hardware.test_rgb
 uv run -m tests.hardware.test_audio
 uv run -m tests.hardware.test_motors --id <lamp_id> --port <port>
 
+# 出厂预配置（需 Raspberry Pi + sudo）
+sudo bash scripts/factory/prepare_factory_env.sh
+
 # 电机工具
 uv run -m lelamp.list_recordings --id <lamp_id>
 uv run -m lelamp.record --id <lamp_id> --port <port> --name <name>
@@ -158,8 +161,10 @@ SAFE_JOINT_RANGES = {
 ### 设备绑定与认证（`lelamp/api/services/`）
 - `device_secret`：首次 WiFi 配置时自动生成（`secrets.token_hex(8)`），持久化到 `setup_status.json`
 - `bind_device()`：验证密钥使用 `hmac.compare_digest()`（恒定时间比较），密钥不存入数据库
+- `auto_bind_device()`：自动绑定（Setup Wizard 使用），从 `setup_status.json` 读取密钥，已绑定时幂等返回
 - 密钥读取优先级：`setup_status.json` > `LELAMP_DEVICE_SECRET` 环境变量 > 不验证（开发模式）
-- `GET /api/system/device`：返回设备信息 + 密钥，支持可选 JWT 认证
+- `GET /api/system/device`：公开端点，返回设备基本信息（不返回 `device_secret`），已认证时返回绑定状态
+- `POST /api/auth/auto-bind`：自动绑定端点（需 JWT 认证），Setup Wizard 注册/登录后调用
 - JWT `SECRET_KEY`：从 `LELAMP_JWT_SECRET` 环境变量读取，未设置时随机生成并警告
 
 ### LiveKit Token 管理（`lelamp/api/routes/livekit.py`）

@@ -144,8 +144,17 @@ uv run python scripts/generate_license.py --dev-mode 0
 
 1. **自动生成**：设备首次完成 WiFi 设置时，自动生成 16 位 hex 字符串的 `device_secret`
 2. **持久化存储**：`device_secret` 存储在 `/var/lib/lelamp/setup_status.json`
-3. **查询接口**：`GET /api/system/device` 返回设备信息及 `device_secret`
+3. **查询接口**：`GET /api/system/device` 返回设备基本信息（不再返回 `device_secret`）
 4. **安全验证**：密钥比对使用 `hmac.compare_digest()`（常量时间比较），防止时序攻击
+5. **自动绑定**：`POST /api/auth/auto-bind` 供 Setup Wizard 使用，后端自动读取密钥完成绑定
+
+### Setup Wizard 自动绑定
+
+Setup Wizard（6 步流程）在 WiFi 连接成功后引导用户注册/登录，登录成功后自动调用 `/api/auth/auto-bind` 完成设备绑定，无需用户手动输入密钥。
+
+```
+WiFi 连接 → 注册/登录 → 自动绑定 → 配置完成
+```
 
 ### 手动配置
 
@@ -199,6 +208,26 @@ Authorization: Bearer <jwt_token>
 3. **生产环境**
    - 设置 `LELAMP_DEV_MODE=0` 启用授权验证
    - 确保 .env 文件不被提交到版本控制系统
+
+## 出厂预配置
+
+### 使用出厂脚本
+
+在树莓派上一键完成所有出厂配置：
+
+```bash
+sudo bash scripts/factory/prepare_factory_env.sh
+```
+
+脚本会自动：
+1. 生成所有密钥（device_secret、JWT_SECRET、AP_PASSWORD）
+2. 生成 License Key（需预先配置 `LELAMP_LICENSE_SECRET`）
+3. 写入 `.env` 和 `setup_status.json`
+4. 安装 systemd 服务
+
+### AP 热点密码
+
+AP 热点密码从出厂脚本写入的 `setup_status.json` 读取，每次出厂时不同（`secrets.token_urlsafe(8)`）。`first_boot_setup.sh` 启动 AP 时自动应用此密码。
 
 ## 故障排查
 

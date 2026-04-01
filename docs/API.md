@@ -142,7 +142,7 @@ Authorization: Bearer <access_token>
 }
 ```
 
-### 5. 绑定设备
+### 5. 绑定设备（手动）
 
 将用户账户与 LeLamp 设备关联。`device_secret` 在设备首次 WiFi 配网时自动生成（`secrets.token_hex(8)`，16 字符），存储在 `/var/lib/lelamp/setup_status.json`。服务端使用 `hmac.compare_digest()` 验证，不存储明文。
 
@@ -169,10 +169,35 @@ Content-Type: application/json
 }
 ```
 
+### 6. 自动绑定设备（Setup Wizard 使用）
+
+首次配置流程使用。后端自动从 `setup_status.json` 读取 `device_id` 和 `device_secret`，用户登录后无需手动输入。
+
+```http
+POST /api/auth/auto-bind
+Authorization: Bearer <access_token>
+```
+
+**响应** (200 OK):
+```json
+{
+  "device_id": "lelamp",
+  "permission_level": "admin",
+  "bound_at": "2026-04-01T00:00:00"
+}
+```
+
+**错误响应** (400 Bad Request):
+```json
+{
+  "detail": "设备密钥未配置，无法自动绑定"
+}
+```
+
 **安全说明**:
 - `device_secret` 使用 `hmac.compare_digest()` 比较，防止时序攻击
 - 环境变量 `LELAMP_DEVICE_SECRET` 可作为 fallback 密钥
-- 前端显示设备信息卡片，包含可复制的 secret 和一键绑定按钮
+- 已绑定时返回现有绑定，不报错（幂等）
 
 ---
 
@@ -247,10 +272,11 @@ Authorization: Bearer <access_token>
 
 ### 获取设备信息
 
-获取当前设备的基本信息和绑定密钥（用于设备绑定流程）。
+获取当前设备的基本信息（无需认证，局域网内可用）。**不返回 `device_secret` 等敏感信息**。已认证时额外返回个人绑定状态。
 
 ```http
 GET /api/system/device
+Authorization: Bearer <access_token>  # 可选
 ```
 
 **响应** (200 OK):
@@ -258,16 +284,27 @@ GET /api/system/device
 {
   "device_id": "lelamp",
   "hostname": "lelamp",
-  "model": "LeLamp v1",
-  "version": "3.3.0",
-  "device_secret": "a1b2c3d4e5f6g7h8"
+  "model": "LeLamp",
+  "version": "0.1.0",
+  "setup_completed": true,
+  "configured_wifi": "MyWiFi",
+  "ip_address": "192.168.1.100"
+}
+```
+
+**已认证时额外字段**:
+```json
+{
+  "is_bound": true,
+  "permission_level": "admin"
 }
 ```
 
 **说明**:
-- `device_secret` 在设备首次 WiFi 配网时自动生成（16 字符 hex）
-- 前端使用此端点获取设备信息并展示绑定卡片
-- `device_secret` 也可通过环境变量 `LELAMP_DEVICE_SECRET` 覆盖
+- 公开端点，无需认证即可获取设备基本信息
+- `setup_completed` 标识设备是否已完成配置
+- `ip_address` 为设备当前 IP（通过 UDP 探测获取）
+- 不再返回 `device_secret`（安全改进），绑定改用自动绑定端点
 
 ---
 
