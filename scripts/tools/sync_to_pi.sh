@@ -1,57 +1,77 @@
 #!/bin/bash
 #
-# 快速同步代码到树莓派（通过推送，无需SSH服务）
+# 同步代码到树莓派（通过 rsync 直推）
+#
+# 用法: bash scripts/tools/sync_to_pi.sh [PI_HOST]
+# 示例: bash scripts/tools/sync_to_pi.sh pi@192.168.0.106
 #
 
 set -e
 
-PI_HOST="pi@192.168.0.104"
+PI_HOST="${1:-pi@192.168.0.106}"
 PI_DIR="/home/pi/lelamp_runtime"
 
-echo "🚀 同步代码到树莓派..."
+echo "=== 同步代码到树莓派 ==="
+echo "目标: $PI_HOST:$PI_DIR"
 echo ""
 
-# 检查是否有未提交的更改
-if [ -n "$(git status --porcelain)" ]; then
-    echo "📝 检测到未提交的更改，正在提交..."
-    git add -A
-    git commit -m "sync: auto-commit before push to Pi"
+# 1. 测试 SSH 连接
+echo "[1/4] 检查 SSH 连接..."
+if ! ssh -o ConnectTimeout=5 "$PI_HOST" "echo ok" > /dev/null 2>&1; then
+    echo "错误: 无法连接 $PI_HOST"
+    exit 1
+fi
+echo "  SSH 连接正常"
+
+# 2. rsync 同步文件
+echo "[2/4] 同步文件..."
+rsync -avz \
+    --exclude='.git/' \
+    --exclude='.venv/' \
+    --exclude='__pycache__/' \
+    --exclude='.env' \
+    --exclude='.DS_Store' \
+    --exclude='*.pyc' \
+    --exclude='.coverage' \
+    --exclude='htmlcov/' \
+    --exclude='.pytest_cache/' \
+    --exclude='.ruff_cache/' \
+    --exclude='lelamp.db' \
+    --exclude='*.egg-info/' \
+    --exclude='node_modules/' \
+    --exclude='web/node_modules/' \
+    --exclude='web/dist/' \
+    --exclude='.archive/' \
+    --exclude='*.tar.gz' \
+    /Users/jackwang/lelamp_runtime/ \
+    "$PI_HOST:$PI_DIR/"
+echo "  文件同步完成"
+
+# 3. 同步 Python 依赖
+echo "[3/4] 同步 Python 依赖..."
+ssh "$PI_HOST" "cd $PI_DIR && uv sync --extra api 2>&1"
+echo "  依赖同步完成"
+
+# 4. 重启服务
+echo "[4/4] 重启服务..."
+ssh "$PI_HOST" "sudo systemctl restart lelamp-api.service lelamp-captive-portal.service 2>&1"
+sleep 3
+
+# 验证
+if ssh "$PI_HOST" "systemctl is-active --quiet lelamp-api.service"; then
+    echo "  API 服务启动成功"
+else
+    echo "  警告: API 服务启动失败，查看日志:"
+    ssh "$PI_HOST" "journalctl -u lelamp-api.service --no-pager -n 5"
 fi
 
-# 推送到GitHub（树莓派可以从GitHub拉取）
-echo "📦 推送到GitHub..."
-git push origin main
-
-# 在树莓派上从GitHub拉取
-echo "⬇️  在树莓派上拉取更新..."
-ssh "$PI_HOST" "cd $PI_DIR && git pull origin main"
-
-# 更新工作目录中的文件（如果需要）
-echo "🔄 更新工作目录..."
-ssh "$PI_HOST" "cd $PI_DIR && git checkout HEAD -- ."
-
-# 询问是否重启API服务
-echo ""
-read -p "是否要重启API服务？(y/n) " -n 1 -r
-echo
-if [[ $REPLY =~ ^[Yy]$ ]]; then
-    echo "🔄 重启API服务..."
-    ssh "$PI_HOST" "pkill -f 'uvicorn lelamp.api.app:app'"
-    sleep 2
-    ssh "$PI_HOST" "cd $PI_DIR && source .venv/bin/activate && nohup python -m uvicorn lelamp.api.app:app --host 0.0.0.0 --port 8000 > api_server.log 2>&1 &"
-    sleep 3
-
-    if ssh "$PI_HOST" "ps aux | grep -q 'uvicorn lelamp.api.app:app'"; then
-        echo "✅ API服务重启成功"
-    else
-        echo "❌ API服务重启失败"
-        ssh "$PI_HOST" "tail -20 $PI_DIR/api_server.log"
-    fi
+if ssh "$PI_HOST" "systemctl is-active --quiet lelamp-captive-portal.service"; then
+    echo "  Captive Portal 启动成功"
+else
+    echo "  警告: Captive Portal 启动失败，查看日志:"
+    ssh "$PI_HOST" "journalctl -u lelamp-captive-portal.service --no-pager -n 5"
 fi
 
 echo ""
-echo "🎉 同步完成！"
-echo ""
-echo "提示："
-echo "- 前端使用 Vite，会自动热重载"
-echo "- 如果前端没有更新，请刷新浏览器 (Ctrl+F5)"
+echo "=== 同步完成 ==="
+echo "访问: http://${PI_HOST#*@}:8000"

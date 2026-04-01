@@ -129,7 +129,7 @@ class MotorConfig:
     health_check_interval_s: float = 300.0  # 5分钟检查一次
     temp_warning_c: float = 65.0            # 温度警告阈值
     temp_critical_c: float = 75.0           # 温度危险阈值
-    voltage_min_v: float = 11.0             # 最低电压
+    voltage_min_v: float = 4.5              # 最低电压
     voltage_max_v: float = 13.0             # 最高电压
     load_warning: float = 0.8               # 负载警告阈值
     load_stall: float = 0.95                # 堵转阈值
@@ -232,7 +232,7 @@ def load_motor_config() -> MotorConfig:
         health_check_interval_s=_get_env_float("LELAMP_MOTOR_HEALTH_CHECK_INTERVAL_S", 300.0),
         temp_warning_c=_get_env_float("LELAMP_MOTOR_TEMP_WARNING_C", 65.0),
         temp_critical_c=_get_env_float("LELAMP_MOTOR_TEMP_CRITICAL_C", 75.0),
-        voltage_min_v=_get_env_float("LELAMP_MOTOR_VOLTAGE_MIN_V", 11.0),
+        voltage_min_v=_get_env_float("LELAMP_MOTOR_VOLTAGE_MIN_V", 4.5),
         voltage_max_v=_get_env_float("LELAMP_MOTOR_VOLTAGE_MAX_V", 13.0),
         load_warning=_get_env_float("LELAMP_MOTOR_LOAD_WARNING", 0.8),
         load_stall=_get_env_float("LELAMP_MOTOR_LOAD_STALL", 0.95),
