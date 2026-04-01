@@ -396,23 +396,40 @@ async def get_device_info(token: str | None = None) -> dict:
     """
     获取设备信息（无需认证，局域网内可用）
 
-    已认证时额外返回绑定状态和密钥。
+    所有用户均可查看设备基本信息。已认证时额外返回绑定状态。
+    不返回 device_secret 等敏感信息。
     """
     from lelamp.api.services.auth_service import AuthService
-    from lelamp.api.services.onboarding import get_device_secret
     from lelamp.config import load_config
 
     config = load_config()
-    device_secret = await get_device_secret()
 
     result = {
         "device_id": config.lamp_id,
         "hostname": socket.gethostname(),
         "model": "LeLamp",
         "version": "0.1.0",
+        "setup_completed": False,
     }
 
-    # 已认证用户：返回密钥和绑定状态
+    # 读取配置状态
+    try:
+        setup_status = await onboarding_manager.get_setup_status()
+        result["setup_completed"] = setup_status.get("setup_completed", False)
+        result["configured_wifi"] = setup_status.get("wifi_ssid")
+    except Exception:
+        pass
+
+    # 获取 IP 地址
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        result["ip_address"] = s.getsockname()[0]
+        s.close()
+    except Exception:
+        pass
+
+    # 已认证用户：返回个人绑定状态
     if token:
         payload = AuthService.verify_token(token, "access")
         if payload:
@@ -431,13 +448,6 @@ async def get_device_info(token: str | None = None) -> dict:
                         result["permission_level"] = binding.permission_level
                 finally:
                     db.close()
-            # 返回设备密钥供用户绑定
-            if device_secret:
-                result["device_secret"] = device_secret
-
-    # 未认证也返回密钥（局域网信任模型，方便首次绑定）
-    if device_secret and "device_secret" not in result:
-        result["device_secret"] = device_secret
 
     return result
 

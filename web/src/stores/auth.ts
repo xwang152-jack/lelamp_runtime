@@ -4,7 +4,7 @@
 
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { User, AuthState, StoredTokens } from '@/types/auth'
+import type { User, StoredTokens } from '@/types/auth'
 import * as authApi from '@/api/auth'
 import { useSubscriptionStore } from './subscription'
 import { TOKEN_ACCESS_EXPIRY_MS, TOKEN_REFRESH_THRESHOLD_MS, MAX_AUTH_RETRIES, STORAGE_KEYS } from '@/utils/auth-constants'
@@ -234,6 +234,21 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   /**
+   * 自动绑定当前设备（首次配置流程使用）
+   */
+  async function autoBindDevice(): Promise<{ success: boolean; error?: string }> {
+    if (!accessToken.value) {
+      return { success: false, error: '未登录' }
+    }
+    try {
+      await authApi.autoBindDevice(accessToken.value)
+      return { success: true }
+    } catch (e: any) {
+      return { success: false, error: e.message || '自动绑定失败' }
+    }
+  }
+
+  /**
    * 获取用户绑定的设备列表
    */
   async function getUserDevices() {
@@ -325,6 +340,7 @@ export const useAuthStore = defineStore('auth', () => {
     refreshAccessToken,
     fetchCurrentUser,
     bindDevice,
+    autoBindDevice,
     getUserDevices,
     unbindDevice,
     updateProfile,

@@ -198,6 +198,49 @@ async def bind_device(
         )
 
 
+@router.post("/auto-bind", response_model=DeviceBindResponse)
+async def auto_bind_device(
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db)
+):
+    """
+    自动绑定当前设备
+
+    首次配置流程使用。后端自动从 setup_status.json 读取
+    device_id 和 device_secret，用户登录后无需手动输入。
+    """
+    payload = AuthService.verify_token(token, "access")
+    if payload is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication credentials"
+        )
+
+    user_id = payload.get("user_id")
+    try:
+        binding = AuthService.auto_bind_device(db, user_id=user_id)
+
+        logger.info(f"自动绑定设备 {binding.device_id} 到用户 {user_id}")
+        return DeviceBindResponse(
+            device_id=binding.device_id,
+            permission_level=binding.permission_level,
+            bound_at=binding.bound_at.isoformat()
+        )
+
+    except ValueError as e:
+        logger.warning(f"自动绑定失败: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except Exception as e:
+        logger.error(f"自动绑定错误: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error"
+        )
+
+
 @router.post("/refresh-token", response_model=Token)
 async def refresh_token(
     request: RefreshTokenRequest,

@@ -4,7 +4,7 @@
 
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import type { SubscriptionTier, FeatureFlags, SubscriptionState } from '@/types/auth'
+import type { SubscriptionTier, FeatureFlags } from '@/types/auth'
 
 /**
  * 功能配置映射

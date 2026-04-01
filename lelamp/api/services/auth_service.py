@@ -164,3 +164,56 @@ class AuthService:
         db.commit()
         db.refresh(binding)
         return binding
+
+    @staticmethod
+    def auto_bind_device(db: Session, user_id: int) -> DeviceBinding:
+        """
+        自动绑定当前设备（首次配置流程使用）
+
+        自动从 setup_status.json 读取 device_id 和 device_secret，
+        无需用户手动输入。已绑定时返回现有绑定。
+        """
+        import json
+        from pathlib import Path
+
+        # 读取 setup_status.json 获取 device_secret
+        status_file = Path("/var/lib/lelamp/setup_status.json")
+        device_secret = None
+        if status_file.exists():
+            try:
+                data = json.loads(status_file.read_text())
+                device_secret = data.get("device_secret")
+            except Exception:
+                pass
+
+        # 也检查环境变量
+        if not device_secret:
+            device_secret = os.getenv("LELAMP_DEVICE_SECRET")
+
+        if not device_secret:
+            raise ValueError("设备密钥未配置，无法自动绑定")
+
+        # 获取 device_id
+        from lelamp.config import load_config
+        config = load_config()
+        device_id = config.lamp_id
+
+        # 检查是否已绑定（已绑定时直接返回现有绑定，不报错）
+        existing = db.query(DeviceBinding).filter(
+            DeviceBinding.user_id == user_id,
+            DeviceBinding.device_id == device_id
+        ).first()
+        if existing:
+            return existing
+
+        # 创建新绑定
+        binding = DeviceBinding(
+            user_id=user_id,
+            device_id=device_id,
+            device_secret="",
+            permission_level="admin"
+        )
+        db.add(binding)
+        db.commit()
+        db.refresh(binding)
+        return binding

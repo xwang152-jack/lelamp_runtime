@@ -152,6 +152,17 @@ export async function bindDevice(
 }
 
 /**
+ * 自动绑定当前设备（首次配置流程使用）
+ */
+export async function autoBindDevice(token: string): Promise<DeviceBindResponse> {
+  const response = await fetch(
+    `${getApiBase()}/api/auth/auto-bind`,
+    getFetchConfig('POST', undefined, token)
+  )
+  return handleResponse<DeviceBindResponse>(response)
+}
+
+/**
  * 获取用户绑定的设备列表
  */
 export async function getUserDevices(token: string): Promise<DeviceBindResponse[]> {

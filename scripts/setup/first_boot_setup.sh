@@ -97,10 +97,26 @@ cat > "$STATUS_FILE" << EOF
 }
 EOF
 
+# 从 setup_status.json 读取 AP 密码
+AP_PASSWORD=$(python3 -c "
+import json
+try:
+    with open('$STATUS_FILE', 'r') as f:
+        data = json.load(f)
+    print(data.get('ap_password', 'lelamp123'))
+except:
+    print('lelamp123')
+" 2>/dev/null || echo "lelamp123")
+
+# 更新 hostapd 配置中的密码
+if [ -f "/etc/hostapd.conf" ]; then
+    sed -i "s/^wpa_passphrase=.*/wpa_passphrase=$AP_PASSWORD/" /etc/hostapd.conf
+fi
+
 # 启动 AP 模式服务
-log "Starting AP mode service..."
+log "Starting AP mode service (password from factory config)..."
 if systemctl start lelamp-setup-ap.service 2>/dev/null; then
-    log "AP mode service started"
+    log "AP mode service started (password: $AP_PASSWORD)"
 else
     log "Warning: Failed to start AP mode service (may not be installed)"
 fi
