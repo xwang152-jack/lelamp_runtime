@@ -55,14 +55,18 @@ except:
 fi
 
 # 检查 WiFi 连接状态
-# 如果已连接到 WiFi，则标记为已完成设置
+# 如果已连接到 WiFi，但没有实际联网，也应该进入设置模式
 if nmcli -t -f ACTIVE,SSID connection show --active | grep -q '^yes:'; then
     CURRENT_SSID=$(nmcli -t -f ACTIVE,SSID connection show --active | grep '^yes:' | cut -d: -f2)
     CURRENT_IP=$(hostname -I | awk '{print $1}')
     log "WiFi already connected to: $CURRENT_SSID (IP: $CURRENT_IP)"
 
-    # 更新状态文件
-    cat > "$STATUS_FILE" << EOF
+    # 校验是否能访问互联网
+    if [ -n "$CURRENT_IP" ] && ping -c 1 -W 3 8.8.8.8 >/dev/null 2>&1; then
+        log "Internet connectivity verified"
+
+        # 更新状态文件
+        cat > "$STATUS_FILE" << EOF
 {
   "setup_completed": true,
   "setup_completed_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
@@ -73,8 +77,11 @@ if nmcli -t -f ACTIVE,SSID connection show --active | grep -q '^yes:'; then
 }
 EOF
 
-    log "Setup marked as completed"
-    exit 0
+        log "Setup marked as completed"
+        exit 0
+    else
+        log "WiFi is connected but internet is unavailable, entering setup mode"
+    fi
 fi
 
 # 未检测到 WiFi 配置，需要进入设置模式
