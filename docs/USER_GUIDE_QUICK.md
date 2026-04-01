@@ -1,6 +1,6 @@
 # LeLamp 用户快速使用指南
 
-**最后更新**: 2026-03-25
+**最后更新**: 2026-04-01
 **适用版本**: LeLamp Runtime v0.1.0
 
 > 💡 **新用户?** 如果您是第一次使用，请先阅读 [完整设置指南](SETUP_GUIDE.md)
@@ -13,7 +13,10 @@
 
 ### 方式一：Web 界面控制（推荐）
 
-1. **打开浏览器**，访问：`http://<台灯IP>:5173`
+1. **打开浏览器**，访问：
+   - mDNS: `http://lelamp.local:8000`（推荐，无需知道 IP）
+   - 局域网: `http://<台灯IP>:8000`
+   - 开发模式: `http://<台灯IP>:5173`
 2. **点击"连接设备"**
 3. **开始使用**：
    - 💬 文字聊天
@@ -176,10 +179,11 @@ journalctl -u lelamp-api -n 50
 **检查清单**：
 1. 确认台灯已开机（等待 30 秒启动）
 2. 检查网络连接
-3. 访问：`http://<台灯IP>:5173`
-4. 如果仍无法访问，重启服务：
+3. 尝试 mDNS 访问：`http://lelamp.local:8000`
+4. 或直接访问：`http://<台灯IP>:8000`
+5. 如果仍无法访问，重启服务：
    ```bash
-   systemctl restart lelamp-frontend
+   systemctl restart lelamp-api
    ```
 
 ### Q2: 语音不工作？
@@ -223,7 +227,7 @@ sudo -u pi uv run -m tests.test_rgb
 **重新配置 WiFi**：
 ```bash
 # 方法 1: Web 界面
-访问 http://<台灯IP>:5173/settings → WiFi 设置
+访问 http://lelamp.local:8000/settings → WiFi 设置
 
 # 方法 2: 命令行
 nmcli device wifi connect "SSID" password "密码"
@@ -243,7 +247,8 @@ sudo reboot
 
 1. **连接热点**
    - WiFi 名称：`LeLamp-Setup`
-   - 密码：`lelamp123`
+   - 密码：每次随机生成（显示在 Captive Portal 欢迎页面）
+   - LED 呈蓝色呼吸效果
 
 2. **打开浏览器**
    - 访问任意网址（自动跳转）
@@ -314,6 +319,11 @@ LELAMP_EDGE_VISION_MODEL_DIR=/home/pi/lelamp_runtime/models
 访问 Web 设置页面进行系统配置：
 
 ```
+http://lelamp.local:8000/settings
+```
+
+或开发模式下：
+```
 http://<台灯IP>:5173/settings
 ```
 
@@ -353,6 +363,6 @@ http://<台灯IP>:5173/settings
 ---
 
 **文档版本**: v0.1.0
-**最后更新**: 2026-03-25
+**最后更新**: 2026-04-01
 **作者**: LeLamp 开发团队
 **许可证**: 参见主项目许可证

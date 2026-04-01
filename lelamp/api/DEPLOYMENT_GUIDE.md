@@ -61,6 +61,15 @@ LELAMP_API_HOST=127.0.0.1
 LELAMP_API_PORT=8000
 LELAMP_API_RELOAD=true
 
+# JWT 认证密钥（生产环境必须设置强随机密钥）
+LELAMP_JWT_SECRET=your-strong-random-secret-key
+
+# 设备绑定密钥（可选，首次 WiFi 设置时自动生成）
+LELAMP_DEVICE_SECRET=
+
+# Web 前端构建输出路径（默认: web/dist）
+LELAMP_WEB_DIST=web/dist
+
 # 日志配置
 LOG_LEVEL=INFO
 ```
@@ -89,6 +98,8 @@ uv run python -m uvicorn lelamp.api.app:app --reload --host 127.0.0.1 --port 800
 - API 文档: http://127.0.0.1:8000/docs
 - 健康检查: http://127.0.0.1:8000/health
 - 设备列表: http://127.0.0.1:8000/api/devices
+- Web 前端: http://127.0.0.1:8000/ （构建后可用）
+- mDNS 自动发现: http://<device_id>.local:8000 （局域网内）
 
 ---
 
@@ -463,6 +474,15 @@ LELAMP_DB_MAX_OVERFLOW=10
 # WebSocket 配置
 LELAMP_WS_HEARTBEAT_INTERVAL=30
 LELAMP_WS_CONNECTION_TIMEOUT=60
+
+# JWT 签名密钥（生产环境必须设置，否则启动时使用随机密钥并输出警告）
+LELAMP_JWT_SECRET=your-strong-random-secret-key
+
+# 设备绑定密钥（首次 WiFi 设置时自动生成 16 位 hex 字符串，存储在 /var/lib/lelamp/setup_status.json）
+LELAMP_DEVICE_SECRET=
+
+# Vue 前端构建产物路径（默认: web/dist）
+LELAMP_WEB_DIST=web/dist
 ```
 
 ### 性能优化
@@ -531,6 +551,44 @@ location /api/ {
     proxy_cache_use_stale error timeout updating;
 }
 ```
+
+---
+
+## mDNS 自动发现
+
+API 服务启动时会自动注册 mDNS 服务，局域网内设备可通过以下地址访问：
+
+```
+http://<device_id>.local:8000
+```
+
+- **依赖**：`zeroconf`（已包含在 `api` extra 中）
+- **降级**：如果 `zeroconf` 不可用，mDNS 注册会静默失败，不影响 API 正常运行
+- **适用场景**：无需知道设备 IP 地址，适用于局域网内便捷访问
+
+---
+
+## Vue 前端托管
+
+API 服务内置前端静态文件托管，无需额外部署 Nginx 或其他静态服务器。
+
+### 构建前端
+
+```bash
+# 使用构建脚本
+bash scripts/build_web.sh
+```
+
+构建产物默认输出到 `web/dist` 目录，可通过 `LELAMP_WEB_DIST` 环境变量自定义路径。
+
+### 单端口部署
+
+构建完成后，FastAPI 服务在端口 8000 上同时提供：
+- API 服务：`http://host:8000/api/...`
+- WebSocket：`ws://host:8000/api/ws/...`
+- 前端页面：`http://host:8000/`
+
+前端路由使用 SPA fallback，未匹配的路径会返回 `index.html`。
 
 ---
 
@@ -757,27 +815,14 @@ valgrind --leak-check=full --show-leak-kinds=all \
 
 ### 1. 认证和授权
 
-建议添加 JWT 认证：
+API 已内置 JWT 认证机制：
 
-```python
-from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-
-security = HTTPBearer()
-
-async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security)
-):
-    token = credentials.credentials
-    # 验证 JWT token
-    user = decode_jwt(token)
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authentication credentials"
-        )
-    return user
-```
+- **JWT 签名密钥**：通过 `LELAMP_JWT_SECRET` 环境变量配置
+- **密钥未设置时**：启动时自动生成随机密钥，并输出警告日志（生产环境务必手动设置固定密钥）
+- **设备绑定**：首次 WiFi 设置时自动生成 `device_secret`（16 位 hex 字符串），存储在 `/var/lib/lelamp/setup_status.json`
+- **设备信息接口**：`GET /api/system/device` 返回设备信息及 `device_secret`
+- **密钥验证**：使用 `hmac.compare_digest()` 进行常量时间比较，防止时序攻击
+- **LiveKit Token**：通过 `POST /api/livekit/token` 端点获取（需 JWT 认证），强制使用已认证用户身份
 
 ### 2. CORS 配置
 

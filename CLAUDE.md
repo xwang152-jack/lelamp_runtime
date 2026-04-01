@@ -35,8 +35,11 @@ uv run ruff check lelamp/
 uv run ruff check --fix lelamp/
 uv run ruff format lelamp/
 
-# API 服务器
+# API 服务器（同时托管 Vue 前端，单端口访问）
 uv run uvicorn lelamp.api.app:app --host 0.0.0.0 --port 8000 --reload
+
+# 构建前端（部署到 Pi 前执行）
+bash scripts/build_web.sh
 
 # 硬件测试（需 Raspberry Pi）
 sudo uv run -m tests.hardware.test_rgb
@@ -48,8 +51,12 @@ uv run -m lelamp.list_recordings --id <lamp_id>
 uv run -m lelamp.record --id <lamp_id> --port <port> --name <name>
 uv run -m lelamp.replay --id <lamp_id> --port <port> --name <name>
 
-# Web 前端（独立部署，不使用 LiveKit）
+# Web 前端（开发模式）
 cd web && pnpm install && pnpm dev
+
+# 访问设备（mDNS 自动发现）
+# macOS: open http://lelamp.local:8000
+# 其他: http://<Pi-IP>:8000
 ```
 
 ## Architecture
@@ -75,12 +82,16 @@ lelamp/
 │   └── hybrid_vision.py   #   智能路由：本地 vs 云端（Qwen VL）
 ├── memory/                # 跨会话记忆系统（SQLite）
 ├── integrations/          # 外部 AI 客户端（百度语音、Qwen VL）+ 统一异常处理
-├── api/                   # FastAPI REST + WebSocket（独立于 Agent 运行）
+├── api/                   # FastAPI REST + WebSocket + Vue 静态托管
+│   ├── app.py             #   FastAPI 主应用（含 SPA 静态文件托管）
+│   ├── routes/            #   REST 端点（auth/livekit/system/wifi/websocket）
+│   ├── services/          #   业务服务（auth/wifi/ap/onboarding/mdns）
+│   └── middleware/         #   JWT 认证中间件
 ├── database/              # SQLAlchemy ORM（SQLite/PostgreSQL）
 ├── config.py              # 冻结 dataclass 配置，环境变量加载
 ├── cache/                 # TTL 缓存（视觉/搜索 API）
 └── utils/                 # 限流、安全（License/SSRF/OTA）、URL 校验
-web/                       # Vue 3 灯控面板（自定义 WebSocket，非 LiveKit 客户端）
+web/                       # Vue 3 灯控面板（构建后由 FastAPI 托管，单端口访问）
 ```
 
 ### 两个独立入口
@@ -89,6 +100,10 @@ web/                       # Vue 3 灯控面板（自定义 WebSocket，非 Live
 2. **`lelamp/api/app.py`** — FastAPI 服务器（REST API + WebSocket，独立启动）
 
 两者共享数据库和配置，但运行时互不依赖。
+
+**单端口部署** — API 服务器通过 `StaticFiles` 托管 Vue 构建产物（`web/dist/`），用户通过 `http://<device>:8000` 同时访问 API 和前端。构建产物不存在时自动跳过静态文件托管（开发模式不受影响）。环境变量 `LELAMP_WEB_DIST` 控制构建产物路径。
+
+**mDNS 设备发现** — API 启动时通过 zeroconf 注册 `_http._tcp` 服务，用户可通过 `http://<device_id>.local:8000` 访问设备，无需记忆 IP。mDNS 不可用时静默降级，不影响核心功能。
 
 ### 关键架构模式
 
@@ -140,6 +155,18 @@ SAFE_JOINT_RANGES = {
 - API 入口（`lelamp/api/app.py lifespan`）：同样调用 `init_db()`
 - 新增 ORM 模型时必须在对应入口 `init_db()` 之前 import 以注册到 Base
 
+### 设备绑定与认证（`lelamp/api/services/`）
+- `device_secret`：首次 WiFi 配置时自动生成（`secrets.token_hex(8)`），持久化到 `setup_status.json`
+- `bind_device()`：验证密钥使用 `hmac.compare_digest()`（恒定时间比较），密钥不存入数据库
+- 密钥读取优先级：`setup_status.json` > `LELAMP_DEVICE_SECRET` 环境变量 > 不验证（开发模式）
+- `GET /api/system/device`：返回设备信息 + 密钥，支持可选 JWT 认证
+- JWT `SECRET_KEY`：从 `LELAMP_JWT_SECRET` 环境变量读取，未设置时随机生成并警告
+
+### LiveKit Token 管理（`lelamp/api/routes/livekit.py`）
+- `POST /api/livekit/token`：需 JWT 认证，强制使用认证用户身份（不可伪造）
+- 房间名通过 Pydantic Field 校验（`[a-zA-Z0-9_-]+`，1-128 字符）
+- 替代了旧的命令行脚本 `scripts/tools/generate_client_token.py`
+
 ## Environment Variables
 
 核心必需变量（`.env` 文件）：
@@ -153,6 +180,9 @@ SAFE_JOINT_RANGES = {
 - `LELAMP_EDGE_VISION_ENABLED` (default: false) — 本地边缘视觉
 - `LELAMP_PROACTIVE_MONITOR` (default: true) — 主动视觉监控
 - `LELAMP_MEMORY_ENABLED` (default: 1) — 记忆系统
+- `LELAMP_JWT_SECRET` — JWT 签名密钥（未设置时随机生成，重启失效）
+- `LELAMP_DEVICE_SECRET` — 设备绑定密钥（优先从 setup_status.json 读取）
+- `LELAMP_WEB_DIST` (default: web/dist) — Vue 前端构建产物路径
 - `MODELSCOPE_API_KEY` — Qwen VL 视觉模型
 - `LOG_LEVEL` (default: "INFO") — 日志级别
 
@@ -169,5 +199,9 @@ SAFE_JOINT_RANGES = {
 
 - 永远不提交 `.env` 文件，使用 `.env.example` 模板
 - `LELAMP_LICENSE_SECRET` 生产环境必须使用强随机密钥
+- `LELAMP_JWT_SECRET` 生产环境必须设置为固定强随机密钥
 - OTA 更新强制 HTTPS + SHA256 校验
 - 外部 API URL 经过域名白名单 + 私有 IP 阻断
+- 设备密钥比较必须使用 `hmac.compare_digest()`（防时序攻击），禁止 `==`/`!=`
+- AP 热点密码每次启动时随机生成（`secrets.token_urlsafe(6)`），不再使用固定密码
+- LiveKit Token 端点强制使用认证用户身份，禁止用户指定 `identity`

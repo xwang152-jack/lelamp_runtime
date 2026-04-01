@@ -1,6 +1,6 @@
 # LeLamp 完整使用指南 v0.1.0
 
-**最后更新**: 2026-03-19
+**最后更新**: 2026-04-01
 **适用版本**: LeLamp Runtime v0.1.0
 
 **当前功能**:
@@ -118,6 +118,8 @@
 - `PUT /api/settings` - 更新系统配置
 - `POST /api/system/restart` - 重启服务
 - `GET /api/system/info` - 获取系统信息
+- `GET /api/system/device` - 获取设备信息 + device_secret（设备绑定）
+- `POST /api/livekit/token` - 获取 LiveKit 客户端 Token（JWT 认证，替代旧 CLI 脚本）
 
 ---
 
@@ -240,6 +242,25 @@ INFO     service.vision VisionService started
 
 #### Step 6: 打开 Web Frontend
 
+前端支持两种部署方式：
+
+**方式一：FastAPI 托管（生产环境推荐）**
+
+FastAPI 在同一端口 (8000) 托管 Vue 构建产物，无需单独的前端进程：
+
+```bash
+# 构建前端
+bash scripts/build_web.sh
+
+# 访问（与 API 同端口）:
+# - mDNS: http://lelamp.local:8000
+# - 局域网: http://<树莓派IP>:8000
+```
+
+> **环境变量**: 通过 `LELAMP_WEB_DIST` 可自定义构建产物路径（默认: `web/dist`）。
+
+**方式二：开发服务器（开发调试）**
+
 前端是独立部署的 Vue 3 应用，与后端 API 完全解耦。
 
 ```bash
@@ -262,13 +283,14 @@ VITE_API_BASE_URL=http://your-raspberry-pi:8000  # API 服务器地址
 ```
 
 **在 Web Client 中**:
-1. 输入 API 地址：`http://<树莓派IP>:8000`
+1. 输入 API 地址：`http://<树莓派IP>:8000` 或 `http://lelamp.local:8000`（mDNS）
 2. 点击 "连接设备"
 3. 开始使用！🎉
 
 **访问设置页面**:
 - 连接后点击右上角 "设置" 按钮
-- 或直接访问 `http://<树莓派IP>:5173/settings`
+- 或直接访问 `http://<树莓派IP>:5173/settings`（开发模式）
+- 或 `http://lelamp.local:8000/settings`（生产模式，FastAPI 托管）
 
 ---
 
@@ -523,14 +545,16 @@ LeLamp 支持开箱即用配置，无需 SSH 或命令行操作：
 当设备首次启动或检测到未配置 WiFi 时：
 
 1. **自动启动 AP 热点** `LeLamp-Setup`
-   - 密码: `lelamp123`
+   - 密码: 每次 AP 会话随机生成（显示在 Captive Portal 欢迎页面）
    - IP 地址: `192.168.4.1`
 
-2. **LED 指示灯** 呈蓝色闪烁
+2. **LED 指示灯** 呈蓝色呼吸效果
 
-3. **用户手机/电脑连接热点**
+3. **用户手机/电脑连接热点**（密码见 Captive Portal 欢迎页）
 
 4. **浏览器自动弹出** 配置页面（或访问 `http://192.168.4.1:8080`）
+
+5. **WiFi 配置成功后**，自动生成 `device_secret`（16 位十六进制字符），用于设备绑定
 
 #### 3.2 设置向导流程
 
@@ -587,7 +611,9 @@ cat /var/lib/lelamp/setup_status.json
   "setup_completed_at": "2026-03-18T12:00:00",
   "wifi_ssid": "MyHomeWiFi",
   "last_mode": "client",
-  "last_updated": "2026-03-18T12:00:00"
+  "last_updated": "2026-03-18T12:00:00",
+  "device_secret": "a1b2c3d4e5f67890",
+  "ap_password": "xK9mP2nQ"
 }
 ```
 
@@ -595,11 +621,16 @@ cat /var/lib/lelamp/setup_status.json
 
 > **为什么需要 IP 地址？**
 > - 访问 API 文档页面 `http://树莓派IP:8000/docs`
-> - Web 界面需独立部署前端（参见 AUTO_STARTUP_GUIDE.md）
+> - Vue 前端页面 `http://lelamp.local:8000`（通过 mDNS 自动发现）
 > - 进行网络故障排查
 > - SSH 远程连接（开发者用户）
 
 AP 模式配置完成后，设备会自动连接到您指定的 WiFi 网络。此时需要获取设备在家庭网络中的 IP 地址。
+
+> **提示**: 您也可以直接使用 mDNS 访问设备，无需知道 IP 地址：
+> - macOS: `http://lelamp.local:8000`（自带 Bonjour）
+> - Linux: `http://lelamp.local:8000`（需安装 Avahi: `sudo apt install avahi-daemon`）
+> - Windows 10+: `http://lelamp.local:8000`（自带 mDNS 支持）
 
 **方法 1: 路由器管理页面（最简单）**
 
@@ -650,7 +681,12 @@ ping 192.168.0.100
 
 # 访问 API 文档页面
 # http://192.168.0.100:8000/docs
-# Web 界面需独立部署前端（参见 AUTO_STARTUP_GUIDE.md）
+
+# 或通过 mDNS 访问（无需知道 IP）
+# http://lelamp.local:8000/docs
+
+# Vue 前端页面（需先构建: bash scripts/build_web.sh）
+# http://lelamp.local:8000
 ```
 
 ### 4. 动作表情
@@ -770,6 +806,12 @@ BOCHA_API_KEY=your_bocha_api_key_here
 #### 7.1 Web 设置页面
 
 **新增功能**: 通过 Web 前端进行系统配置，无需编辑 `.env` 文件或 SSH 到树莓派。
+
+**设备绑定**:
+- 首次 WiFi 配置成功后，系统自动生成 `device_secret`（16 位十六进制字符）
+- 前端设置页面会显示设备信息卡片，包含可复制的密钥和绑定按钮
+- 通过 `GET /api/system/device` 获取设备信息和密钥
+- 密钥验证使用 `hmac.compare_digest()` 常量时间比较，防止时序攻击
 
 **访问方式**:
 1. 在 Web 控制台点击右上角 "设置" 按钮
@@ -1323,6 +1365,6 @@ timestamp,base_yaw.pos,base_pitch.pos,elbow_pitch.pos,wrist_roll.pos,wrist_pitch
 ---
 
 **文档版本**: v0.1.0
-**最后更新**: 2026-03-19
+**最后更新**: 2026-04-01
 **作者**: LeLamp 开发团队
 **许可证**: 参见主项目许可证

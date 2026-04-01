@@ -1,6 +1,6 @@
 # LeLamp 项目从零配置教学指南
 
-**最后更新**: 2026-03-25
+**最后更新**: 2026-04-01
 **适用版本**: LeLamp Runtime v0.1.0
 **适用人群**: 首次接触 LeLamp 项目的开发者
 **预计完成时间**: 45-60 分钟（含树莓派初始设置）
@@ -36,6 +36,7 @@
 | [ ] **LeLamp 硬件** | 5轴电机套件 + LED矩阵 + 摄像头 | 确保所有硬件已正确连接 |
 | [ ] **网络连接** | WiFi 或有线网络 | 需要稳定的互联网连接 |
 | [ ] **电源** | 5V 3A USB-C 电源适配器 | 供电不足会导致系统不稳定 |
+| [ ] **mDNS 服务** | Avahi (Linux) 或 Bonjour (macOS) | 用于设备自动发现，macOS 自带，Linux: `sudo apt install avahi-daemon` |
 
 ### 账号和服务准备
 
@@ -145,6 +146,16 @@ WiFi 国家:      CN China
 ### 0.3 获取树莓派 IP 地址
 
 获取 IP 地址是后续 SSH 连接和访问 Web 界面的关键步骤。以下提供多种方法：
+
+#### 方法 0：mDNS 自动发现（最方便）
+
+LeLamp 支持通过 mDNS 自动发现设备，无需知道 IP 地址即可访问：
+
+- **macOS**: 自带 Bonjour 支持，直接访问 `http://lelamp.local:8000`
+- **Linux**: 需要安装 Avahi（`sudo apt install avahi-daemon`），然后访问 `http://lelamp.local:8000`
+- **Windows 10+**: 自带 mDNS 支持，访问 `http://lelamp.local:8000`
+
+> **说明**: 如果您在烧录时将主机名设为 `lelamp-local`，则使用 `http://lelamp-local.local:8000`。设备 ID 取决于 `LELAMP_ID` 配置（默认 `lelamp`）。
 
 #### 方法 1：路由器管理页面（最简单）
 
@@ -476,7 +487,7 @@ uv sync --extra hardware --extra vision --extra api
 **说明**：
 - `hardware`: LED 控制（GPIO 访问）
 - `vision`: 摄像头和视觉识别（**注意**：边缘视觉功能在 Raspberry Pi ARM 平台上官方不支持，需要手动编译）
-- `api`: FastAPI Web 服务和 REST API
+- `api`: FastAPI Web 服务和 REST API（含 zeroconf 依赖，用于 mDNS 设备发现）
 
 **⚠️ 边缘视觉特别说明**：
 - MediaPipe 在 Raspberry Pi (ARM 架构) 上官方不支持
@@ -658,11 +669,21 @@ nano .env
 # DeepSeek - LLM 对话 (必需)
 DEEPSEEK_API_KEY=your_deepseek_api_key_here
 
+# JWT 签名密钥 (生产环境必需，生成方法见下方)
+LELAMP_JWT_SECRET=your_jwt_secret_here
+
 # 开发模式（跳过授权检查，生产环境请设为 0）
 LELAMP_DEV_MODE=1
 ```
 
 **说明**: 以上配置即可使用设备控制、灯光和文字聊天功能。
+
+**生成 JWT 签名密钥**:
+```bash
+python -c "import secrets; print(secrets.token_hex(32))"
+```
+
+> **注意**: 如果未设置 `LELAMP_JWT_SECRET`，系统会使用随机密钥并在启动时输出警告。此时每次重启后所有已签发的 JWT Token 将失效。生产环境务必设置固定密钥。
 
 ### 3.3 语音功能配置
 
@@ -731,6 +752,15 @@ LELAMP_LICENSE_KEY=your_license_key_here
 
 # 许可证签名密钥（生产环境必需，务必保密）
 LELAMP_LICENSE_SECRET=your_strong_random_secret_here
+
+# JWT 签名密钥（生产环境必需，生成: python -c "import secrets; print(secrets.token_hex(32))"）
+LELAMP_JWT_SECRET=your_jwt_secret_here
+
+# 设备绑定密钥（首次 WiFi 设置时自动生成，通常无需手动配置）
+# LELAMP_DEVICE_SECRET=your_device_secret_here
+
+# Vue 前端构建产物路径（默认 web/dist）
+# LELAMP_WEB_DIST=web/dist
 
 # 开发模式可跳过授权检查
 LELAMP_DEV_MODE=1
@@ -893,8 +923,24 @@ INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
 **启动成功的标志**:
 - ✅ 服务启动无错误
 - ✅ 访问 http://localhost:8000/docs 可以看到 API 文档
+- ✅ 通过 mDNS 访问: `http://lelamp.local:8000`（macOS 自带 / Linux 需 Avahi）
+- ✅ Vue 前端页面: `http://lelamp.local:8000`（FastAPI 自动托管构建产物）
 - ✅ LED 显示白色（空闲状态）
 - ✅ 健康检查通过: `curl http://localhost:8000/health`
+
+**构建并部署 Vue 前端**（生产环境）:
+
+FastAPI 服务会在同一端口 (8000) 托管 Vue 构建产物，无需单独部署前端服务：
+
+```bash
+cd ~/lelamp_runtime
+
+# 构建前端（需要先安装 Node.js 18+）
+bash scripts/build_web.sh
+
+# 构建产物默认输出到 web/dist，由 FastAPI 自动托管
+# 可通过 LELAMP_WEB_DIST 环境变量自定义路径（默认: web/dist）
+```
 
 ### 5.2 启动 Console 模式（本地语音测试）
 
@@ -1032,6 +1078,8 @@ sudo journalctl -u lelamp-{livekit,api}.service -f
 **访问地址**：
 - API 文档：http://<树莓派IP>:8000/docs
 - 健康检查：http://<树莓派IP>:8000/health
+- mDNS 访问：http://lelamp.local:8000（macOS/Linux）
+- Vue 前端：http://lelamp.local:8000（与 API 同端口，需先 `bash scripts/build_web.sh`）
 
 ### 5.6 设置 Captive Portal（开箱即用配置）
 
@@ -1048,9 +1096,11 @@ bash scripts/services/install_captive_portal.sh
 
 **工作流程**：
 1. 设备首次启动时自动检测 WiFi 连接状态
-2. 如果未配置 WiFi，自动启动 "LeLamp-Setup" 热点
-3. 用户连接热点后浏览器自动弹出配置页面
-4. 完成配置后设备自动重启并连接到指定 WiFi
+2. 如果未配置 WiFi，自动启动 "LeLamp-Setup" 热点（每次随机生成密码）
+3. LED 呈蓝色呼吸效果，密码显示在 Captive Portal 欢迎页面上
+4. 用户连接热点后浏览器自动弹出配置页面
+5. 完成配置后自动生成 `device_secret`（16 位十六进制字符），用于设备绑定
+6. 设备自动重启并连接到指定 WiFi
 
 **手动触发设置模式**：
 ```bash
@@ -1090,6 +1140,26 @@ bash scripts/services/livekit_service_manager.sh restart
 ```
 
 ### 5.8 启动前端开发服务器
+
+前端支持两种部署方式：
+
+#### 方式一：FastAPI 托管（生产环境推荐）
+
+FastAPI 服务会在同一端口 (8000) 托管 Vue 构建产物，无需单独的前端进程：
+
+```bash
+cd ~/lelamp_runtime
+
+# 构建前端
+bash scripts/build_web.sh
+
+# 构建产物自动由 FastAPI 托管
+# 访问: http://lelamp.local:8000 或 http://<树莓派IP>:8000
+```
+
+> **环境变量**: 通过 `LELAMP_WEB_DIST` 可自定义构建产物路径（默认: `web/dist`）。
+
+#### 方式二：开发服务器（开发调试）
 
 前端是独立部署的，与后端 API 完全解耦。在第三个终端窗口（或您的开发机上）启动前端：
 
@@ -1546,6 +1616,7 @@ GIT_LFS_SKIP_SMUDGE=1 uv sync
 - [ ] BAIDU_SPEECH_API_KEY 已配置（可选，仅语音交互需要）
 - [ ] BAIDU_SPEECH_SECRET_KEY 已配置（可选，仅语音交互需要）
 - [ ] LELAMP_DEV_MODE 已设置为 1
+- [ ] LELAMP_JWT_SECRET 已配置（生产环境必需）
 
 ### 硬件配置
 
@@ -1785,8 +1856,8 @@ ssh pi@192.168.0.104 'sudo journalctl -u lelamp-conversation -f'
 
 ---
 
-**文档版本**: v0.1.2
-**最后更新**: 2026-03-25
+**文档版本**: v0.1.3
+**最后更新**: 2026-04-01
 **作者**: LeLamp 开发团队
 **许可证**: 参见主项目许可证
 

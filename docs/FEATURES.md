@@ -2,7 +2,7 @@
 
 ## 🎯 概述
 
-LeLamp Runtime v3.2 提供完整的企业级功能,包括对话式 AI、视觉识别、动作控制、灯光效果、**边缘推理**、**记忆系统**和 RESTful API 系统。
+LeLamp Runtime v3.3 提供完整的企业级功能,包括对话式 AI、视觉识别、动作控制、灯光效果、**边缘推理**、**记忆系统**、**mDNS 设备发现**、**设备绑定**、**Vue 前端托管**和 RESTful API 系统。
 
 ---
 
@@ -188,6 +188,156 @@ await get_edge_vision_stats()
 
 ---
 
+## 🌐 mDNS 设备自动发现 🆕
+
+通过 zeroconf 实现局域网内设备的零配置自动发现。
+
+### 功能特性
+
+| 功能 | 说明 |
+|------|------|
+| **零配置发现** | 设备自动注册到局域网，无需知道 IP |
+| **Bonjour/Avahi 兼容** | 使用标准 `_http._tcp` 服务类型 |
+| **mDNS 访问** | `http://<device_id>.local:8000` |
+| **静默降级** | zeroconf 不可用时不影响 API 启动 |
+
+### 使用方式
+
+设备 API 启动后，同一局域网内的设备可通过 mDNS 名称访问：
+
+```
+# 设备 ID 为 lelamp 时
+http://lelamp.local:8000
+
+# 设备 ID 为 lelamp_001 时
+http://lelamp_001.local:8000
+```
+
+### 实现
+
+- 新服务：`lelamp/api/services/mdns_service.py`
+- API 启动时注册 `_http._tcp` 服务到局域网
+- zeroconf 未安装或注册失败时记录警告日志，不阻塞启动
+
+---
+
+## 🔗 设备绑定 🆕
+
+安全的设备-用户绑定流程，支持自动生成密钥和前端一键绑定。
+
+### 功能特性
+
+| 功能 | 说明 |
+|------|------|
+| **自动生成密钥** | 首次 WiFi 配网时 `secrets.token_hex(8)` 生成 16 字符 secret |
+| **安全验证** | `hmac.compare_digest()` 防止时序攻击 |
+| **前端集成** | 设备信息卡片 + 可复制 secret + 一键绑定 |
+| **环境变量覆盖** | `LELAMP_DEVICE_SECRET` 作为 fallback |
+
+### 绑定流程
+
+```
+1. 设备首次 WiFi 配网 → 自动生成 device_secret
+2. 存储到 /var/lib/lelamp/setup_status.json
+3. 用户打开前端 → GET /api/system/device 获取设备信息
+4. 前端展示设备信息卡片（device_id + 可复制 secret）
+5. 用户点击"绑定设备" → POST /api/auth/bind-device
+6. 服务端 hmac.compare_digest() 验证 → 绑定成功
+```
+
+### 配置
+
+| 环境变量 | 说明 |
+|---------|------|
+| `LELAMP_DEVICE_SECRET` | 设备绑定密钥（fallback，优先使用自动生成的值） |
+
+---
+
+## 📶 AP 热点随机密码 🆕
+
+AP 配网热点使用随机密码替代固定密码，提升安全性。
+
+### 功能特性
+
+| 功能 | 说明 |
+|------|------|
+| **随机密码** | `secrets.token_urlsafe(6)` 每次启动生成不同密码 |
+| **密码提示** | Captive Portal 欢迎页显示当前 AP 密码 |
+| **LED 指示** | AP 模式下蓝色呼吸灯效果 |
+| **密码持久化** | 保存到 `setup_status.json` |
+
+### 变更说明
+
+- `APConfig.password` 默认值从 `"lelamp123"` 改为 `None`（自动生成）
+- 密码通过 `secrets.token_urlsafe(6)` 生成（8 字符 URL 安全）
+- 密码持久化到 `setup_status.json` 供 Captive Portal 显示
+
+---
+
+## 🖥️ Vue 前端托管 🆕
+
+FastAPI 直接托管 Vue 构建输出，实现单端口部署。
+
+### 功能特性
+
+| 功能 | 说明 |
+|------|------|
+| **单端口部署** | API + 前端共用端口 8000 |
+| **SPA 路由** | 非 API 路径自动回退到 index.html |
+| **路径排除** | `/api`、`/health`、`/docs` 等不走 SPA 回退 |
+| **构建脚本** | `scripts/build_web.sh` |
+
+### 使用方式
+
+```bash
+# 构建 Vue 前端
+bash scripts/build_web.sh
+
+# 启动 API（自动托管前端）
+uv run uvicorn lelamp.api.app:app --host 0.0.0.0 --port 8000
+
+# 访问
+http://localhost:8000          # Vue 前端
+http://localhost:8000/api/...  # REST API
+http://localhost:8000/docs     # Swagger UI
+```
+
+### 配置
+
+| 环境变量 | 默认值 | 说明 |
+|---------|--------|------|
+| `LELAMP_WEB_DIST` | `web/dist` | Vue 构建输出路径 |
+
+---
+
+## 🎙️ LiveKit Token API 🆕
+
+通过 REST API 端点生成 LiveKit 客户端 Token，替代旧的 CLI 脚本。
+
+### 功能特性
+
+| 功能 | 说明 |
+|------|------|
+| **API 端点** | `POST /api/livekit/token`（需 JWT 认证） |
+| **身份强制** | 使用已认证用户身份，防止伪造 |
+| **房间验证** | Pydantic Field 验证房间名（1-128 字符） |
+| **替代 CLI** | 替代 `scripts/tools/generate_client_token.py` |
+
+### 使用方式
+
+```bash
+# 旧方式（已废弃）
+uv run python scripts/tools/generate_client_token.py --room lelamp-room --user user-app
+
+# 新方式（API）
+curl -X POST http://localhost:8000/api/livekit/token \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"room": "lelamp-room"}'
+```
+
+---
+
 ## 🔐 认证系统
 
 ### 用户认证
@@ -198,6 +348,7 @@ LeLamp Runtime 提供完整的用户认证系统,支持:
 - **用户登录**: 使用 OAuth2 表单登录
 - **令牌刷新**: 访问令牌过期时自动刷新
 - **设备绑定**: 将用户账户与 LeLamp 设备关联
+- **JWT 加固**: 可配置签名密钥,生产环境安全可靠
 
 ### API 端点
 
@@ -285,6 +436,19 @@ Content-Type: application/json
   "bound_at": "2026-03-19T00:00:00"
 }
 ```
+
+### JWT 认证加固
+
+JWT 签名密钥管理增强：
+
+| 环境变量 | 说明 |
+|---------|------|
+| `LELAMP_JWT_SECRET` | JWT 签名密钥（生产环境必须设置） |
+| `LELAMP_DEVICE_SECRET` | 设备绑定密钥（fallback） |
+
+- `LELAMP_JWT_SECRET` 未设置时自动生成随机密钥并输出警告
+- 随机密钥在进程重启后变化，所有现有 token 失效
+- 生产环境务必通过环境变量设置固定密钥
 
 ### WebSocket 认证
 
@@ -480,5 +644,5 @@ curl -X POST http://localhost:8000/api/auth/bind-device \
 - [部署指南](DEPLOYMENT_GUIDE.md) - 生产部署说明
 
 
-**最后更新**: 2026-03-31
-**版本**: v3.2 (新增记忆系统模块)
+**最后更新**: 2026-04-01
+**版本**: v3.3 (新增 mDNS 发现、设备绑定、AP 随机密码、Vue 托管、LiveKit Token API、JWT 加固)

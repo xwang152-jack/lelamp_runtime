@@ -84,6 +84,15 @@ BAIDU_SPEECH_SECRET_KEY=xxxxx
 LIVEKIT_URL=wss://your-server.livekit.cloud
 LIVEKIT_API_KEY=devkey
 LIVEKIT_API_SECRET=secret
+
+# JWT 认证密钥（生产环境必须设置）
+LELAMP_JWT_SECRET=your-strong-random-secret-key
+
+# 设备绑定密钥（首次 WiFi 设置时自动生成，也可手动设置）
+LELAMP_DEVICE_SECRET=
+
+# Web 前端构建路径（默认: web/dist）
+LELAMP_WEB_DIST=web/dist
 ```
 
 #### 步骤 5：验证配置
@@ -126,6 +135,55 @@ uv run python scripts/generate_license.py --dev-mode 1
 # 关闭开发模式（需要授权验证）
 uv run python scripts/generate_license.py --dev-mode 0
 ```
+
+## 设备绑定机制
+
+设备绑定通过 `device_secret` 实现，用于设备与云端服务的安全通信。
+
+### 工作流程
+
+1. **自动生成**：设备首次完成 WiFi 设置时，自动生成 16 位 hex 字符串的 `device_secret`
+2. **持久化存储**：`device_secret` 存储在 `/var/lib/lelamp/setup_status.json`
+3. **查询接口**：`GET /api/system/device` 返回设备信息及 `device_secret`
+4. **安全验证**：密钥比对使用 `hmac.compare_digest()`（常量时间比较），防止时序攻击
+
+### 手动配置
+
+如果需要手动设置设备绑定密钥（例如回退机制）：
+
+```bash
+# 在 .env 文件中设置
+LELAMP_DEVICE_SECRET=your-16-char-hex-secret
+```
+
+> **注意**：`LELAMP_DEVICE_SECRET` 是回退机制，优先使用 `setup_status.json` 中的自动生成值。
+
+## JWT 认证
+
+API 服务使用 JWT 进行身份认证，保护设备绑定和 LiveKit Token 等敏感接口。
+
+### 配置
+
+```bash
+# 生产环境必须设置强随机密钥
+LELAMP_JWT_SECRET=your-strong-random-secret-key
+```
+
+- **密钥未设置**：启动时自动生成随机密钥并输出警告（每次重启密钥变化，会导致已签发的 Token 失效）
+- **生产环境**：务必设置固定密钥
+
+### LiveKit Token 获取
+
+商业化部署中，LiveKit Token 通过 API 端点获取，不再使用 CLI 脚本：
+
+```
+POST /api/livekit/token
+Authorization: Bearer <jwt_token>
+```
+
+- 需要有效的 JWT 认证
+- 强制使用已认证用户身份（不可伪造其他用户）
+- 详见 [LiveKit Token 管理指南](COMMERCIAL_LIVEKIT_TOKEN_GUIDE.md)
 
 ## 安全注意事项
 
@@ -188,3 +246,6 @@ uv run python scripts/generate_license.py --dev-mode 1
 | `LIVEKIT_API_KEY` | ✅ 必需 | API 访问 |
 | `LIVEKIT_API_SECRET` | ✅ 必需 | API 签名 |
 | `LELAMP_LICENSE_KEY` | ✅ 必需 | 设备授权 |
+| `LELAMP_JWT_SECRET` | ✅ 必需 | JWT 签名密钥（生产环境） |
+| `LELAMP_DEVICE_SECRET` | ❌ 自动 | 设备绑定密钥（首次 WiFi 设置自动生成） |
+| `LELAMP_WEB_DIST` | ❌ 可选 | Vue 前端路径（默认 web/dist） |

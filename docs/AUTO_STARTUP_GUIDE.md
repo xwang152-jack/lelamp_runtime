@@ -15,9 +15,11 @@ ssh pi@192.168.0.104 'sudo rm /var/lib/lelamp/setup_status.json'
 ```
 
 然后：
-1. 连接到 "LeLamp-Setup" WiFi 热点（密码：lelamp123）
+1. 连接到 "LeLamp-Setup" WiFi 热点（密码见 Captive Portal 页面显示，每次随机生成）
 2. 浏览器访问 http://192.168.4.1:8080
 3. 按向导完成 WiFi 配置
+
+> **AP 热点密码已改为随机生成**，不再使用固定密码。每次重置设置时，新的随机密码会显示在 Captive Portal 页面上，并持久化到 `/var/lib/lelamp/setup_status.json`。
 
 详细说明请参考：[Captive Portal 设置指南](CAPTIVE_PORTAL_GUIDE.md)
 
@@ -32,11 +34,13 @@ ssh pi@192.168.0.104 'sudo rm /var/lib/lelamp/setup_status.json'
 - 📱 **LiveKit 服务**（语音交互）
 - 🔌 **API 服务**（后端 REST API）
 
-> 前端（`web/`）已独立部署，需单独用 Nginx 或其他静态服务器托管，不再作为 systemd 服务运行。
+> 前端（`web/`）已内置到 FastAPI 服务中，单端口部署（API + 前端均在端口 8000），无需独立 Nginx 托管。构建命令：`bash scripts/build_web.sh`。
 
 **访问地址：**
 - API 文档：http://192.168.0.104:8000/docs
 - 健康检查：http://192.168.0.104:8000/health
+- Web 前端：http://192.168.0.104:8000/
+- mDNS 自动发现：`http://<device_id>.local:8000`（局域网内免 IP 访问）
 
 ### 方法二：仅 LiveKit 服务（纯语音交互）
 
@@ -73,29 +77,32 @@ ssh pi@192.168.0.104 'sudo rm /var/lib/lelamp/setup_status.json'
   - 双服务协同工作，提供完整功能
   - systemd 统一管理，开机自动启动
   - 支持语音交互和 Web 控制两种方式
-  - 前端需独立部署（Nginx 等静态服务器托管 `web/` 目录）
+  - 前端内置到 FastAPI 服务，单端口 8000 同时提供 API 和前端页面
 
 - **访问地址**：
   - API 文档：http://192.168.0.104:8000/docs
+  - Web 前端：http://192.168.0.104:8000/
+  - mDNS 自动发现：`http://<device_id>.local:8000`
   - LiveKit 语音交互：通过 LiveKit 客户端
 
 ### 2. 简化模式
 - **适用场景**：资源受限环境、仅需 API 功能
 - **特点**：
   - 仅启动后端 API 服务（纯 API 服务器）
-  - 前端需要独立部署（Nginx 等静态服务器托管）
-  - 单一端口（8000）提供 API 服务
+  - 前端内置到 FastAPI 服务（构建后自动提供前端页面）
+  - 单一端口（8000）同时提供 API 和前端
   - 占用资源少，启动快速
 
-- **访问地址**：http://192.168.0.104:8000（仅 API，前端需另行部署）
+- **访问地址**：http://192.168.0.104:8000（API + 前端）
 
 ### 3. 开发模式
 - **适用场景**：开发调试、需要实时预览
 - **特点**：
-  - 后端 API（纯 API 服务器）+ 前端开发服务器（独立部署）
+  - 后端 API + 前端开发服务器（独立部署）
   - 前后端完全解耦，通过 API 地址连接
   - 支持前端热更新
   - 占用资源较多，启动较慢
+  - 生产环境使用 `bash scripts/build_web.sh` 构建前端，由 FastAPI 统一托管
 
 - **访问地址**：
   - 前端：http://192.168.0.104:5173
@@ -216,12 +223,24 @@ ssh pi@192.168.0.104 'sudo netstat -tlnp | grep 8000'
 
 ### 前端无法访问
 ```bash
-# 前端已独立部署，检查前端是否正确部署到静态服务器
-# 如使用 Nginx，检查 Nginx 配置
-ssh pi@192.168.0.104 'sudo nginx -t && sudo systemctl status nginx'
+# 检查前端是否已构建
+ssh pi@192.168.0.104 'ls -la ~/lelamp_runtime/web/dist'
 
-# 本地构建前端
+# 在树莓派上构建前端（如未构建）
+ssh pi@192.168.0.104 'cd ~/lelamp_runtime && bash scripts/build_web.sh'
+
+# 或本地构建后同步
 cd web && pnpm build
+```
+
+### mDNS 发现失败
+```bash
+# 检查 zeroconf 是否可用
+ssh pi@192.168.0.104 'python3 -c "import zeroconf; print(\"zeroconf OK\")"'
+
+# mDNS 不可用时，使用 IP 地址访问
+ssh pi@192.168.0.104 'hostname'  # 查看 device_id
+# 直接访问 http://<device_id>.local:8000 或 http://<IP>:8000
 ```
 
 ### 依赖问题
@@ -310,7 +329,7 @@ ssh pi@192.168.0.104 'sudo journalctl -u lelamp-livekit.service -n 100 --no-page
 3. 树莓派自动重启服务
 
 ### 生产环境
-1. 使用完整服务系统（推荐）或仅 API 服务 + 独立前端部署
+1. 使用完整服务系统（推荐）或仅 API 服务（前端已内置）
 2. 定期检查服务状态
 3. 监控日志文件大小
 
@@ -320,4 +339,4 @@ ssh pi@192.168.0.104 'sudo journalctl -u lelamp-livekit.service -n 100 --no-page
 
 ---
 
-**提示**：前端 (`web/`) 与后端 API 完全解耦，独立部署。后端是纯 API 服务器，不再提供前端静态文件。首次设置建议使用完整服务系统，如需开发调试可分别启动 API 服务和前端开发服务器。
+**提示**：前端 (`web/`) 已内置到 FastAPI 服务中，单端口 8000 同时提供 API 和前端页面。使用 `bash scripts/build_web.sh` 构建前端，构建产物默认输出到 `web/dist`（可通过 `LELAMP_WEB_DIST` 环境变量自定义路径）。设备支持 mDNS 自动发现，局域网内可通过 `http://<device_id>.local:8000` 访问，无需知道 IP 地址。首次设置建议使用完整服务系统，如需开发调试可分别启动 API 服务和前端开发服务器。

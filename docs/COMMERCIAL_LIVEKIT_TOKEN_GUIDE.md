@@ -9,13 +9,13 @@
 **标准的商业化流程如下**：
 
 1. **云端业务服务器 (你的后端)**：你需要部署一个自己的云端服务器（比如基于 Node.js/Python FastAPI）。这个服务器持有 `LIVEKIT_API_SECRET`。
-2. **设备绑定 (Device/Room)**：每个售出的 LeLamp 硬件在出厂或激活时，都有一个唯一的 `lamp_id`（比如 MAC 地址或序列号），这个 `lamp_id` 就是 LiveKit 的 **Room Name**（房间号）。
+2. **设备绑定 (Device/Room)**：每个售出的 LeLamp 硬件在出厂或激活时，都有一个唯一的 `lamp_id`（比如 MAC 地址或序列号），这个 `lamp_id` 就是 LiveKit 的 **Room Name**（房间号）。设备首次 WiFi 设置时会自动生成 `device_secret`（16 位 hex 字符串），存储在 `/var/lib/lelamp/setup_status.json`。
 3. **用户登录认证**：用户打开手机 App，通过账号密码或微信/手机号登录你的云端服务器。云端服务器知道该用户绑定了哪台设备（哪个 `lamp_id`）。
 4. **动态请求 Token**：
-   - 用户在 App 里点击“连接台灯”。
-   - App 向你的云端服务器发送 API 请求（例如 `GET /api/get_livekit_token?device_id=xxx`）。
-   - 云端服务器校验用户的身份和设备绑定权限。
-   - **如果验证通过，云端服务器使用该设备的 `lamp_id` 作为 Room，用户的 `user_id` 作为 Identity，动态生成一个 JWT Token，并返回给 App。**
+   - 用户在 App 里点击”连接台灯”。
+   - App 向 LeLamp 设备发送 API 请求：`POST /api/livekit/token`（需 JWT 认证）。
+   - API 服务器校验用户的 JWT 身份，**强制使用已认证用户身份**（不可伪造其他用户）。
+   - **验证通过后，API 服务器使用该设备的 `lamp_id` 作为 Room，用户的 `user_id` 作为 Identity，动态生成一个 LiveKit JWT Token，并返回给 App。**
    - App 拿着这个 Token 去连接 LiveKit Server。
 
 **通过这种方式，实现了严格的隔离：**
@@ -54,6 +54,43 @@ token = api.AccessToken(api_key, api_secret) \
 1. **连接建立前**：如果 Token 已过期，LiveKit Server 会拒绝建立连接。
 2. **连接保持中**：只要连接成功建立了，哪怕中途 Token 过期，**正在进行的音视频连接不会被强行断开**（除非你的服务器主动调用 API 踢人）。
 3. **重连机制**：如果网络波动导致断开，App 尝试重连时，如果原 Token 已过期，App 需要重新调用你的云端接口（静默刷新）获取一个新的 Token，然后再去连接 LiveKit。
+
+## LiveKit Token API 端点
+
+LeLamp 设备已内置 LiveKit Token 生成接口，取代了旧的 CLI 脚本方式。
+
+### 端点
+
+```
+POST /api/livekit/token
+Authorization: Bearer <jwt_token>
+Content-Type: application/json
+
+{
+  "room": "lamp_room_name"
+}
+```
+
+### 响应
+
+```json
+{
+  "token": "eyJhbGciOiJIUzI1NiIs...",
+  "url": "wss://your-server.livekit.cloud"
+}
+```
+
+### 认证要求
+
+- **JWT 认证**：请求必须携带有效的 JWT Token（通过 `Authorization: Bearer` 头）
+- **JWT 签名密钥**：通过 `LELAMP_JWT_SECRET` 环境变量配置
+- **用户身份强制**：API 会使用 JWT 中已认证的用户身份生成 LiveKit Token，确保用户无法冒充他人
+
+### 设备绑定集成
+
+- 设备信息查询：`GET /api/system/device` 返回设备信息及 `device_secret`
+- `device_secret` 验证使用 `hmac.compare_digest()`（常量时间比较），防止时序攻击
+- 设备绑定密钥在首次 WiFi 设置时自动生成，也可通过 `LELAMP_DEVICE_SECRET` 环境变量手动设置
 
 ## 总结
 

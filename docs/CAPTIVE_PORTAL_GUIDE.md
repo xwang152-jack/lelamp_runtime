@@ -10,7 +10,8 @@
 
 - 在您的手机或电脑上搜索 WiFi 网络
 - 找到名为 **"LeLamp-Setup"** 的热点
-- 密码：`lelamp123`
+- 密码：每次 AP 会话随机生成（显示在 Captive Portal 欢迎页面）
+- LED 呈蓝色呼吸效果表示 AP 模式已激活
 
 ### 2. 打开设置页面
 
@@ -27,8 +28,11 @@
 ### 4. 完成设置
 
 - 等待连接成功
+- 系统自动生成 `device_secret`（16 位十六进制字符），用于设备绑定
 - 台灯会显示/播报 IP 地址
 - 设置完成，开始使用！
+
+> **提示**: 配置完成后可通过 mDNS 访问设备：`http://lelamp.local:8000`（macOS 自带 Bonjour，Linux 需安装 Avahi）
 
 ---
 
@@ -106,8 +110,11 @@ sudo reboot
 
 **A:** 设置完成后，台灯会显示 IP 地址。您可以通过以下方式访问：
 
-- 通过 IP 地址：http://`<台灯IP>`:5173
-- 通过 mDNS：http://lelamp.local:5173
+- 通过 mDNS（推荐）：http://lelamp.local:8000（macOS 自带 / Linux 需 Avahi）
+- 通过 IP 地址：http://`<台灯IP>`:8000
+- 开发模式前端：http://`<台灯IP>`:5173
+
+> **说明**: FastAPI 服务在同一端口 (8000) 同时托管 API 和 Vue 前端构建产物。需先执行 `bash scripts/build_web.sh` 构建前端。
 
 ### Q: 忘记台灯的 IP 地址？
 
@@ -183,8 +190,8 @@ first_boot_setup.sh 检查状态
 | lelamp-setup-ap | AP 模式管理 | - |
 | lelamp-captive-portal | 设置向导服务 | 8080 |
 | lelamp-livekit | 语音交互服务 | - |
-| lelamp-api | REST API 服务 | 8000 |
-| lelamp-frontend | Web 界面 | 5173 |
+| lelamp-api | REST API + Vue 前端托管 | 8000 |
+| lelamp-frontend | Web 界面（开发模式） | 5173 |
 
 ### 状态文件
 
@@ -195,9 +202,15 @@ first_boot_setup.sh 检查状态
   "setup_completed": true,
   "setup_completed_at": "2026-03-19T12:00:00Z",
   "wifi_ssid": "MyHomeWiFi",
-  "last_ip_address": "192.168.1.100"
+  "last_ip_address": "192.168.1.100",
+  "device_secret": "a1b2c3d4e5f67890",
+  "ap_password": "xK9mP2nQ"
 }
 ```
+
+**字段说明**：
+- `device_secret`: 设备绑定密钥，首次 WiFi 设置时自动生成（16 位十六进制字符），可通过 `LELAMP_DEVICE_SECRET` 环境变量覆盖
+- `ap_password`: 上次 AP 热点的随机密码（每次 AP 会话重新生成）
 
 ---
 
