@@ -129,6 +129,7 @@ def _build_vad() -> object:
 
 async def entrypoint(ctx: JobContext):
     from livekit.agents import AgentSession
+    import lelamp.database.models  # 注册所有 ORM 模型到 Base
     from lelamp.database.base import init_db
 
     # 初始化数据库（确保记忆表等已创建）

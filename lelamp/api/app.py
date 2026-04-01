@@ -205,6 +205,7 @@ async def lifespan(app: FastAPI):
 
     # 初始化数据库（确保表已创建）
     try:
+        import lelamp.database.models  # 注册所有 ORM 模型到 Base
         from lelamp.database.base import init_db
         init_db()
         logger.info("Database initialized")
