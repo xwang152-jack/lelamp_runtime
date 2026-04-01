@@ -24,6 +24,10 @@
         <h1>欢迎使用 LeLamp</h1>
         <p>让我们来配置您的智能台灯</p>
         <p class="hint">这个过程只需要 2-3 分钟</p>
+        <div v-if="deviceInfo" class="device-info-badge">
+          <span class="badge-label">设备</span>
+          <span class="badge-value">{{ deviceInfo.hostname || deviceInfo.device_id }}</span>
+        </div>
       </div>
 
       <!-- 步骤 2: WiFi 扫描 -->
@@ -105,11 +109,56 @@
         </div>
       </div>
 
-      <!-- 步骤 5: 完成 -->
-      <div v-if="currentStep === 4" class="complete-step">
+      <!-- 步骤 5: 注册/登录 -->
+      <div v-if="currentStep === 4" class="auth-step">
+        <h2>创建账号或登录</h2>
+        <p class="step-description">绑定设备需要登录账号，首次使用请注册</p>
+
+        <el-tabs v-model="authTab" class="auth-tabs">
+          <el-tab-pane label="登录" name="login">
+            <el-form label-position="top" @submit.prevent="handleAuthLogin">
+              <el-form-item label="用户名">
+                <el-input v-model="loginForm.username" placeholder="请输入用户名" size="large" />
+              </el-form-item>
+              <el-form-item label="密码">
+                <el-input v-model="loginForm.password" type="password" placeholder="请输入密码"
+                          show-password size="large" @keyup.enter="handleAuthLogin" />
+              </el-form-item>
+              <el-button type="primary" class="auth-btn" :loading="authLoading" @click="handleAuthLogin">
+                登录并绑定设备
+              </el-button>
+            </el-form>
+          </el-tab-pane>
+
+          <el-tab-pane label="注册" name="register">
+            <el-form label-position="top" @submit.prevent="handleAuthRegister">
+              <el-form-item label="用户名">
+                <el-input v-model="registerForm.username" placeholder="3-50 个字符" size="large" />
+              </el-form-item>
+              <el-form-item label="邮箱">
+                <el-input v-model="registerForm.email" type="email" placeholder="your@email.com" size="large" />
+              </el-form-item>
+              <el-form-item label="密码">
+                <el-input v-model="registerForm.password" type="password" placeholder="至少 6 个字符"
+                          show-password size="large" />
+              </el-form-item>
+              <el-button type="primary" class="auth-btn" :loading="authLoading" @click="handleAuthRegister">
+                注册并绑定设备
+              </el-button>
+            </el-form>
+          </el-tab-pane>
+        </el-tabs>
+      </div>
+
+      <!-- 步骤 6: 完成 -->
+      <div v-if="currentStep === 5" class="complete-step">
         <div class="success-icon">✓</div>
         <h2>配置完成！</h2>
         <p>LeLamp 即将重启并连接到您的 WiFi</p>
+        <div class="access-info">
+          <p>设备访问地址：</p>
+          <p class="access-url">http://lelamp.local:8000</p>
+        </div>
         <div class="countdown">
           <span>{{ countdown }}</span> 秒后重启...
         </div>
@@ -147,10 +196,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Refresh } from '@element-plus/icons-vue'
 import axios from 'axios'
+import { useAuthStore } from '@/stores'
 import type { WiFiNetwork } from '@/types/settings'
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || ''
@@ -164,8 +214,16 @@ const apiClient = axios.create({
   }
 })
 
-// 步骤定义
-const steps = ['欢迎', '选择 WiFi', '输入密码', '连接中', '完成']
+// Auth store
+const authStore = useAuthStore()
+const authTab = ref('login')
+const authLoading = ref(false)
+
+const loginForm = reactive({ username: '', password: '' })
+const registerForm = reactive({ username: '', email: '', password: '' })
+
+// 步骤定义（6 步）
+const steps = ['欢迎', '选择 WiFi', '输入密码', '连接中', '注册 / 登录', '完成']
 const currentStep = ref(0)
 
 // WiFi 相关状态
@@ -179,6 +237,9 @@ const connecting = ref(false)
 const connectingStatus = ref({ title: '正在连接...', message: '请稍候' })
 const connectionError = ref('')
 const countdown = ref(5)
+
+// 设备信息
+const deviceInfo = ref<{ device_id: string; hostname: string } | null>(null)
 
 // 计算属性
 const sortedNetworks = computed(() => {
@@ -272,21 +333,66 @@ async function handleConnect() {
 
     connectingStatus.value = {
       title: '连接成功！',
-      message: '正在保存配置...'
+      message: '正在跳转到账号设置...'
     }
 
     // 等待一小段时间
     await new Promise(resolve => setTimeout(resolve, 1000))
 
-    // 完成配置
+    // 跳转到注册/登录步骤
     currentStep.value = 4
-
-    // 开始倒计时
-    await completeSetup()
 
   } catch (error: any) {
     connectionError.value = error.response?.data?.detail || error.message || '连接失败，请检查密码是否正确'
     connecting.value = false
+  }
+}
+
+// 登录并绑定设备
+async function handleAuthLogin() {
+  if (!loginForm.username || !loginForm.password) {
+    ElMessage.warning('请输入用户名和密码')
+    return
+  }
+  authLoading.value = true
+  try {
+    await authStore.login(loginForm.username, loginForm.password)
+    // 自动绑定设备
+    const result = await authStore.autoBindDevice()
+    if (result.success) {
+      currentStep.value = 5
+      await completeSetup()
+    } else {
+      ElMessage.error(result.error || '设备绑定失败')
+    }
+  } catch (e: any) {
+    ElMessage.error(e.message || '登录失败')
+  } finally {
+    authLoading.value = false
+  }
+}
+
+// 注册并绑定设备
+async function handleAuthRegister() {
+  if (!registerForm.username || !registerForm.email || !registerForm.password) {
+    ElMessage.warning('请填写所有字段')
+    return
+  }
+  authLoading.value = true
+  try {
+    await authStore.register(registerForm.username, registerForm.email, registerForm.password)
+    // 注册后自动绑定设备
+    const result = await authStore.autoBindDevice()
+    if (result.success) {
+      currentStep.value = 5
+      await completeSetup()
+    } else {
+      ElMessage.error(result.error || '设备绑定失败')
+    }
+  } catch (e: any) {
+    ElMessage.error(e.message || '注册失败')
+  } finally {
+    authLoading.value = false
   }
 }
 
@@ -319,9 +425,16 @@ function handleRetry() {
 }
 
 // 初始化
-onMounted(() => {
+onMounted(async () => {
   // 自动开始扫描
   handleScan()
+  // 获取设备信息
+  try {
+    const response = await axios.get(`${API_BASE}/api/system/device`)
+    deviceInfo.value = response.data
+  } catch {
+    // ignore
+  }
 })
 </script>
 
@@ -339,7 +452,7 @@ onMounted(() => {
   justify-content: center;
   gap: 40px;
   padding: 30px 20px;
-  max-width: 600px;
+  max-width: 700px;
   margin: 0 auto;
   width: 100%;
 }
@@ -409,6 +522,26 @@ onMounted(() => {
     font-size: 14px;
     opacity: 0.7;
     margin-top: 20px;
+  }
+}
+
+.device-info-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 24px;
+  padding: 8px 16px;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 20px;
+
+  .badge-label {
+    font-size: 12px;
+    opacity: 0.7;
+  }
+
+  .badge-value {
+    font-size: 14px;
+    font-weight: 500;
   }
 }
 
@@ -553,6 +686,33 @@ onMounted(() => {
   }
 }
 
+.auth-step {
+  background: var(--lelamp-bg-white);
+  border-radius: 16px;
+  padding: 30px;
+  max-width: 450px;
+  width: 100%;
+
+  h2 {
+    margin-top: 0;
+    color: var(--lelamp-text-primary);
+  }
+
+  .step-description {
+    color: var(--lelamp-text-secondary);
+    margin-bottom: 20px;
+  }
+
+  .auth-tabs {
+    margin-top: 10px;
+  }
+
+  .auth-btn {
+    width: 100%;
+    margin-top: 8px;
+  }
+}
+
 .complete-step {
   text-align: center;
   color: var(--lelamp-bg-white);
@@ -572,6 +732,20 @@ onMounted(() => {
   h2 {
     font-size: 28px;
     margin-bottom: 10px;
+  }
+
+  .access-info {
+    margin-top: 16px;
+    padding: 16px 24px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+
+    .access-url {
+      font-size: 18px;
+      font-weight: 500;
+      margin-top: 4px;
+      word-break: break-all;
+    }
   }
 
   .countdown {
