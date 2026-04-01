@@ -9,14 +9,27 @@ Provides:
 """
 from datetime import datetime, timedelta
 from typing import Optional, Dict
+import os
+import secrets
+import logging
 import jwt
 import bcrypt
 import uuid
 from sqlalchemy.orm import Session
 from lelamp.database.models_auth import User, DeviceBinding, RefreshToken
 
+logger = logging.getLogger("lelamp.api.auth")
+
 # JWT 配置
-SECRET_KEY = "your-secret-key-here"  # TODO: 从环境变量读取
+_jwt_secret = os.getenv("LELAMP_JWT_SECRET")
+if _jwt_secret:
+    SECRET_KEY = _jwt_secret
+else:
+    SECRET_KEY = secrets.token_hex(32)
+    logger.warning(
+        "LELAMP_JWT_SECRET 未设置，使用随机密钥。重启后所有 Token 将失效。"
+        "请在 .env 中设置 LELAMP_JWT_SECRET 以持久化密钥。"
+    )
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 REFRESH_TOKEN_EXPIRE_DAYS = 7
@@ -116,8 +129,10 @@ class AuthService:
     @staticmethod
     def bind_device(db: Session, user_id: int, device_id: str, device_secret: str) -> DeviceBinding:
         """绑定设备"""
-        # 验证设备密钥（这里需要实现设备密钥验证逻辑）
-        # TODO: 实现设备密钥验证
+        # 验证设备密钥
+        expected_secret = os.getenv("LELAMP_DEVICE_SECRET")
+        if expected_secret and device_secret != expected_secret:
+            raise PermissionError("Invalid device secret")
 
         # 检查是否已绑定
         existing = db.query(DeviceBinding).filter(

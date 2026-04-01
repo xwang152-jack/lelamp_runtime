@@ -184,6 +184,12 @@ async def bind_device(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e)
         )
+    except PermissionError as e:
+        logger.warning(f"设备密钥验证失败: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(e)
+        )
     except Exception as e:
         logger.error(f"设备绑定错误: {str(e)}")
         raise HTTPException(

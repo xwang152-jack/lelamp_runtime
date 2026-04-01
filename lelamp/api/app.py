@@ -2,10 +2,12 @@
 FastAPI 应用主文件
 """
 from contextlib import asynccontextmanager
+from pathlib import Path
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -41,7 +43,6 @@ app = FastAPI(
 # 配置 CORS
 # 开发环境：允许所有本地网络访问
 # 生产环境：应该设置具体的域名
-import os
 
 # 从环境变量读取允许的源，如果没有则使用默认列表
 allowed_origins = os.getenv("LELAMP_CORS_ORIGINS", "").split(",") if os.getenv("LELAMP_CORS_ORIGINS") else [
@@ -98,8 +99,14 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-XSS-Protection"] = "1; mode=block"
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
 
-        # 内容安全策略 (可根据实际需要调整)
-        response.headers["Content-Security-Policy"] = "default-src 'self'"
+        # 内容安全策略 (允许 Vue/Element Plus 运行所需的内联脚本和样式)
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data: blob:; "
+            "font-src 'self' data:;"
+        )
 
         # 推荐安全实践
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
@@ -389,3 +396,33 @@ async def handle_generic_exception(request: Request, exc: Exception):
 
 # 导出关键组件
 __all__ = ["app"]
+
+
+# =============================================================================
+# Vue 前端静态文件托管
+# =============================================================================
+
+_WEB_DIST = Path(os.getenv("LELAMP_WEB_DIST", "web/dist"))
+_SPA_INDEX = _WEB_DIST / "index.html"
+
+
+def _mount_vue_frontend():
+    """挂载 Vue 构建产物，仅在 dist/index.html 存在时启用。"""
+    if not _SPA_INDEX.is_file():
+        logger.info(f"Vue 前端未构建（{_SPA_INDEX} 不存在），跳过静态文件托管")
+        return
+
+    assets_dir = _WEB_DIST / "assets"
+    if assets_dir.is_dir():
+        app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="vue-assets")
+        logger.info(f"已挂载静态资源目录: {assets_dir}")
+
+    # SPA fallback：非 API 路径返回 index.html
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        return FileResponse(str(_SPA_INDEX))
+
+    logger.info(f"Vue 前端已启用，静态文件目录: {_WEB_DIST}")
+
+
+_mount_vue_frontend()

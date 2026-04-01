@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from lelamp.api.routes import devices, history, websocket, system, settings, auth
+from lelamp.api.routes import devices, history, websocket, system, settings, auth, livekit
 
 api_router = APIRouter(prefix="/api")
 
@@ -16,5 +16,8 @@ api_router.include_router(system.router, prefix="/system", tags=["system"])
 
 # 设置管理端点
 api_router.include_router(settings.router, prefix="/settings", tags=["settings"])
+
+# LiveKit Token 端点
+api_router.include_router(livekit.router, prefix="/livekit", tags=["livekit"])
 
 __all__ = ["api_router"]
