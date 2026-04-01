@@ -192,6 +192,17 @@ async def lifespan(app: FastAPI):
     # 启动时执行
     logger.info("LeLamp API 启动")
 
+    # 注册 mDNS 服务（设备自动发现）
+    try:
+        from lelamp.api.services.mdns_service import MDNSService
+        from lelamp.config import load_config
+        config = load_config()
+        mdns = MDNSService(device_id=config.lamp_id, port=8000)
+        mdns.register()
+        app.state.mdns = mdns
+    except Exception as e:
+        logger.warning(f"mDNS init failed (non-fatal): {e}")
+
     # 初始化数据库（确保表已创建）
     try:
         from lelamp.database.base import init_db
@@ -303,6 +314,10 @@ async def lifespan(app: FastAPI):
 
     # 关闭时执行
     logger.info("LeLamp API 关闭")
+
+    # 注销 mDNS 服务
+    if getattr(app.state, "mdns", None):
+        app.state.mdns.unregister()
 
     # 取消后台任务
     polling_task.cancel()

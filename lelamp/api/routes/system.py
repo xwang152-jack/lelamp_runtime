@@ -127,8 +127,8 @@ async def start_ap_mode(request: APStartRequest = APStartRequest()) -> dict:
             return {
                 "success": True,
                 "message": "AP 模式已在运行",
-                "ssid": "LeLamp-Setup",
-                "password": "lelamp123",
+                "ssid": ap_manager.current_ssid,
+                "password": ap_manager.current_password,
                 "ip_address": "192.168.4.1"
             }
 
@@ -389,6 +389,57 @@ def get_system_info() -> dict:
             "python_version": "unknown",
             "cpu_count": 0,
         }
+
+
+@router.get("/device")
+async def get_device_info(token: str | None = None) -> dict:
+    """
+    获取设备信息（无需认证，局域网内可用）
+
+    已认证时额外返回绑定状态和密钥。
+    """
+    from lelamp.api.services.auth_service import AuthService
+    from lelamp.api.services.onboarding import get_device_secret
+    from lelamp.config import load_config
+
+    config = load_config()
+    device_secret = await get_device_secret()
+
+    result = {
+        "device_id": config.lamp_id,
+        "hostname": socket.gethostname(),
+        "model": "LeLamp",
+        "version": "0.1.0",
+    }
+
+    # 已认证用户：返回密钥和绑定状态
+    if token:
+        payload = AuthService.verify_token(token, "access")
+        if payload:
+            user_id = payload.get("user_id")
+            if user_id:
+                from lelamp.database.models_auth import DeviceBinding
+                from lelamp.database.session import SessionLocal
+                db = SessionLocal()
+                try:
+                    binding = db.query(DeviceBinding).filter(
+                        DeviceBinding.user_id == user_id,
+                        DeviceBinding.device_id == config.lamp_id,
+                    ).first()
+                    result["is_bound"] = binding is not None
+                    if binding:
+                        result["permission_level"] = binding.permission_level
+                finally:
+                    db.close()
+            # 返回设备密钥供用户绑定
+            if device_secret:
+                result["device_secret"] = device_secret
+
+    # 未认证也返回密钥（局域网信任模型，方便首次绑定）
+    if device_secret and "device_secret" not in result:
+        result["device_secret"] = device_secret
+
+    return result
 
 
 @router.get("/info", response_model=SystemInfoResponse)

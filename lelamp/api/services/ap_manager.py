@@ -7,6 +7,7 @@ AP 模式管理器
 import asyncio
 import logging
 import os
+import secrets
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -19,7 +20,7 @@ logger = logging.getLogger(__name__)
 class APConfig:
     """AP 热点配置"""
     ssid: str = "LeLamp-Setup"
-    password: str = "lelamp123"
+    password: str | None = None  # None 时自动生成随机密码
     ip_address: str = "192.168.4.1"
     netmask: str = "255.255.255.0"
     channel: int = 6
@@ -40,11 +41,12 @@ class APConfig:
         if not self.ssid or len(self.ssid) > 32:
             raise ValueError("SSID 必须在 1-32 个字符之间")
 
-        # 验证密码 (WPA2 要求 8-63 个 ASCII 字符)
-        if not (8 <= len(self.password) <= 63):
-            raise ValueError("密码长度必须在 8-63 个字符之间")
-        if not self.password.encode('utf-8').isascii():
-            raise ValueError("密码只能包含 ASCII 字符")
+        # 验证密码 (WPA2 要求 8-63 个 ASCII 字符，None 时跳过)
+        if self.password is not None:
+            if not (8 <= len(self.password) <= 63):
+                raise ValueError("密码长度必须在 8-63 个字符之间")
+            if not self.password.encode('utf-8').isascii():
+                raise ValueError("密码只能包含 ASCII 字符")
 
         # 验证频道
         if not (1 <= self.channel <= 14):
@@ -130,6 +132,11 @@ class APManager:
                 return {"success": True, "message": "AP 模式已在运行", "ip_address": self._config.ip_address}
 
             try:
+                # 自动生成随机密码
+                if self._config.password is None:
+                    self._config.password = secrets.token_urlsafe(6)
+                    logger.info(f"Generated random AP password: {self._config.password}")
+
                 logger.info(f"Starting AP mode: {self._config.ssid}")
 
                 # 1. 停止现有的 WiFi 连接
@@ -161,11 +168,35 @@ class APManager:
 
                 self._is_running = True
 
+                # 持久化 AP 密码到 setup_status.json（供 Captive Portal 读取）
+                try:
+                    from pathlib import Path
+                    import json
+                    status_file = Path("/var/lib/lelamp/setup_status.json")
+                    status_file.parent.mkdir(parents=True, exist_ok=True)
+                    data = {}
+                    if status_file.exists():
+                        data = json.loads(status_file.read_text())
+                    data["ap_password"] = self._config.password
+                    status_file.write_text(json.dumps(data, indent=2, ensure_ascii=False))
+                except Exception as e:
+                    logger.warning(f"Failed to persist AP password: {e}")
+
+                # LED 提示：蓝色呼吸灯表示配置模式
+                try:
+                    from lelamp.service.rgb.rgb_service import RGBService
+                    rgb = RGBService()
+                    rgb.start()
+                    rgb.dispatch_event("breath", {"color": (0, 100, 255), "period": 2.0})
+                    logger.info("LED breathing blue to indicate setup mode")
+                except Exception:
+                    pass  # NoOp on macOS
+
                 logger.info(f"AP mode started successfully: {self._config.ssid} at {self._config.ip_address}")
 
                 return {
                     "success": True,
-                    "message": f"AP 模式已启动",
+                    "message": "AP 模式已启动",
                     "ssid": self._config.ssid,
                     "password": self._config.password,
                     "ip_address": self._config.ip_address
@@ -203,6 +234,16 @@ class APManager:
             except Exception as e:
                 logger.error(f"Failed to stop AP mode: {e}", exc_info=True)
                 return False
+
+    @property
+    def current_password(self) -> str | None:
+        """获取当前 AP 密码（可能为 None）"""
+        return self._config.password
+
+    @property
+    def current_ssid(self) -> str:
+        """获取当前 AP SSID"""
+        return self._config.ssid
 
     # ==================== Captive Portal Support ====================
 

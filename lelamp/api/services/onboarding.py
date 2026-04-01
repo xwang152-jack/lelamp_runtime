@@ -7,6 +7,7 @@ import asyncio
 import json
 import logging
 import os
+import secrets
 from datetime import datetime, UTC
 from pathlib import Path
 from typing import Optional
@@ -100,6 +101,10 @@ class OnboardingManager:
                 self._ensure_state_dir()
 
                 status = await self._get_status_from_file() or {}
+
+                # 首次配置时生成设备密钥（后续不变）
+                if not status.get("device_secret"):
+                    status["device_secret"] = secrets.token_hex(8)
 
                 status.update({
                     "setup_completed": True,
@@ -301,3 +306,15 @@ OnboardingService = OnboardingManager
 
 # 全局单例实例
 onboarding_manager = OnboardingManager()
+
+
+async def get_device_secret() -> str | None:
+    """获取设备密钥：优先从 setup_status.json 读取，其次从环境变量。"""
+    try:
+        status = await onboarding_manager.get_setup_status()
+        secret = status.get("device_secret")
+        if secret:
+            return secret
+    except Exception:
+        pass
+    return os.getenv("LELAMP_DEVICE_SECRET")

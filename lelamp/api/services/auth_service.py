@@ -131,7 +131,18 @@ class AuthService:
     def bind_device(db: Session, user_id: int, device_id: str, device_secret: str) -> DeviceBinding:
         """绑定设备"""
         # 验证设备密钥（恒定时间比较防止时序攻击）
+        # 优先从 setup_status.json 读取，其次从环境变量
         expected_secret = os.getenv("LELAMP_DEVICE_SECRET")
+        if not expected_secret:
+            try:
+                import json
+                from pathlib import Path
+                status_file = Path("/var/lib/lelamp/setup_status.json")
+                if status_file.exists():
+                    data = json.loads(status_file.read_text())
+                    expected_secret = data.get("device_secret")
+            except Exception:
+                pass
         if expected_secret and not hmac.compare_digest(device_secret, expected_secret):
             raise PermissionError("Invalid device secret")
 

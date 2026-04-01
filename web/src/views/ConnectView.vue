@@ -118,6 +118,41 @@
         </div>
       </div>
 
+      <!-- Device Info Card (shown after loading device info) -->
+      <div v-if="deviceInfo" class="device-info-card">
+        <div class="device-info-header">
+          <span class="device-info-icon">📡</span>
+          <span class="device-info-title">设备信息</span>
+          <span v-if="deviceInfo.is_bound" class="badge badge-bound">已绑定</span>
+        </div>
+        <div class="device-info-body">
+          <div class="info-row">
+            <span class="info-label">设备 ID</span>
+            <code class="info-value">{{ deviceInfo.device_id }}</code>
+          </div>
+          <div class="info-row">
+            <span class="info-label">绑定密钥</span>
+            <div class="secret-value">
+              <code v-if="showSecret">{{ deviceInfo.device_secret }}</code>
+              <code v-else>••••••••••••••••</code>
+              <button class="copy-btn" @click="toggleSecret" :title="showSecret ? '隐藏' : '显示'">
+                {{ showSecret ? '🙈' : '👁' }}
+              </button>
+              <button class="copy-btn" @click="copySecret" title="复制">
+                📋
+              </button>
+            </div>
+          </div>
+          <button
+            v-if="isAuthenticated && !deviceInfo.is_bound && deviceInfo.device_secret"
+            class="bind-btn"
+            @click="handleBindDevice"
+          >
+            🔗 绑定此设备
+          </button>
+        </div>
+      </div>
+
       <!-- Help Tips -->
       <div class="help-tips">
         <div class="tip-item" v-for="(tip, index) in tips" :key="index" :style="{ animationDelay: `${index * 0.1}s` }">
@@ -145,6 +180,8 @@ const loading = ref(false)
 const isConnected = ref(false)
 const isBlinking = ref(false)
 const connectedWiFi = ref('')
+const deviceInfo = ref<Record<string, any> | null>(null)
+const showSecret = ref(false)
 
 const form = reactive({
   serverUrl: '',
@@ -215,6 +252,61 @@ const checkNetworkStatus = async () => {
   }
 }
 
+const fetchDeviceInfo = async () => {
+  try {
+    const token = authStore.accessToken
+    const url = new URL(`${form.serverUrl}/api/system/device`)
+    if (token) url.searchParams.set('token', token)
+    const response = await fetch(url.toString())
+    if (response.ok) {
+      deviceInfo.value = await response.json()
+    }
+  } catch (error) {
+    console.warn('Failed to fetch device info:', error)
+  }
+}
+
+const toggleSecret = () => {
+  showSecret.value = !showSecret.value
+}
+
+const copySecret = async () => {
+  if (deviceInfo.value?.device_secret) {
+    try {
+      await navigator.clipboard.writeText(deviceInfo.value.device_secret)
+      ElMessage.success('密钥已复制')
+    } catch {
+      ElMessage.error('复制失败')
+    }
+  }
+}
+
+const handleBindDevice = async () => {
+  if (!deviceInfo.value) return
+  try {
+    const response = await fetch(`${form.serverUrl}/api/auth/bind-device`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${authStore.accessToken}`,
+      },
+      body: JSON.stringify({
+        device_id: deviceInfo.value.device_id,
+        device_secret: deviceInfo.value.device_secret,
+      }),
+    })
+    if (response.ok) {
+      deviceInfo.value.is_bound = true
+      ElMessage.success('设备绑定成功！')
+    } else {
+      const data = await response.json()
+      ElMessage.error(data.detail || '绑定失败')
+    }
+  } catch {
+    ElMessage.error('绑定请求失败')
+  }
+}
+
 async function handleConnect() {
   if (!form.serverUrl) {
     ElMessage.warning('请先配置服务器地址')
@@ -257,6 +349,7 @@ const startBlinkAnimation = () => {
 onMounted(() => {
   autoConfigureUrl()
   checkNetworkStatus()
+  fetchDeviceInfo()
   startBlinkAnimation()
 })
 
@@ -741,6 +834,131 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: var(--lelamp-space-sm);
+}
+
+/* === Device Info Card === */
+.device-info-card {
+  margin-top: var(--lelamp-space-lg);
+  background: var(--lelamp-bg-white);
+  border-radius: var(--lelamp-radius-xl);
+  padding: var(--lelamp-space-md) var(--lelamp-space-lg);
+  box-shadow: var(--lelamp-shadow-md);
+  animation: slide-up 0.5s ease-out backwards;
+  animation-delay: 0.2s;
+}
+
+.device-info-header {
+  display: flex;
+  align-items: center;
+  gap: var(--lelamp-space-sm);
+  margin-bottom: var(--lelamp-space-md);
+}
+
+.device-info-icon {
+  font-size: 1.125rem;
+}
+
+.device-info-title {
+  font-size: 0.938rem;
+  font-weight: 700;
+  color: var(--lelamp-text-primary);
+  flex: 1;
+}
+
+.badge {
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 2px 10px;
+  border-radius: var(--lelamp-radius-full);
+}
+
+.badge-bound {
+  background: rgba(107, 203, 119, 0.15);
+  color: var(--lelamp-mint-dark);
+}
+
+.device-info-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lelamp-space-sm);
+}
+
+.info-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--lelamp-space-md);
+}
+
+.info-label {
+  font-size: 0.813rem;
+  color: var(--lelamp-text-secondary);
+  white-space: nowrap;
+}
+
+.info-value {
+  font-size: 0.813rem;
+  font-family: monospace;
+  color: var(--lelamp-text-primary);
+  background: var(--lelamp-bg-gray);
+  padding: 2px 8px;
+  border-radius: var(--lelamp-radius-sm);
+}
+
+.secret-value {
+  display: flex;
+  align-items: center;
+  gap: var(--lelamp-space-xs);
+}
+
+.secret-value code {
+  font-size: 0.813rem;
+  font-family: monospace;
+  color: var(--lelamp-text-primary);
+  background: var(--lelamp-bg-gray);
+  padding: 2px 8px;
+  border-radius: var(--lelamp-radius-sm);
+  flex: 1;
+  text-align: center;
+}
+
+.copy-btn {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: var(--lelamp-bg-gray);
+  border-radius: var(--lelamp-radius-sm);
+  cursor: pointer;
+  font-size: 0.875rem;
+  transition: background var(--lelamp-transition-fast);
+
+  &:hover {
+    background: var(--lelamp-peach-light);
+  }
+}
+
+.bind-btn {
+  width: 100%;
+  margin-top: var(--lelamp-space-sm);
+  padding: var(--lelamp-space-sm) var(--lelamp-space-md);
+  font-size: 0.875rem;
+  font-weight: 600;
+  font-family: var(--lelamp-font-body);
+  background: linear-gradient(135deg, var(--lelamp-peach) 0%, var(--lelamp-coral) 100%);
+  color: var(--lelamp-bg-white);
+  border: none;
+  border-radius: var(--lelamp-radius-md);
+  cursor: pointer;
+  transition: all var(--lelamp-transition-bounce);
+  box-shadow: 0 2px 8px rgba(255, 107, 138, 0.2);
+
+  &:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(255, 107, 138, 0.3);
+  }
 }
 
 .tip-item {

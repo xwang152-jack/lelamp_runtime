@@ -55,6 +55,7 @@ api = [
     "pyjwt>=2.8.0",
     "bcrypt>=4.1.0",
     "python-multipart>=0.0.6",
+    "zeroconf>=0.132.0",
 ]
 
 [build-system]

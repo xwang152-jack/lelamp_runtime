@@ -137,6 +137,10 @@ def create_captive_portal_app() -> FastAPI:
                 <div id="step-welcome" class="step active">
                     <h1>🪔 LeLamp</h1>
                     <p class="subtitle">欢迎使用 LeLamp 智能台灯</p>
+                    <div id="ap-password-hint" style="display:none; background:#e8f4fd; border-radius:8px; padding:12px; margin:15px 0; text-align:center;">
+                        <p style="margin:0; font-size:13px; color:#666;">当前热点密码</p>
+                        <p id="ap-password-display" style="margin:4px 0 0; font-size:20px; font-weight:bold; font-family:monospace; letter-spacing:2px; color:#333;"></p>
+                    </div>
                     <p style="text-align: center; margin-bottom: 20px;">让我们帮您连接到 WiFi 网络</p>
                     <button class="btn btn-primary" onclick="scanNetworks()">开始设置</button>
                 </div>
@@ -290,6 +294,10 @@ def create_captive_portal_app() -> FastAPI:
                 fetch('/api/setup/status')
                     .then(r => r.json())
                     .then(data => {
+                        if (data.ap_password) {
+                            document.getElementById('ap-password-display').textContent = data.ap_password;
+                            document.getElementById('ap-password-hint').style.display = 'block';
+                        }
                         if (data.setup_completed) {
                             document.getElementById('ip-display').textContent = data.last_ip_address || '未知';
                             document.getElementById('access-url').textContent = 'http://' + (data.last_ip_address || 'lelamp.local') + ':5173';
@@ -305,13 +313,30 @@ def create_captive_portal_app() -> FastAPI:
         """获取设置状态"""
         try:
             state = state_manager.load_state()
+            # 读取 AP 密码
+            ap_password = None
+            try:
+                import json
+                from pathlib import Path
+                status_file = Path("/var/lib/lelamp/setup_status.json")
+                if status_file.exists():
+                    setup_data = json.loads(status_file.read_text())
+                    ap_password = setup_data.get("ap_password")
+            except Exception:
+                pass
+            # 回退到 APManager 当前密码
+            if not ap_password:
+                from lelamp.api.services.ap_manager import ap_manager
+                ap_password = ap_manager.current_password
+
             return {
                 "setup_completed": state.get("setup_completed", False),
                 "current_step": state.get("current_step", "welcome"),
                 "error_message": state.get("error_message"),
                 "connection_attempts": state.get("connection_attempts", 0),
                 "last_ip_address": state.get("last_ip_address"),
-                "wifi_ssid": state.get("wifi_ssid")
+                "wifi_ssid": state.get("wifi_ssid"),
+                "ap_password": ap_password,
             }
         except Exception as e:
             logger.error(f"获取状态失败: {e}")
