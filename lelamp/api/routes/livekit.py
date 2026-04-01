@@ -7,7 +7,7 @@ import os
 import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from livekit import api
 
 from lelamp.api.services.auth_service import AuthService
@@ -18,8 +18,7 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/login")
 
 
 class LiveKitTokenRequest(BaseModel):
-    room: str = "lelamp-room"
-    identity: str = "user-app"
+    room: str = Field(default="lelamp-room", min_length=1, max_length=128, pattern=r"^[a-zA-Z0-9_-]+$")
 
 
 class LiveKitTokenResponse(BaseModel):
@@ -33,7 +32,7 @@ async def create_livekit_token(
     request: LiveKitTokenRequest,
     token: str = Depends(oauth2_scheme),
 ):
-    """生成 LiveKit 访问令牌（需要认证）"""
+    """生成 LiveKit 访问令牌（需要认证，identity 强制使用当前用户）"""
     payload = AuthService.verify_token(token, "access")
     if payload is None:
         raise HTTPException(
@@ -49,13 +48,15 @@ async def create_livekit_token(
             detail="LiveKit is not configured on this device",
         )
 
-    # 使用用户身份作为 participant identity
-    identity = request.identity or f"user-{payload.get('user_id', 'unknown')}"
+    # 强制使用认证用户的身份，防止身份冒充
+    user_id = payload.get("user_id", "unknown")
+    username = payload.get("sub", f"user-{user_id}")
+    identity = f"{username}-{user_id}"
 
     access_token = (
         api.AccessToken(api_key, api_secret)
         .with_identity(identity)
-        .with_name(identity)
+        .with_name(username)
         .with_grants(
             api.VideoGrants(
                 room_join=True,
@@ -67,7 +68,7 @@ async def create_livekit_token(
     )
 
     jwt_token = access_token.to_jwt()
-    logger.info(f"LiveKit token generated for {identity} in room {request.room}")
+    logger.debug(f"LiveKit token generated for {identity} in room {request.room}")
 
     return LiveKitTokenResponse(
         token=jwt_token,

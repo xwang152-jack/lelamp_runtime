@@ -3,10 +3,10 @@ FastAPI 应用主文件
 """
 from contextlib import asynccontextmanager
 from pathlib import Path
-from fastapi import FastAPI, Request, status
+from fastapi import FastAPI, Request, status, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi.responses import JSONResponse, FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -417,9 +417,14 @@ def _mount_vue_frontend():
         app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="vue-assets")
         logger.info(f"已挂载静态资源目录: {assets_dir}")
 
-    # SPA fallback：非 API 路径返回 index.html
-    @app.get("/{full_path:path}")
+    # SPA fallback：非 API/FastAPI 内置路径返回 index.html
+    _EXCLUDED_PREFIXES = ("api/", "docs", "redoc", "openapi.json", "health")
+
+    @app.get("/{full_path:path}", response_class=HTMLResponse)
     async def serve_spa(full_path: str):
+        for prefix in _EXCLUDED_PREFIXES:
+            if full_path == prefix or full_path.startswith(prefix + "/"):
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
         return FileResponse(str(_SPA_INDEX))
 
     logger.info(f"Vue 前端已启用，静态文件目录: {_WEB_DIST}")

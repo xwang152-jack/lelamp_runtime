@@ -10,6 +10,7 @@ Provides:
 from datetime import datetime, timedelta
 from typing import Optional, Dict
 import os
+import hmac
 import secrets
 import logging
 import jwt
@@ -129,9 +130,9 @@ class AuthService:
     @staticmethod
     def bind_device(db: Session, user_id: int, device_id: str, device_secret: str) -> DeviceBinding:
         """绑定设备"""
-        # 验证设备密钥
+        # 验证设备密钥（恒定时间比较防止时序攻击）
         expected_secret = os.getenv("LELAMP_DEVICE_SECRET")
-        if expected_secret and device_secret != expected_secret:
+        if expected_secret and not hmac.compare_digest(device_secret, expected_secret):
             raise PermissionError("Invalid device secret")
 
         # 检查是否已绑定
@@ -145,7 +146,7 @@ class AuthService:
         binding = DeviceBinding(
             user_id=user_id,
             device_id=device_id,
-            device_secret=device_secret,
+            device_secret="",  # 不存储密钥明文
             permission_level="admin"  # 第一个绑定的用户是管理员
         )
         db.add(binding)
