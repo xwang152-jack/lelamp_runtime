@@ -52,6 +52,8 @@ class DeviceBindResponse(BaseModel):
     device_id: str
     permission_level: str
     bound_at: str
+    skipped: bool = False
+    skip_reason: Optional[str] = None
 
 
 class RefreshTokenRequest(BaseModel):

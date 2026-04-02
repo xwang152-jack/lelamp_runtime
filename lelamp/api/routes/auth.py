@@ -228,16 +228,22 @@ async def auto_bind_device(
         )
 
     except ValueError as e:
-        logger.warning(f"自动绑定失败: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
+        logger.warning(f"自动绑定失败（已跳过）: {str(e)}")
+        return DeviceBindResponse(
+            device_id="unknown",
+            permission_level="none",
+            bound_at="",
+            skipped=True,
+            skip_reason=str(e),
         )
     except Exception as e:
-        logger.error(f"自动绑定错误: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Internal server error"
+        logger.error(f"自动绑定错误（已跳过）: {str(e)}")
+        return DeviceBindResponse(
+            device_id="unknown",
+            permission_level="none",
+            bound_at="",
+            skipped=True,
+            skip_reason="internal_error",
         )
 
 
