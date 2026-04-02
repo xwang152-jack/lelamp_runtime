@@ -152,9 +152,6 @@ class MemoryConsolidator:
         4. 去重并保存新记忆
         5. 保存对话摘要
         """
-        with self._lock:
-            self._last_consolidation_ts = time.time()
-
         # 调用方负责传入未整合的轮次；内部最多保留 40 条防止 prompt 过大
         recent_turns = conversation_turns[-40:]
 
@@ -178,9 +175,12 @@ class MemoryConsolidator:
         # 调用 LLM
         llm_response = await self._call_llm(_CONSOLIDATION_SYSTEM, user_prompt)
         if not llm_response:
-            self._llm_failure_count += 1
-            if self._llm_failure_count >= self._max_llm_failures:
-                self._llm_failure_count = 0
+            with self._lock:
+                self._llm_failure_count += 1
+                should_fallback = self._llm_failure_count >= self._max_llm_failures
+                if should_fallback:
+                    self._llm_failure_count = 0
+            if should_fallback:
                 logger.warning(
                     f"LLM consolidation failed {self._max_llm_failures} times, "
                     "falling back to raw archive"
@@ -189,7 +189,8 @@ class MemoryConsolidator:
             return None
 
         # LLM 成功：重置失败计数
-        self._llm_failure_count = 0
+        with self._lock:
+            self._llm_failure_count = 0
 
         # 解析 JSON 响应
         try:
@@ -325,11 +326,11 @@ class MemoryConsolidator:
         不提取长期记忆，仅保留对话历史以防数据丢失。
         """
         user_lines = [
-            t["content"][:80]
+            t["content"][:80]  # 每条用户发言截取 80 字符（约 80 汉字）
             for t in turns
             if t.get("role") == "user" and t.get("content")
         ]
-        fallback_summary = "【自动降级摘要】" + " | ".join(user_lines[:5])
+        fallback_summary = "【自动降级摘要】" + " | ".join(user_lines[:5])  # 最多 5 条
 
         try:
             now = datetime.utcnow()
