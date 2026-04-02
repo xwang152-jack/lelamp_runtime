@@ -537,7 +537,7 @@ def test_should_consolidate_by_tokens_above_threshold(store):
         memory_store=store,
     )
     # context_token_limit=8000, ratio=0.7 → 阈值 5600 tokens
-    # 每条 ~3600 chars / 0.67 ≈ 5373 tokens，两条合计 ~10746 tokens，超过阈值
+    # 每条 ~3900 chars / 0.67 ≈ 5820 tokens，两条合计 ~11640 tokens，超过阈值
     long_content = "这是一段很长的对话内容。" * 300
     turns = [
         {"role": "user", "content": long_content},

@@ -19,7 +19,7 @@ from typing import Optional
 
 import httpx
 
-from lelamp.memory.store import MemoryStore
+from lelamp.memory.store import MemoryStore, _CHARS_PER_TOKEN
 from lelamp.memory.config import load_memory_config
 
 logger = logging.getLogger("lelamp.memory.consolidator")
@@ -121,9 +121,16 @@ class MemoryConsolidator:
         if not conversation_turns:
             return False
 
-        estimated = sum(len(t.get("content", "")) / 0.67 for t in conversation_turns)
+        estimated = sum(len(t.get("content", "")) / _CHARS_PER_TOKEN for t in conversation_turns)
         threshold = self._context_token_limit * self._context_budget_ratio
-        return estimated > threshold
+
+        if estimated > threshold:
+            with self._lock:
+                if time.time() - self._last_consolidation_ts < self._cooldown_s:
+                    return False  # 仍在冷却中
+                self._last_consolidation_ts = time.time()
+                return True
+        return False
 
     async def consolidate(
         self,
