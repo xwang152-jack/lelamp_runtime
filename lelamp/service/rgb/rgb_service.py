@@ -191,6 +191,10 @@ class RGBService(ServiceBase):
 
     def _disable_breath(self):
         self._breath_enabled.clear()
+        # 恢复亮度，避免 breath 停止时 LED 保持在低亮度
+        with self._strip_lock:
+            self.strip.setBrightness(int(self._brightness))
+            self.strip.show()
 
     def _disable_effect(self):
         self._effect_enabled.clear()
@@ -224,14 +228,18 @@ class RGBService(ServiceBase):
                 time.sleep(0.05)
                 continue
 
-            now = time.time()
-            period = float(self._breath_period_s) if self._breath_period_s else 1.6
-            phase = ((now - self._breath_t0) / period) * (2.0 * math.pi)
-            v = (math.sin(phase - math.pi / 2.0) + 1.0) / 2.0
-            brightness = int(self._breath_min + v * (self._breath_max - self._breath_min))
-            brightness = min(int(self._brightness), max(0, brightness))
-
+            # 双重检查：获取锁后再检查一次，避免竞态
             with self._strip_lock:
+                if not self._breath_enabled.is_set():
+                    continue
+
+                now = time.time()
+                period = float(self._breath_period_s) if self._breath_period_s else 1.6
+                phase = ((now - self._breath_t0) / period) * (2.0 * math.pi)
+                v = (math.sin(phase - math.pi / 2.0) + 1.0) / 2.0
+                brightness = int(self._breath_min + v * (self._breath_max - self._breath_min))
+                brightness = min(int(self._brightness), max(0, brightness))
+
                 self.strip.setBrightness(brightness)
                 self.strip.show()
 

@@ -240,32 +240,8 @@ async def lifespan(app: FastAPI):
         rgb_service.start()
         app.state.rgb_service = rgb_service
 
-    # 初始化 VisionService（用于边缘视觉监控）
+    # VisionService 由 LiveKit Agent 独占管理，API 不启动以避免摄像头争抢
     vision_service = None
-    try:
-        from lelamp.service.vision.vision_service import VisionService
-        from lelamp.config import load_vision_config
-
-        vision_cfg = load_vision_config()
-        if vision_cfg.enabled:
-            vision_service = VisionService(
-                enabled=vision_cfg.enabled,
-                index_or_path=vision_cfg.index_or_path,
-                width=vision_cfg.width,
-                height=vision_cfg.height,
-                capture_interval_s=0.5,  # API 模式下平衡性能（2fps捕获）
-                jpeg_quality=85,  # 降低质量以减少带宽
-                max_age_s=vision_cfg.max_age_s,
-                rotate_deg=vision_cfg.rotate_deg,
-                flip=vision_cfg.flip,
-                enable_privacy_protection=False,  # API 模式下不需要隐私保护
-            )
-            vision_service.start()
-            app.state.vision_service = vision_service
-            logger.info("VisionService started")
-    except Exception as e:
-        logger.error(f"VisionService start failed: {e}")
-        vision_service = None
 
     # 初始化 LeLamp Agent
     try:
