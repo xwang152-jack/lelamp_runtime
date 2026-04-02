@@ -346,6 +346,7 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
         self._memory_consolidator = None  # type: ignore
         self._memory_tools = None  # type: ignore
         self._conversation_turns: list[dict] = []
+        self._consolidation_offset: int = 0  # 已整合到哪一轮（turns[offset:] 是待整合的新轮次）
         self._session_id: str = ""
 
         memory_enabled = (os.getenv("LELAMP_MEMORY_ENABLED") or "1").strip().lower() in (
@@ -532,18 +533,23 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
     async def _run_consolidation(self) -> None:
         """后台执行记忆整合（非阻塞）"""
         try:
-            turns = list(self._conversation_turns)
+            # 只整合 offset 之后的新轮次
+            new_turns = list(self._conversation_turns[self._consolidation_offset:])
+            if not new_turns:
+                return
+
             result = await self._memory_consolidator.consolidate(
                 lamp_id=self._lamp_id,
                 session_id=self._session_id,
-                conversation_turns=turns,
+                conversation_turns=new_turns,
             )
-            if result and result.new_memories_count > 0:
-                new_instructions = self._build_dynamic_instructions()
-                await self.update_instructions(new_instructions)
-                logger.info(f"Memory consolidated: {result.new_memories_count} new memories")
-            # 整合后只保留最近几轮
-            self._conversation_turns = turns[-5:]
+            if result:
+                # 整合成功：推进偏移量到当前总轮数
+                self._consolidation_offset = len(self._conversation_turns)
+                if result.new_memories_count > 0:
+                    new_instructions = self._build_dynamic_instructions()
+                    await self.update_instructions(new_instructions)
+                    logger.info(f"Memory consolidated: {result.new_memories_count} new memories")
         except Exception as e:
             logger.warning(f"Background consolidation failed (non-critical): {e}")
 

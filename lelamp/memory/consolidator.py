@@ -123,8 +123,8 @@ class MemoryConsolidator:
         with self._lock:
             self._last_consolidation_ts = time.time()
 
-        # 截取最近 N 轮对话（避免 prompt 过长）
-        recent_turns = conversation_turns[-20:]
+        # 调用方负责传入未整合的轮次；内部最多保留 40 条防止 prompt 过大
+        recent_turns = conversation_turns[-40:]
 
         # 获取已有记忆用于去重
         existing = self._store.get_all_active_memories(lamp_id)

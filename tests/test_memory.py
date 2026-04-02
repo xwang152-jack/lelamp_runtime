@@ -471,3 +471,40 @@ class TestMemoryConsolidator:
             assert result is not None
             assert result.new_memories_count == 0
             assert result.summary_saved is True
+
+
+# ==================== last_consolidated offset 测试 ====================
+
+@pytest.mark.asyncio
+async def test_consolidation_offset_only_new_turns(store):
+    """整合后 offset 推进，下次整合只处理新轮次"""
+    from unittest.mock import AsyncMock, patch
+    from lelamp.memory.consolidator import MemoryConsolidator, ConsolidationResult
+
+    consolidator = MemoryConsolidator(
+        base_url="http://localhost",
+        api_key="test",
+        model="test-model",
+        memory_store=store,
+    )
+
+    # 模拟整合返回结果
+    mock_result = ConsolidationResult(new_memories_count=1, summary_saved=True)
+
+    with patch.object(consolidator, "consolidate", new_callable=AsyncMock) as mock_consolidate:
+        mock_consolidate.return_value = mock_result
+
+        turns = [{"role": "user", "content": f"msg{i}"} for i in range(12)]
+        offset = 0
+
+        # 第一次整合：传 turns[0:]
+        new_turns = turns[offset:]
+        result = await consolidator.consolidate("lamp1", "sess1", new_turns)
+        offset = len(turns)  # offset 推进到 12
+
+        # 继续对话，新增 5 条
+        turns += [{"role": "user", "content": f"new{i}"} for i in range(5)]
+
+        # 第二次整合：只传 turns[12:] — 即 5 条新轮次
+        new_turns = turns[offset:]
+        assert len(new_turns) == 5, f"应只传 5 条新轮次，实际 {len(new_turns)}"
