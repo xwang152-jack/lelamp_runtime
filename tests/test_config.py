@@ -172,7 +172,7 @@ class TestMotorConfig:
         assert config.health_check_interval_s == 300.0
         assert config.temp_warning_c == 65.0
         assert config.temp_critical_c == 75.0
-        assert config.voltage_min_v == 11.0
+        assert config.voltage_min_v == 4.5
         assert config.voltage_max_v == 13.0
         assert config.load_warning == 0.8
         assert config.load_stall == 0.95

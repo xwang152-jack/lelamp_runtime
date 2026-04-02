@@ -36,7 +36,6 @@ if TYPE_CHECKING:
     from lelamp.service.rgb.rgb_service import RGBService
     from lelamp.service.vision.vision_service import VisionService
     from lelamp.integrations.qwen_vl import Qwen3VLClient
-    from lelamp.utils.ota import OTAManager
 
 
 logger = logging.getLogger("lelamp")
@@ -867,7 +866,7 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
         lines.append(f"- 混合查询: {stats.get('hybrid_queries', 0)}")
         
         services = stats.get('services', {})
-        lines.append(f"- 服务状态:")
+        lines.append("- 服务状态:")
         lines.append(f"  - 人脸检测: {'启用' if services.get('face_detector') else '禁用'}")
         lines.append(f"  - 手势追踪: {'启用' if services.get('hand_tracker') else '禁用'}")
         lines.append(f"  - 物体检测: {'启用' if services.get('object_detector') else '禁用'}")
@@ -901,7 +900,6 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
         if self._vision_monitor is None:
             return "主动监听服务未启用。边缘视觉服务正常运行，可通过语音命令触发检测。"
 
-        import json
         stats = self._vision_monitor.get_stats()
         return f"""主动监听服务状态：
 - 运行中: {stats['running']}
