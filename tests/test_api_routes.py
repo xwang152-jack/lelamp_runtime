@@ -2,7 +2,7 @@
 测试API路由模块
 """
 import pytest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch, MagicMock, AsyncMock
 from datetime import datetime, timedelta
 
 from fastapi import FastAPI
@@ -78,6 +78,78 @@ class TestWiFiManager:
 
         # 结果可能是成功或失败
         assert isinstance(result, dict)
+
+    @pytest.mark.asyncio
+    async def test_connect_retries_on_failure(self):
+        """WiFi 连接失败时应自动重试"""
+        from lelamp.api.services.wifi_manager import WiFiManager
+
+        manager = WiFiManager()
+        call_count = 0
+
+        async def mock_connect_once(ssid, password):
+            nonlocal call_count
+            call_count += 1
+            return {"success": False, "message": "连接失败", "ssid": ssid}
+
+        with patch.object(manager, '_try_nmcli_connect', side_effect=mock_connect_once):
+            result = await manager.connect("TestSSID", "wrongpass", max_retries=3)
+
+        assert result["success"] is False
+        assert call_count == 3  # 应重试 3 次
+
+    @pytest.mark.asyncio
+    async def test_connect_succeeds_on_second_attempt(self):
+        """WiFi 连接第一次失败、第二次成功"""
+        from lelamp.api.services.wifi_manager import WiFiManager
+
+        manager = WiFiManager()
+        attempts = []
+
+        async def mock_connect_once(ssid, password):
+            attempts.append(1)
+            if len(attempts) == 1:
+                return {"success": False, "message": "连接超时", "ssid": ssid}
+            return {"success": True, "message": "连接成功", "ssid": ssid}
+
+        with patch.object(manager, '_try_nmcli_connect', side_effect=mock_connect_once):
+            with patch('asyncio.sleep', return_value=None):  # 不真正等待
+                result = await manager.connect("TestSSID", "pass", max_retries=3)
+
+        assert result["success"] is True
+        assert len(attempts) == 2
+
+    @pytest.mark.asyncio
+    async def test_verify_network_reachability_success(self):
+        """网络可达性验证成功"""
+        from lelamp.api.services.wifi_manager import WiFiManager
+        from unittest.mock import AsyncMock, MagicMock
+
+        manager = WiFiManager()
+        mock_process = MagicMock()
+        mock_process.returncode = 0
+        mock_process.communicate = AsyncMock(return_value=(b"", b""))
+
+        with patch('asyncio.create_subprocess_exec', return_value=mock_process):
+            result = await manager._verify_network_reachability()
+
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_verify_network_reachability_failure(self):
+        """网络不可达时返回 False"""
+        from lelamp.api.services.wifi_manager import WiFiManager
+        from unittest.mock import AsyncMock, MagicMock
+
+        manager = WiFiManager()
+        mock_process = MagicMock()
+        mock_process.returncode = 1
+        mock_process.communicate = AsyncMock(return_value=(b"", b"ping: connect: Network is unreachable"))
+
+        with patch('asyncio.create_subprocess_exec', return_value=mock_process):
+            result = await manager._verify_network_reachability()
+
+        assert result is False
 
 
 @pytest.mark.unit

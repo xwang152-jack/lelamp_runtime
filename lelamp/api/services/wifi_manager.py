@@ -267,53 +267,104 @@ class WiFiManager:
                 "dns_servers": []
             }
 
-    async def connect(self, ssid: str, password: Optional[str] = None) -> dict:
+    async def connect(
+        self,
+        ssid: str,
+        password: Optional[str] = None,
+        max_retries: int = 3,
+        event_callback=None,
+    ) -> dict:
         """
-        连接到 WiFi 网络
+        连接到 WiFi 网络，支持自动重试和网络验证
 
         Args:
             ssid: 网络名称
             password: WiFi 密码（开放网络可为 None）
+            max_retries: 最大重试次数（默认 3）
+            event_callback: 可选的异步回调，接收进度事件 dict
 
         Returns:
-            连接结果字典，包含 success, message, ssid
+            连接结果字典，包含 success, message, ssid, network_ok
         """
         async with self._connect_lock:
-            try:
-                # 先删除旧连接（如果存在）
-                await self._delete_connection(ssid)
+            for attempt in range(1, max_retries + 1):
+                if event_callback:
+                    await event_callback({
+                        "event": "wifi_connecting",
+                        "attempt": attempt,
+                        "max_attempts": max_retries,
+                        "ssid": ssid,
+                    })
+                result = await self._try_nmcli_connect(ssid, password)
+                if result["success"]:
+                    if event_callback:
+                        await event_callback({"event": "wifi_connected", "ssid": ssid})
+                        await event_callback({"event": "network_checking"})
+                    network_ok = await self._verify_network_reachability()
+                    if event_callback:
+                        if network_ok:
+                            await event_callback({"event": "network_ok"})
+                        else:
+                            await event_callback({
+                                "event": "network_failed",
+                                "reason": "no_internet",
+                            })
+                    result["network_ok"] = network_ok
+                    return result
+                if attempt < max_retries:
+                    wait_sec = 2 ** attempt  # 2, 4, 8 秒
+                    if event_callback:
+                        await event_callback({
+                            "event": "wifi_failed",
+                            "attempt": attempt,
+                            "retry_in": wait_sec,
+                        })
+                    await asyncio.sleep(wait_sec)
 
-                # 创建新连接
-                cmd = ["sudo", self._nmcli_path, "device", "wifi", "connect", ssid]
+            return {"success": False, "message": f"连接失败（已重试 {max_retries} 次）", "ssid": ssid, "network_ok": False}
 
-                if password:
-                    cmd.extend(["password", password])
+    async def _try_nmcli_connect(self, ssid: str, password: Optional[str] = None) -> dict:
+        """单次 nmcli 连接尝试（原 connect 方法中的核心逻辑）"""
+        try:
+            await self._delete_connection(ssid)
+            cmd = ["sudo", self._nmcli_path, "device", "wifi", "connect", ssid]
+            if password:
+                cmd.extend(["password", password])
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, stderr = await asyncio.wait_for(
+                process.communicate(),
+                timeout=30
+            )
+            if process.returncode == 0:
+                logger.info(f"nmcli connect succeeded: {ssid}")
+                return {"success": True, "message": "连接成功", "ssid": ssid}
+            else:
+                error_msg = stderr.decode().strip()
+                logger.warning(f"nmcli connect failed: {ssid}: {error_msg}")
+                return {"success": False, "message": f"连接失败: {error_msg}", "ssid": ssid}
+        except asyncio.TimeoutError:
+            logger.warning(f"nmcli connect timeout: {ssid}")
+            return {"success": False, "message": "连接超时", "ssid": ssid}
+        except Exception as e:
+            logger.error(f"nmcli connect error: {e}", exc_info=True)
+            return {"success": False, "message": str(e), "ssid": ssid}
 
-                process = await asyncio.create_subprocess_exec(
-                    *cmd,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE
-                )
-
-                stdout, stderr = await asyncio.wait_for(
-                    process.communicate(),
-                    timeout=30  # 连接可能需要较长时间
-                )
-
-                if process.returncode == 0:
-                    logger.info(f"Successfully connected to {ssid}")
-                    return {"success": True, "message": "连接成功", "ssid": ssid}
-                else:
-                    error_msg = stderr.decode().strip()
-                    logger.error(f"Failed to connect to {ssid}: {error_msg}")
-                    return {"success": False, "message": f"连接失败: {error_msg}", "ssid": ssid}
-
-            except asyncio.TimeoutError:
-                logger.error(f"WiFi connect timeout for {ssid}")
-                return {"success": False, "message": "连接超时", "ssid": ssid}
-            except Exception as e:
-                logger.error(f"WiFi connect error: {e}", exc_info=True)
-                return {"success": False, "message": str(e), "ssid": ssid}
+    async def _verify_network_reachability(self, host: str = "223.5.5.5", timeout: int = 5) -> bool:
+        """通过 ping 验证网络是否可达（使用阿里 DNS，国内可达）"""
+        try:
+            process = await asyncio.create_subprocess_exec(
+                "ping", "-c", "1", "-W", str(timeout), host,
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            await asyncio.wait_for(process.communicate(), timeout=timeout + 2)
+            return process.returncode == 0
+        except Exception:
+            return False
 
     async def disconnect(self) -> bool:
         """
