@@ -168,3 +168,4 @@ async def test_setup_recovery_wifi_connected():
     assert result["can_recover"] is True
     assert result["skip_to_step"] == 4
     assert result["current_ssid"] == "HomeWiFi"
+    assert result["reason"] == "already_connected"
