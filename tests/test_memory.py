@@ -642,3 +642,70 @@ async def test_consolidation_raw_archive_on_repeated_failure(store):
 
     # 失败计数应已重置
     assert consolidator._llm_failure_count == 0
+
+
+# ==================== 摘要注入测试 ====================
+
+def test_build_dynamic_instructions_includes_summary(store):
+    """_build_dynamic_instructions 注入近期对话摘要"""
+    from datetime import datetime, timedelta
+    from unittest.mock import MagicMock, patch
+    from lelamp.agent.lelamp_agent import LeLamp
+
+    # 存入一条近期摘要
+    now = datetime.utcnow()
+    store.save_summary(
+        lamp_id="lamp_test_summary",
+        session_id="sess_inject",
+        summary="用户最近在练习钢琴，每天练习 30 分钟",
+        key_topics=["钢琴", "练习"],
+        message_count=5,
+        started_at=now - timedelta(hours=1),
+        ended_at=now,
+    )
+
+    # 用 MagicMock 模拟 agent 的必要属性
+    mock_agent = MagicMock(spec=LeLamp)
+    mock_agent._memory_initialized = True
+    mock_agent._memory_store = store
+    mock_agent._lamp_id = "lamp_test_summary"
+    mock_agent._INSTRUCTIONS = "BASE_INSTRUCTIONS"
+
+    result = LeLamp._build_dynamic_instructions(mock_agent)
+
+    assert "Recent Conversations" in result, "应包含摘要区块标题"
+    assert "钢琴" in result, "应包含摘要内容"
+    assert "BASE_INSTRUCTIONS" in result, "应保留基础指令"
+
+
+def test_build_dynamic_instructions_no_summary_within_budget(store):
+    """摘要超出 token 预算时不注入"""
+    from datetime import datetime, timedelta
+    from unittest.mock import MagicMock, patch
+    import os
+    from lelamp.agent.lelamp_agent import LeLamp
+
+    # 存入一条极长的摘要（超出 200 token 预算）
+    now = datetime.utcnow()
+    long_summary = "用户说了很多话。" * 200  # ~1600 字符 > 200 token 预算
+    store.save_summary(
+        lamp_id="lamp_test_budget",
+        session_id="sess_budget",
+        summary=long_summary,
+        key_topics=[],
+        message_count=10,
+        started_at=now - timedelta(hours=1),
+        ended_at=now,
+    )
+
+    mock_agent = MagicMock(spec=LeLamp)
+    mock_agent._memory_initialized = True
+    mock_agent._memory_store = store
+    mock_agent._lamp_id = "lamp_test_budget"
+    mock_agent._INSTRUCTIONS = "BASE"
+
+    with patch.dict(os.environ, {"LELAMP_MEMORY_SUMMARY_TOKEN_BUDGET": "200"}):
+        result = LeLamp._build_dynamic_instructions(mock_agent)
+
+    # 超出预算，摘要区块不应注入
+    assert "Recent Conversations" not in result

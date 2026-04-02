@@ -493,33 +493,60 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
     # ==================== 记忆系统方法 ====================
 
     def _build_dynamic_instructions(self) -> str:
-        """构建带记忆上下文的动态 system prompt"""
+        """构建带记忆上下文和近期摘要的动态 system prompt"""
         base = self._INSTRUCTIONS
 
         if not self._memory_initialized or not self._memory_store:
             return base
 
+        sections: list[str] = []
+
+        # --- 长期记忆（按 importance 排序，400 token 预算）---
         try:
             token_budget = int(os.getenv("LELAMP_MEMORY_TOKEN_BUDGET", "400"))
             memories = self._memory_store.get_active_memories(
                 lamp_id=self._lamp_id,
                 max_tokens=token_budget,
             )
-            if not memories:
-                return base
-
-            memory_section = "\n\n# Memory\nYou remember the following about this user:\n"
-            for m in memories:
-                memory_section += f"- [{m.category}] {m.content}\n"
-            memory_section += (
-                "\nUse these memories naturally in conversation. "
-                "Use save_memory() to remember new important things."
-            )
-
-            return base + memory_section
+            if memories:
+                lines = ["\n\n# Memory", "You remember the following about this user:"]
+                for m in memories:
+                    lines.append(f"- [{m.category}] {m.content}")
+                lines.append(
+                    "\nUse these memories naturally in conversation. "
+                    "Use save_memory() to remember new important things."
+                )
+                sections.append("\n".join(lines))
         except Exception as e:
-            logger.warning(f"Failed to build memory context: {e}")
+            logger.warning(f"Failed to load memories for prompt: {e}")
+
+        # --- 近期对话摘要（最近 72h，最多 2 条，200 token 预算）---
+        try:
+            summary_token_budget = int(os.getenv("LELAMP_MEMORY_SUMMARY_TOKEN_BUDGET", "200"))
+            summaries = self._memory_store.get_recent_summaries(
+                lamp_id=self._lamp_id,
+                hours=72,
+                limit=2,
+            )
+            if summaries:
+                used = 0
+                lines = ["\n\n# Recent Conversations", "Summary of recent sessions with this user:"]
+                for s in summaries:
+                    entry = f"- {s.summary}"
+                    est = len(entry) / 0.67 + 5
+                    if used + est > summary_token_budget:
+                        break
+                    lines.append(entry)
+                    used += est
+                if len(lines) > 2:  # 有实际摘要内容（超过标题行）
+                    sections.append("\n".join(lines))
+        except Exception as e:
+            logger.warning(f"Failed to load summaries for prompt: {e}")
+
+        if not sections:
             return base
+
+        return base + "".join(sections)
 
     async def _check_consolidation(self) -> None:
         """检查是否需要触发记忆整合"""
