@@ -176,12 +176,33 @@
         <div class="success-icon">✓</div>
         <h2>配置完成！</h2>
         <p>LeLamp 即将重启并连接到您的 WiFi</p>
-        <div class="access-info">
+
+        <!-- 倒计时阶段 -->
+        <div v-if="countdown > 0" class="countdown">
+          <span>{{ countdown }}</span> 秒后重启...
+        </div>
+
+        <!-- 等待重启上线 -->
+        <div v-else-if="postRebootChecking" class="reboot-checking">
+          <div class="spinner"></div>
+          <p>正在等待设备重启...</p>
+          <p class="hint">通常需要 15-30 秒</p>
+        </div>
+
+        <!-- 超时提示 -->
+        <div v-else-if="postRebootError" class="reboot-timeout">
+          <p>设备启动可能需要更长时间</p>
+          <p>请手动访问：</p>
+          <p class="access-url">http://lelamp.local:8000</p>
+          <el-button type="primary" @click="redirectToHome">
+            刷新页面
+          </el-button>
+        </div>
+
+        <!-- 上线后自动跳转（一般看不到） -->
+        <div v-else class="access-info">
           <p>设备访问地址：</p>
           <p class="access-url">http://lelamp.local:8000</p>
-        </div>
-        <div class="countdown">
-          <span>{{ countdown }}</span> 秒后重启...
         </div>
       </div>
     </div>
@@ -274,6 +295,8 @@ const connecting = ref(false)
 const connectingStatus = ref({ title: '正在连接...', message: '请稍候' })
 const connectionError = ref('')
 const countdown = ref(5)
+const postRebootChecking = ref(false)
+const postRebootError = ref(false)
 
 // 设备信息
 const deviceInfo = ref<{ device_id: string; hostname: string } | null>(null)
@@ -447,22 +470,46 @@ async function handleAuthRegister() {
 async function completeSetup() {
   try {
     const response = await axios.post(`${API_BASE}/api/setup/complete`, {
-      wifi_ssid: selectedNetwork.value?.ssid,
+      wifi_ssid: selectedNetwork.value?.ssid || 'unknown',
       restart_delay: countdown.value
     })
 
     if (response.data.success) {
-      // 开始倒计时
       const timer = setInterval(() => {
         countdown.value--
         if (countdown.value <= 0) {
           clearInterval(timer)
+          pollDeviceReboot()
         }
       }, 1000)
     }
   } catch (error) {
-    ElMessage.error('保存配置失败')
+    ElMessage.error('保存配置失败，请重试')
   }
+}
+
+async function pollDeviceReboot() {
+  postRebootChecking.value = true
+  const maxAttempts = 20  // 最多等 60 秒（每 3 秒一次）
+  for (let i = 0; i < maxAttempts; i++) {
+    await new Promise(resolve => setTimeout(resolve, 3000))
+    try {
+      const res = await axios.get(`${API_BASE}/api/setup/status`, { timeout: 5000 })
+      if (res.data.is_configured) {
+        postRebootChecking.value = false
+        window.location.href = '/'
+        return
+      }
+    } catch {
+      // 设备重启中，连接失败是正常的，继续等待
+    }
+  }
+  postRebootChecking.value = false
+  postRebootError.value = true
+}
+
+function redirectToHome() {
+  window.location.href = '/'
 }
 
 // 重试
