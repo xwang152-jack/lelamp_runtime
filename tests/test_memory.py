@@ -557,3 +557,44 @@ def test_should_consolidate_by_tokens_empty(store):
         memory_store=store,
     )
     assert consolidator.should_consolidate_by_tokens([]) is False
+
+
+# ==================== 矛盾检测测试 ====================
+
+@pytest.mark.asyncio
+async def test_consolidation_deactivates_obsolete_memories(store):
+    """整合时 obsolete_ids 中的旧记忆被软删除"""
+    import json
+    from unittest.mock import patch, AsyncMock
+    from lelamp.memory.consolidator import MemoryConsolidator
+
+    # 预先创建一条旧记忆
+    old_mem = store.add_memory("lamp1", "用户偏好暖色调灯光", category="preference", importance=7)
+    old_id = old_mem.id
+
+    consolidator = MemoryConsolidator(
+        base_url="http://localhost",
+        api_key="test",
+        model="test-model",
+        memory_store=store,
+    )
+
+    # LLM 返回矛盾检测结果，列出旧记忆 id 为废弃
+    mock_response = json.dumps({
+        "memories": [{"content": "用户偏好冷色调灯光", "category": "preference", "importance": 7}],
+        "obsolete_ids": [old_id],
+        "summary": "用户改变了灯光偏好",
+        "topics": ["灯光", "偏好"],
+    })
+
+    with patch.object(consolidator, "_call_llm", new_callable=AsyncMock) as mock_llm:
+        mock_llm.return_value = mock_response
+        turns = [{"role": "user", "content": "我改成冷色调了"}]
+        result = await consolidator.consolidate("lamp1", "sess1", turns)
+
+    # 旧记忆应已软删除
+    active = store.get_all_active_memories("lamp1")
+    active_ids = [m.id for m in active]
+    assert old_id not in active_ids, "旧的矛盾记忆应已被 deactivate"
+    # 新记忆应已存入
+    assert any("冷色调" in m.content for m in active), "新记忆应已保存"
