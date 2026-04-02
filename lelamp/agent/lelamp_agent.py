@@ -426,7 +426,18 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
             logger.warning(f"Proactive speech failed: {e}")
 
     def _on_motor_health_change(self, motor_name: str, old_status, new_status) -> None:
-        """舵机故障回调（运行在 health_check daemon 线程中，线程安全）"""
+        """舵机状态变化回调（运行在 health_check daemon 线程中，线程安全）"""
+        from lelamp.service.motors.health_monitor import HealthStatus
+        from lelamp.agent.states import StateColors
+
+        if new_status == HealthStatus.HEALTHY:
+            # 故障恢复：清除记录，检查是否所有故障舵机都已恢复
+            self._motor_fault_notified.pop(motor_name, None)
+            if not self._motor_fault_notified:
+                # 所有舵机都恢复正常，恢复 LED
+                self.rgb_service.dispatch("solid", StateColors.IDLE)
+            return
+
         import random as _random
         # 去重：同一舵机同一状态不重复通知
         if self._motor_fault_notified.get(motor_name) == new_status:

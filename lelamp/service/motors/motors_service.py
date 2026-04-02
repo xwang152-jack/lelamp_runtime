@@ -315,8 +315,7 @@ class MotorsService(ServiceBase):
                     old_status = self._prev_motor_status.get(motor_name)
                     if old_status != new_status:
                         self._prev_motor_status[motor_name] = new_status
-                        if new_status in (HealthStatus.CRITICAL, HealthStatus.STALLED):
-                            self._on_health_status_change(motor_name, old_status, new_status)
+                        self._on_health_status_change(motor_name, old_status, new_status)
 
                     if health_data.status == HealthStatus.STALLED:
                         self.logger.error(f"Motor {motor_name} STALLED! Taking protective action...")
