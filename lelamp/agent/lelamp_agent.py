@@ -347,6 +347,7 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
         self._memory_tools = None  # type: ignore
         self._conversation_turns: list[dict] = []
         self._consolidation_offset: int = 0  # 已整合到哪一轮（turns[offset:] 是待整合的新轮次）
+        self._consolidation_in_progress: bool = False  # 防止并发整合
         self._session_id: str = ""
 
         memory_enabled = (os.getenv("LELAMP_MEMORY_ENABLED") or "1").strip().lower() in (
@@ -405,7 +406,9 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
             self._conversation_turns.append({"role": "user", "content": text, "ts": time.time()})
             # 硬上限防止内存泄漏
             if len(self._conversation_turns) > 200:
+                drop = len(self._conversation_turns) - 100
                 self._conversation_turns = self._conversation_turns[-100:]
+                self._consolidation_offset = max(0, self._consolidation_offset - drop)
             await self._check_consolidation()
 
     async def set_conversation_state(self, state: str) -> None:
@@ -527,11 +530,18 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
         ):
             return
 
-        if self._memory_consolidator.should_consolidate(self._conversation_turns):
+        new_turns = self._conversation_turns[self._consolidation_offset:]
+        if not new_turns:
+            return
+
+        if self._memory_consolidator.should_consolidate(new_turns):
             asyncio.create_task(self._run_consolidation())
 
     async def _run_consolidation(self) -> None:
         """后台执行记忆整合（非阻塞）"""
+        if self._consolidation_in_progress:
+            return
+        self._consolidation_in_progress = True
         try:
             # 只整合 offset 之后的新轮次
             new_turns = list(self._conversation_turns[self._consolidation_offset:])
@@ -552,6 +562,8 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
                     logger.info(f"Memory consolidated: {result.new_memories_count} new memories")
         except Exception as e:
             logger.warning(f"Background consolidation failed (non-critical): {e}")
+        finally:
+            self._consolidation_in_progress = False
 
     # ==================== 电机工具方法 ====================
 
@@ -1249,7 +1261,7 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
         # 记录未整合的对话轮数
         if self._memory_initialized and self._conversation_turns:
             logger.info(
-                f"Session ending with {len(self._conversation_turns)} unconsolidated turns "
+                f"Session ending with {len(self._conversation_turns) - self._consolidation_offset} unconsolidated turns "
                 f"(will be consolidated next session if memory persists)"
             )
 
