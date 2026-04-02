@@ -598,3 +598,47 @@ async def test_consolidation_deactivates_obsolete_memories(store):
     assert old_id not in active_ids, "旧的矛盾记忆应已被 deactivate"
     # 新记忆应已存入
     assert any("冷色调" in m.content for m in active), "新记忆应已保存"
+
+
+# ==================== 失败降级测试 ====================
+
+@pytest.mark.asyncio
+async def test_consolidation_raw_archive_on_repeated_failure(store):
+    """LLM 连续失败 3 次后触发 raw archive"""
+    from unittest.mock import patch, AsyncMock
+    from lelamp.memory.consolidator import MemoryConsolidator
+
+    consolidator = MemoryConsolidator(
+        base_url="http://localhost",
+        api_key="test",
+        model="test-model",
+        memory_store=store,
+    )
+
+    turns = [
+        {"role": "user", "content": "我喜欢安静的音乐"},
+        {"role": "assistant", "content": "好的"},
+    ]
+
+    with patch.object(consolidator, "_call_llm", new_callable=AsyncMock) as mock_llm:
+        mock_llm.return_value = None  # 持续失败
+
+        # 前 2 次失败不降级
+        result1 = await consolidator.consolidate("lamp1", "sess_fail", turns)
+        assert result1 is None
+
+        result2 = await consolidator.consolidate("lamp1", "sess_fail", turns)
+        assert result2 is None
+
+        # 第 3 次触发降级
+        result3 = await consolidator.consolidate("lamp1", "sess_fail", turns)
+        assert result3 is not None
+        assert result3.summary_saved is True
+        assert result3.new_memories_count == 0
+
+    # 检查 raw archive 已存入摘要
+    summaries = store.get_recent_summaries("lamp1", hours=1, limit=5)
+    assert any("自动降级摘要" in s.summary for s in summaries)
+
+    # 失败计数应已重置
+    assert consolidator._llm_failure_count == 0

@@ -86,6 +86,9 @@ class MemoryConsolidator:
         self._context_token_limit = config.context_token_limit
         self._context_budget_ratio = config.context_budget_ratio
 
+        self._llm_failure_count: int = 0        # 连续 LLM 调用失败次数
+        self._max_llm_failures: int = 3         # 超过此数触发降级
+
     def should_consolidate(
         self,
         conversation_turns: list[dict],
@@ -175,7 +178,18 @@ class MemoryConsolidator:
         # 调用 LLM
         llm_response = await self._call_llm(_CONSOLIDATION_SYSTEM, user_prompt)
         if not llm_response:
+            self._llm_failure_count += 1
+            if self._llm_failure_count >= self._max_llm_failures:
+                self._llm_failure_count = 0
+                logger.warning(
+                    f"LLM consolidation failed {self._max_llm_failures} times, "
+                    "falling back to raw archive"
+                )
+                return self._raw_archive(lamp_id, session_id, recent_turns)
             return None
+
+        # LLM 成功：重置失败计数
+        self._llm_failure_count = 0
 
         # 解析 JSON 响应
         try:
@@ -300,6 +314,40 @@ class MemoryConsolidator:
             logger.warning(f"LLM call for consolidation failed: {e}")
             return None
 
+    def _raw_archive(
+        self,
+        lamp_id: str,
+        session_id: str,
+        turns: list[dict],
+    ) -> ConsolidationResult:
+        """
+        降级存储：LLM 多次失败时直接把对话拼接为摘要存入 ConversationSummary。
+        不提取长期记忆，仅保留对话历史以防数据丢失。
+        """
+        user_lines = [
+            t["content"][:80]
+            for t in turns
+            if t.get("role") == "user" and t.get("content")
+        ]
+        fallback_summary = "【自动降级摘要】" + " | ".join(user_lines[:5])
+
+        try:
+            now = datetime.utcnow()
+            self._store.save_summary(
+                lamp_id=lamp_id,
+                session_id=session_id,
+                summary=fallback_summary[:500],
+                key_topics=[],
+                message_count=len(turns),
+                started_at=now,
+                ended_at=now,
+            )
+            logger.info(f"Raw archive saved for session {session_id}")
+            return ConsolidationResult(new_memories_count=0, summary_saved=True)
+        except Exception as e:
+            logger.error(f"Raw archive failed: {e}")
+            return ConsolidationResult(new_memories_count=0, summary_saved=False)
+
     def _deduplicate_memories(
         self,
         new_memories: list[dict],
@@ -338,7 +386,6 @@ class MemoryConsolidator:
 
     @staticmethod
     def _content_overlap(a: str, b: str) -> float:
-        """使用 bigram Jaccard 相似度判断文本重叠"""
         if not a or not b:
             return 0.0
 
