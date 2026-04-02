@@ -241,7 +241,10 @@ export const useAuthStore = defineStore('auth', () => {
       return { success: false, error: '未登录' }
     }
     try {
-      await authApi.autoBindDevice(accessToken.value)
+      const result = await authApi.autoBindDevice(accessToken.value)
+      if ((result as any).skipped) {
+        return { success: false, skipped: true }
+      }
       return { success: true }
     } catch (e: any) {
       return { success: false, error: e.message || '自动绑定失败' }
