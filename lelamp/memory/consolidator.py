@@ -81,6 +81,8 @@ class MemoryConsolidator:
         config = load_memory_config()
         self._min_turns = config.consolidation_min_turns
         self._cooldown_s = config.consolidation_cooldown_s
+        self._context_token_limit = config.context_token_limit
+        self._context_budget_ratio = config.context_budget_ratio
 
     def should_consolidate(
         self,
@@ -104,6 +106,24 @@ class MemoryConsolidator:
             # 原子设置：通过检查后立即标记，防止并发重复触发
             self._last_consolidation_ts = time.time()
             return True
+
+    def should_consolidate_by_tokens(
+        self,
+        conversation_turns: list[dict],
+    ) -> bool:
+        """
+        基于 token 估算判断是否应触发整合。
+
+        当未整合轮次的估算 token 数超过 context 预算阈值时触发，
+        与 should_consolidate（轮数）互补，两者满足其一即整合。
+        中文约 0.67 chars/token。
+        """
+        if not conversation_turns:
+            return False
+
+        estimated = sum(len(t.get("content", "")) / 0.67 for t in conversation_turns)
+        threshold = self._context_token_limit * self._context_budget_ratio
+        return estimated > threshold
 
     async def consolidate(
         self,

@@ -508,3 +508,52 @@ async def test_consolidation_offset_only_new_turns(store):
         # 第二次整合：只传 turns[12:] — 即 5 条新轮次
         new_turns = turns[offset:]
         assert len(new_turns) == 5, f"应只传 5 条新轮次，实际 {len(new_turns)}"
+
+
+# ==================== token-budget 触发测试 ====================
+
+def test_should_consolidate_by_tokens_below_threshold(store):
+    """token 数不足时不触发"""
+    from lelamp.memory.consolidator import MemoryConsolidator
+
+    consolidator = MemoryConsolidator(
+        base_url="http://localhost",
+        api_key="test",
+        model="test-model",
+        memory_store=store,
+    )
+    turns = [{"role": "user", "content": "好的"}] * 5  # 极短，估算很小
+    assert consolidator.should_consolidate_by_tokens(turns) is False
+
+
+def test_should_consolidate_by_tokens_above_threshold(store):
+    """token 数超过阈值时触发"""
+    from lelamp.memory.consolidator import MemoryConsolidator
+
+    consolidator = MemoryConsolidator(
+        base_url="http://localhost",
+        api_key="test",
+        model="test-model",
+        memory_store=store,
+    )
+    # context_token_limit=8000, ratio=0.7 → 阈值 5600 tokens
+    # 每条 ~3600 chars / 0.67 ≈ 5373 tokens，两条合计 ~10746 tokens，超过阈值
+    long_content = "这是一段很长的对话内容。" * 300
+    turns = [
+        {"role": "user", "content": long_content},
+        {"role": "assistant", "content": long_content},
+    ]
+    assert consolidator.should_consolidate_by_tokens(turns) is True
+
+
+def test_should_consolidate_by_tokens_empty(store):
+    """空列表不触发"""
+    from lelamp.memory.consolidator import MemoryConsolidator
+
+    consolidator = MemoryConsolidator(
+        base_url="http://localhost",
+        api_key="test",
+        model="test-model",
+        memory_store=store,
+    )
+    assert consolidator.should_consolidate_by_tokens([]) is False

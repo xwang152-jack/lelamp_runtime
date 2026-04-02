@@ -534,7 +534,11 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
         if not new_turns:
             return
 
-        if self._memory_consolidator.should_consolidate(new_turns):
+        should = (
+            self._memory_consolidator.should_consolidate(new_turns)
+            or self._memory_consolidator.should_consolidate_by_tokens(new_turns)
+        )
+        if should:
             asyncio.create_task(self._run_consolidation())
 
     async def _run_consolidation(self) -> None:
