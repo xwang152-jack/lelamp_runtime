@@ -21,6 +21,7 @@ from lelamp.database.session import get_db
 from lelamp.api.services.wifi_manager import wifi_manager, WiFiNetwork
 from lelamp.api.services.ap_manager import ap_manager, ClientInfo
 from lelamp.api.services.onboarding import onboarding_manager
+from lelamp.api.services.setup_event_bus import setup_event_bus
 from lelamp.api.models.requests import WiFiConnectRequest, RestartRequest
 from lelamp.api.models.responses import (
     WiFiNetworkListResponse,
@@ -340,7 +341,12 @@ async def connect_wifi(request: WiFiConnectRequest) -> WiFiConnectResponse:
         WiFiConnectResponse: 连接结果
     """
     try:
-        result = await wifi_manager.connect(request.ssid, request.password)
+        result = await wifi_manager.connect(
+            ssid=request.ssid,
+            password=request.password,
+            max_retries=3,
+            event_callback=setup_event_bus.publish,
+        )
         return WiFiConnectResponse(**result)
     except Exception as e:
         logger.error(f"WiFi connect error: {e}", exc_info=True)

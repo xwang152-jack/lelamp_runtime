@@ -20,4 +20,7 @@ api_router.include_router(settings.router, prefix="/settings", tags=["settings"]
 # LiveKit Token 端点
 api_router.include_router(livekit.router, prefix="/livekit", tags=["livekit"])
 
+from lelamp.api.routes import setup_ws
+api_router.include_router(setup_ws.router, prefix="/ws", tags=["setup-ws"])
+
 __all__ = ["api_router"]
