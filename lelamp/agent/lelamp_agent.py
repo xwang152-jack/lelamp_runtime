@@ -531,9 +531,10 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
             if summaries:
                 used = 0
                 lines = ["\n\n# Recent Conversations", "Summary of recent sessions with this user:"]
+                from lelamp.memory.store import _CHARS_PER_TOKEN
                 for s in summaries:
                     entry = f"- {s.summary}"
-                    est = len(entry) / 0.67 + 5
+                    est = len(entry) / _CHARS_PER_TOKEN + 5
                     if used + est > summary_token_budget:
                         break
                     lines.append(entry)
