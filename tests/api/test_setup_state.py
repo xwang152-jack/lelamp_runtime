@@ -131,3 +131,40 @@ def test_is_setup_completed():
         assert manager.is_setup_completed() is True
     finally:
         os.unlink(state_file)
+
+
+@pytest.mark.asyncio
+async def test_setup_recovery_already_configured():
+    """已配置时恢复状态应返回 can_recover=False"""
+    from lelamp.api.routes.system import get_setup_recovery
+    from unittest.mock import AsyncMock, patch
+
+    with patch('lelamp.api.routes.system.onboarding_manager') as mock_mgr:
+        mock_mgr.get_configuration_summary = AsyncMock(
+            return_value={"is_configured": True}
+        )
+        result = await get_setup_recovery()
+
+    assert result["can_recover"] is False
+    assert result["reason"] == "already_done"
+
+
+@pytest.mark.asyncio
+async def test_setup_recovery_wifi_connected():
+    """WiFi 已连接时应返回可恢复到步骤 4"""
+    from lelamp.api.routes.system import get_setup_recovery
+    from unittest.mock import AsyncMock, patch
+
+    with patch('lelamp.api.routes.system.onboarding_manager') as mock_mgr, \
+         patch('lelamp.api.routes.system.wifi_manager') as mock_wifi:
+        mock_mgr.get_configuration_summary = AsyncMock(
+            return_value={"is_configured": False}
+        )
+        mock_wifi.get_status = AsyncMock(
+            return_value={"connected": True, "ssid": "HomeWiFi"}
+        )
+        result = await get_setup_recovery()
+
+    assert result["can_recover"] is True
+    assert result["skip_to_step"] == 4
+    assert result["current_ssid"] == "HomeWiFi"

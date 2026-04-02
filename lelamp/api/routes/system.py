@@ -109,6 +109,39 @@ async def get_setup_status() -> dict:
         )
 
 
+@router.get("/setup/recovery")
+async def get_setup_recovery() -> dict:
+    """
+    检测配网流程是否可以从中断处恢复
+
+    Returns:
+        {
+          "can_recover": bool,
+          "skip_to_step": int | None,   # 4 = 直接跳到认证步骤
+          "current_ssid": str | None,
+          "reason": str | None,          # "already_done" / "already_connected"
+        }
+    """
+    try:
+        summary = await onboarding_manager.get_configuration_summary()
+        if summary.get("is_configured"):
+            return {"can_recover": False, "reason": "already_done"}
+
+        wifi_status = await wifi_manager.get_status()
+        if wifi_status.get("connected"):
+            return {
+                "can_recover": True,
+                "skip_to_step": 4,
+                "current_ssid": wifi_status.get("ssid"),
+                "reason": "already_connected",
+            }
+
+        return {"can_recover": False}
+    except Exception as e:
+        logger.error(f"get_setup_recovery error: {e}", exc_info=True)
+        return {"can_recover": False}
+
+
 @router.post("/setup/ap/start")
 async def start_ap_mode(request: APStartRequest = APStartRequest()) -> dict:
     """
