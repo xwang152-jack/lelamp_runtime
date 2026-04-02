@@ -6,11 +6,10 @@
 - 持续检测用户在场，自动唤醒/休眠
 - 智能采样，平衡性能和响应速度
 """
-import asyncio
 import threading
 import time
 import logging
-from typing import Optional, Callable, Dict, Any, List
+from typing import Optional, Callable, Dict, Any
 from enum import Enum
 
 logger = logging.getLogger("lelamp.vision.monitor")
@@ -311,6 +310,13 @@ class ProactiveVisionMonitor:
 
                 logger.info(f"检测到手势: {[g.value for g in gestures]}")
 
+                # 提取 gesture→confidence 映射
+                hands = result.get("hands", [])
+                gesture_confidence: dict = {}
+                for hand in hands:
+                    g = hand.gesture
+                    gesture_confidence[g] = max(gesture_confidence.get(g, 0.0), hand.confidence)
+
                 # 触发手势回调
                 if self._gesture_callback:
                     try:
@@ -318,7 +324,8 @@ class ProactiveVisionMonitor:
                             context = {
                                 "timestamp": current_time,
                                 "user_present": self._user_present,
-                                "detection_count": self._detection_count
+                                "detection_count": self._detection_count,
+                                "confidence": gesture_confidence.get(gesture, 0.5),
                             }
                             self._gesture_callback(gesture, context)
                     except Exception as e:

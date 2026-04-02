@@ -318,5 +318,45 @@ class TestIntegration:
         stats = service.get_stats()
         assert stats["services"]["face_detector"] is True
         assert stats["services"]["hand_tracker"] is True
-        
+
         service.close()
+
+
+class TestGestureConfidence:
+    def test_gesture_context_includes_confidence(self):
+        """ProactiveVisionMonitor 传给 gesture_callback 的 context 必须包含 confidence"""
+        from unittest.mock import MagicMock
+        from lelamp.service.vision.proactive_vision_monitor import ProactiveVisionMonitor
+        from lelamp.edge.hand_tracker import Gesture, HandInfo
+
+        received_contexts = []
+
+        def capture_callback(gesture, context):
+            received_contexts.append(context)
+
+        monitor = ProactiveVisionMonitor(
+            gesture_callback=capture_callback,
+            enable_auto_gesture=False,
+            enable_auto_presence=False,
+        )
+
+        fake_hand = HandInfo(
+            landmarks=[(0.5, 0.5, 0.0)] * 21,
+            handedness="Right",
+            gesture=Gesture.THUMBS_UP,
+            confidence=0.92,
+        )
+        mock_hybrid = MagicMock()
+        mock_hybrid.track_hands.return_value = {
+            "gestures": [Gesture.THUMBS_UP],
+            "hands": [fake_hand],
+            "count": 1,
+        }
+        monitor._hybrid_vision = mock_hybrid
+        monitor._user_present = True
+
+        monitor._detect_gestures(None, current_time=0.0)
+
+        assert len(received_contexts) == 1
+        assert "confidence" in received_contexts[0]
+        assert abs(received_contexts[0]["confidence"] - 0.92) < 0.01
