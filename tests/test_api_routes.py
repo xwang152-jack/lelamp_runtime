@@ -92,8 +92,9 @@ class TestWiFiManager:
             call_count += 1
             return {"success": False, "message": "连接失败", "ssid": ssid}
 
-        with patch.object(manager, '_try_nmcli_connect', side_effect=mock_connect_once):
-            result = await manager.connect("TestSSID", "wrongpass", max_retries=3)
+        with patch('lelamp.api.services.wifi_manager.asyncio.sleep', new_callable=AsyncMock):
+            with patch.object(manager, '_try_nmcli_connect', side_effect=mock_connect_once):
+                result = await manager.connect("TestSSID", "wrongpass", max_retries=3)
 
         assert result["success"] is False
         assert call_count == 3  # 应重试 3 次
@@ -112,8 +113,8 @@ class TestWiFiManager:
                 return {"success": False, "message": "连接超时", "ssid": ssid}
             return {"success": True, "message": "连接成功", "ssid": ssid}
 
-        with patch.object(manager, '_try_nmcli_connect', side_effect=mock_connect_once):
-            with patch('asyncio.sleep', return_value=None):  # 不真正等待
+        with patch('lelamp.api.services.wifi_manager.asyncio.sleep', new_callable=AsyncMock):
+            with patch.object(manager, '_try_nmcli_connect', side_effect=mock_connect_once):
                 result = await manager.connect("TestSSID", "pass", max_retries=3)
 
         assert result["success"] is True
