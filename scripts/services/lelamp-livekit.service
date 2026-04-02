@@ -11,7 +11,7 @@ Environment=PATH=/usr/local/bin:/usr/bin:/bin
 EnvironmentFile=/home/pi/lelamp_runtime/.env
 
 # 启动 tmux 会话运行 LiveKit Console 模式
-ExecStart=/usr/bin/tmux new-session -d -s livekit -n livekit 'cd /home/pi/lelamp_runtime && /usr/local/bin/uv run python main.py console'
+ExecStart=/usr/bin/tmux new-session -d -s livekit -n livekit "cd /home/pi/lelamp_runtime && /usr/local/bin/uv run python main.py console"
 
 # 优雅停止：发送 Ctrl+C 然后关闭会话（忽略不存在的会话）
 ExecStop=/bin/sh -c '/usr/bin/tmux send-keys -t livekit C-c || true'
@@ -31,7 +31,6 @@ SyslogIdentifier=lelamp-livekit
 
 # 安全设置
 NoNewPrivileges=false
-PrivateTmp=true
 
 [Install]
 WantedBy=multi-user.target

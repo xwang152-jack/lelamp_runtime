@@ -7,7 +7,6 @@ AP 模式管理器
 import asyncio
 import logging
 import os
-import secrets
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -132,10 +131,7 @@ class APManager:
                 return {"success": True, "message": "AP 模式已在运行", "ip_address": self._config.ip_address}
 
             try:
-                # 自动生成随机密码
-                if self._config.password is None:
-                    self._config.password = secrets.token_urlsafe(6)
-                    logger.info(f"Generated random AP password: {self._config.password}")
+                # 无密码开放网络
 
                 logger.info(f"Starting AP mode: {self._config.ssid}")
 
@@ -168,19 +164,20 @@ class APManager:
 
                 self._is_running = True
 
-                # 持久化 AP 密码到 setup_status.json（供 Captive Portal 读取）
-                try:
-                    from pathlib import Path
-                    import json
-                    status_file = Path("/var/lib/lelamp/setup_status.json")
-                    status_file.parent.mkdir(parents=True, exist_ok=True)
-                    data = {}
-                    if status_file.exists():
-                        data = json.loads(status_file.read_text())
-                    data["ap_password"] = self._config.password
-                    status_file.write_text(json.dumps(data, indent=2, ensure_ascii=False))
-                except Exception as e:
-                    logger.warning(f"Failed to persist AP password: {e}")
+                # 持久化 AP 密码到 setup_status.json（仅 WPA 模式）
+                if self._config.password:
+                    try:
+                        from pathlib import Path
+                        import json
+                        status_file = Path("/var/lib/lelamp/setup_status.json")
+                        status_file.parent.mkdir(parents=True, exist_ok=True)
+                        data = {}
+                        if status_file.exists():
+                            data = json.loads(status_file.read_text())
+                        data["ap_password"] = self._config.password
+                        status_file.write_text(json.dumps(data, indent=2, ensure_ascii=False))
+                    except Exception as e:
+                        logger.warning(f"Failed to persist AP password: {e}")
 
                 # LED 提示：蓝色呼吸灯表示配置模式
                 try:
@@ -425,7 +422,8 @@ class APManager:
     async def _write_hostapd_config(self) -> bool:
         """生成并写入 hostapd 配置文件"""
         try:
-            config_content = f"""# LeLamp AP Mode Configuration
+            if self._config.password:
+                config_content = f"""# LeLamp AP Mode Configuration (WPA2)
 interface={self._config.interface}
 driver=nl80211
 ssid={self._config.ssid}
@@ -437,6 +435,15 @@ wpa_passphrase={self._config.password}
 wpa_key_mgmt=WPA-PSK
 wpa_pairwise=CCMP
 rsn_pairwise=CCMP
+"""
+            else:
+                config_content = f"""# LeLamp AP Mode Configuration (Open)
+interface={self._config.interface}
+driver=nl80211
+ssid={self._config.ssid}
+hw_mode={self._config.hw_mode}
+channel={self._config.channel}
+auth_algs=1
 """
 
             # 需要管理员权限写入
