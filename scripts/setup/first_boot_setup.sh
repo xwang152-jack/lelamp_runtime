@@ -130,10 +130,13 @@ fi
 
 # 启动 Captive Portal 服务
 log "Starting Captive Portal service..."
-if systemctl start lelamp-captive-portal.service 2>/dev/null; then
+if systemctl start lelamp-captive-portal.service 2>/tmp/lelamp-captive-portal-start.err; then
     log "Captive Portal service started"
 else
-    log "Warning: Failed to start Captive Portal service (may not be installed)"
+    log "Warning: Failed to start Captive Portal service"
+    log "systemctl output:"
+    sed -n '1,20p' /tmp/lelamp-captive-portal-start.err | while read -r line; do log "  $line"; done
+    systemctl status lelamp-captive-portal.service --no-pager | sed -n '1,20p' | while read -r line; do log "  $line"; done
 fi
 
 log "Setup mode activated. User should connect to 'LeLamp-Setup' hotspot."
