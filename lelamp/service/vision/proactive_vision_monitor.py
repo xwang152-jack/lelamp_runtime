@@ -321,11 +321,14 @@ class ProactiveVisionMonitor:
                 if self._gesture_callback:
                     try:
                         for gesture in gestures:
+                            if gesture not in gesture_confidence:
+                                logger.warning(f"gesture {gesture.value} not in confidence map, skipping")
+                                continue
                             context = {
                                 "timestamp": current_time,
                                 "user_present": self._user_present,
                                 "detection_count": self._detection_count,
-                                "confidence": gesture_confidence.get(gesture, 0.5),
+                                "confidence": gesture_confidence[gesture],
                             }
                             self._gesture_callback(gesture, context)
                     except Exception as e:

@@ -360,3 +360,61 @@ class TestGestureConfidence:
         assert len(received_contexts) == 1
         assert "confidence" in received_contexts[0]
         assert abs(received_contexts[0]["confidence"] - 0.92) < 0.01
+
+    def test_gesture_confidence_takes_max_for_same_gesture(self):
+        """两只手识别相同手势时，取最高 confidence"""
+        from unittest.mock import MagicMock
+        from lelamp.service.vision.proactive_vision_monitor import ProactiveVisionMonitor
+        from lelamp.edge.hand_tracker import Gesture, HandInfo
+
+        received_contexts = []
+
+        monitor = ProactiveVisionMonitor(
+            gesture_callback=lambda g, ctx: received_contexts.append(ctx),
+            enable_auto_gesture=False,
+            enable_auto_presence=False,
+        )
+
+        hand_low = HandInfo(landmarks=[(0.5,0.5,0.0)]*21, handedness="Right", gesture=Gesture.THUMBS_UP, confidence=0.65)
+        hand_high = HandInfo(landmarks=[(0.5,0.5,0.0)]*21, handedness="Left", gesture=Gesture.THUMBS_UP, confidence=0.88)
+
+        mock_hybrid = MagicMock()
+        mock_hybrid.track_hands.return_value = {
+            "gestures": [Gesture.THUMBS_UP],
+            "hands": [hand_low, hand_high],
+            "count": 2,
+        }
+        monitor._hybrid_vision = mock_hybrid
+        monitor._user_present = True
+
+        monitor._detect_gestures(None, current_time=0.0)
+
+        assert len(received_contexts) == 1
+        assert abs(received_contexts[0]["confidence"] - 0.88) < 0.01
+
+    def test_gesture_skipped_when_not_in_confidence_map(self):
+        """gesture 不在 confidence map 时（hands 为空），该 gesture 被跳过"""
+        from unittest.mock import MagicMock
+        from lelamp.service.vision.proactive_vision_monitor import ProactiveVisionMonitor
+        from lelamp.edge.hand_tracker import Gesture
+
+        received = []
+
+        monitor = ProactiveVisionMonitor(
+            gesture_callback=lambda g, ctx: received.append(g),
+            enable_auto_gesture=False,
+            enable_auto_presence=False,
+        )
+
+        mock_hybrid = MagicMock()
+        mock_hybrid.track_hands.return_value = {
+            "gestures": [Gesture.THUMBS_UP],
+            "hands": [],  # 空列表：confidence map 为空
+            "count": 0,
+        }
+        monitor._hybrid_vision = mock_hybrid
+        monitor._user_present = True
+
+        monitor._detect_gestures(None, current_time=0.0)
+
+        assert len(received) == 0, "confidence map 为空时不应触发 callback"
