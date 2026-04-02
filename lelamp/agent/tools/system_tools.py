@@ -396,19 +396,15 @@ class SystemTools:
             if not 0 <= volume_percent <= 100:
                 return "Error: Volume must be between 0 and 100 percent"
 
-            # 使用 amixer 设置音量（异步执行以避免阻塞）
-            # 使用可配置的用户名运行 amixer
-            try:
+            # 使用 amixer 分别设置三个音频输出的音量
+            for control in ("Line", "Line DAC", "HP"):
                 process = await asyncio.create_subprocess_exec(
                     "sudo", "-u", self._amixer_user, "amixer",
-                    "-q", "sset", "'Line','Line DAC','HP'", f"{volume_percent}%",
+                    "-q", "sset", control, f"{volume_percent}%",
                     stdout=asyncio.subprocess.DEVNULL,
                     stderr=asyncio.subprocess.DEVNULL,
                 )
                 await process.wait()
-            except FileNotFoundError:
-                # 如果 amixer 不可用（非 Linux 系统），静默失败
-                pass
 
             return f"已将音量设置为 {volume_percent}%"
         except Exception as e:
