@@ -33,8 +33,10 @@ class MotorsService(ServiceBase):
         self._health_check_stop = threading.Event()
         self._last_target_positions: dict[str, float] = {}  # 记录最后的目标位置
         self._bus_lock = threading.Lock()  # 串口访问互斥锁
+        self._motor_fault_callback = None   # 外部注册：callback(motor_name, old_status, new_status)
+        self._prev_motor_status: dict = {}  # motor_name -> HealthStatus
 
-        self.logger.info(f"Motors service initialized with recording cache enabled")
+        self.logger.info("Motors service initialized with recording cache enabled")
 
     def dispatch(self, event_type: str, payload: Any, priority: Priority = Priority.NORMAL):
         if event_type == "stop":
@@ -269,7 +271,7 @@ class MotorsService(ServiceBase):
             return []
 
         recordings = []
-        suffix = f".csv"
+        suffix = ".csv"
 
         for filename in os.listdir(self.recordings_dir):
             if filename.endswith(suffix):
@@ -309,6 +311,13 @@ class MotorsService(ServiceBase):
 
                 # 检查是否有异常状态
                 for motor_name, health_data in health_results.items():
+                    new_status = health_data.status
+                    old_status = self._prev_motor_status.get(motor_name)
+                    if old_status != new_status:
+                        self._prev_motor_status[motor_name] = new_status
+                        if new_status in (HealthStatus.CRITICAL, HealthStatus.STALLED):
+                            self._on_health_status_change(motor_name, old_status, new_status)
+
                     if health_data.status == HealthStatus.STALLED:
                         self.logger.error(f"Motor {motor_name} STALLED! Taking protective action...")
                         # 堵转时停止所有动作
@@ -331,6 +340,14 @@ class MotorsService(ServiceBase):
             self._health_check_stop.wait(interval)
 
         self.logger.info("Health check loop stopped")
+
+    def _on_health_status_change(self, motor_name: str, old_status, new_status) -> None:
+        """舵机状态转为 CRITICAL/STALLED 时触发（在 health_check 线程中调用）"""
+        if self._motor_fault_callback:
+            try:
+                self._motor_fault_callback(motor_name, old_status, new_status)
+            except Exception as e:
+                self.logger.warning(f"motor_fault_callback error: {e}")
 
     def get_motor_health_summary(self) -> dict:
         """获取舵机健康状态汇总"""

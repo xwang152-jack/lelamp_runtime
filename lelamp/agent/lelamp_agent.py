@@ -203,6 +203,10 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
             self.motors_service.start()
         self.rgb_service.start()
 
+        # 注册舵机故障回调（两个服务均已启动后）
+        if hasattr(self.motors_service, '_motor_fault_callback'):
+            self.motors_service._motor_fault_callback = self._on_motor_health_change
+
         # 初始化状态管理器
         motion_cooldown_s = float(os.getenv("LELAMP_MOTION_COOLDOWN_S") or "3.0")
         suppress_motion_after_light_s = float(os.getenv("LELAMP_SUPPRESS_MOTION_AFTER_LIGHT_S") or "5.0")
@@ -247,10 +251,34 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
         )
         if edge_vision_enabled and EDGE_VISION_AVAILABLE:
             try:
+                # 手势置信度阈值
+                _GESTURE_HIGH_CONF = 0.80
+                _GESTURE_MID_CONF  = 0.60
+                _GESTURE_NAMES = {
+                    "thumbs_up": "点赞", "thumbs_down": "踩", "peace": "耶",
+                    "wave": "挥手", "fist": "握拳", "point": "指向",
+                    "ok": "OK", "open": "张开手掌",
+                }
+
                 # 手势回调：检测到手势时触发动作
                 def on_gesture(gesture, context):
-                    logger.info(f"检测到手势: {gesture.value}")
-                    # 可以在这里添加手势触发的动作
+                    confidence = context.get("confidence", 1.0)
+
+                    if confidence < _GESTURE_MID_CONF:
+                        logger.debug(f"手势 {gesture.value} 置信度过低 ({confidence:.2f})，忽略")
+                        return
+
+                    if confidence < _GESTURE_HIGH_CONF:
+                        gesture_name = _GESTURE_NAMES.get(gesture.value, gesture.value)
+                        logger.info(f"手势 {gesture.value} 置信度中等 ({confidence:.2f})，请求语音确认")
+                        if self._event_loop and self._event_loop.is_running():
+                            asyncio.run_coroutine_threadsafe(
+                                self._speak_proactively(f"你是在比{gesture_name}吗？"),
+                                self._event_loop,
+                            )
+                        return
+
+                    logger.info(f"检测到手势: {gesture.value} (confidence={confidence:.2f})")
                     if gesture.value == "thumbs_up":
                         self.motors_service.dispatch("play", "nod")
                     elif gesture.value == "thumbs_down":
@@ -333,6 +361,9 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
             self.motors_service.dispatch("play", "wake_up")
         self.rgb_service.dispatch("solid", (255, 255, 255))
 
+        self._event_loop: Optional[asyncio.AbstractEventLoop] = None
+        self._motor_fault_notified: dict = {}  # motor_name -> HealthStatus（Task 4 用）
+
         # 标记需要设置音量（延迟到有事件循环时）
         self._pending_volume_set = 100
 
@@ -378,9 +409,46 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
 
     async def _initialize_async(self) -> None:
         """异步初始化任务（在有事件循环时调用）"""
+        if self._event_loop is None:
+            self._event_loop = asyncio.get_running_loop()
         if hasattr(self, '_pending_volume_set'):
             await self._set_system_volume(self._pending_volume_set)
             delattr(self, '_pending_volume_set')
+
+    async def _speak_proactively(self, text: str) -> None:
+        """从异步上下文主动发声（手势确认、故障提示等）"""
+        try:
+            if hasattr(self, "session") and self.session is not None:
+                await self.session.say(text, allow_interruptions=True)
+            else:
+                logger.info(f"[speak_proactively] session not ready: {text}")
+        except Exception as e:
+            logger.warning(f"Proactive speech failed: {e}")
+
+    def _on_motor_health_change(self, motor_name: str, old_status, new_status) -> None:
+        """舵机故障回调（运行在 health_check daemon 线程中，线程安全）"""
+        import random as _random
+        # 去重：同一舵机同一状态不重复通知
+        if self._motor_fault_notified.get(motor_name) == new_status:
+            return
+        self._motor_fault_notified[motor_name] = new_status
+
+        logger.warning(f"舵机故障通知: {motor_name} {old_status} → {new_status}")
+
+        # LED 橙色呼吸（线程安全：ServiceBase 优先级队列）
+        self.rgb_service.dispatch("breath", {"rgb": (255, 80, 0), "period_s": 2.0})
+
+        # 语音提示（调度到 asyncio event loop）
+        _msgs = [
+            "我今天有点不舒服，动作可能不太灵活",
+            "我的关节好像有点问题，先凑合着用吧",
+        ]
+        msg = _random.choice(_msgs)
+        if self._event_loop and self._event_loop.is_running():
+            asyncio.run_coroutine_threadsafe(
+                self._speak_proactively(msg),
+                self._event_loop,
+            )
 
     async def note_user_text(self, text: str) -> None:
         """
