@@ -97,15 +97,36 @@
 
       <!-- 步骤 4: 连接验证 -->
       <div v-if="currentStep === 3" class="connecting-step">
-        <div class="connecting-animation">
-          <div class="spinner"></div>
-        </div>
-        <h2>{{ connectingStatus.title }}</h2>
-        <p>{{ connectingStatus.message }}</p>
+        <h2>{{ connectionError ? '连接失败' : '正在连接...' }}</h2>
 
+        <!-- 实时进度列表 -->
+        <div class="progress-list" v-if="progressItems.length > 0 && !connectionError">
+          <div
+            v-for="(item, i) in progressItems"
+            :key="i"
+            class="progress-item"
+            :class="item.status"
+          >
+            <span class="progress-icon">
+              <span v-if="item.status === 'done'">✓</span>
+              <span v-else-if="item.status === 'running'" class="mini-spinner"></span>
+              <span v-else-if="item.status === 'error'">✗</span>
+              <span v-else>○</span>
+            </span>
+            <span class="progress-text">{{ item.text }}</span>
+          </div>
+        </div>
+
+        <!-- 静态 spinner（初始状态） -->
+        <div v-else-if="!connectionError" class="connecting-animation">
+          <div class="spinner"></div>
+          <p>{{ connectingStatus.message }}</p>
+        </div>
+
+        <!-- 错误状态 -->
         <div v-if="connectionError" class="error-message">
-          <el-alert type="error" :title="connectionError" show-icon />
-          <el-button @click="handleRetry" class="retry-button">重试</el-button>
+          <el-alert type="error" :title="connectionError" show-icon :closable="false" />
+          <el-button @click="handleRetry" class="retry-button" type="primary">重新选择网络</el-button>
         </div>
       </div>
 
@@ -192,11 +213,27 @@
         连接
       </el-button>
     </div>
+    <!-- 恢复确认对话框 -->
+    <el-dialog
+      v-model="showRecoveryDialog"
+      title="检测到已连接的 WiFi"
+      width="90%"
+      :close-on-click-modal="false"
+      :show-close="false"
+    >
+      <p>设备已连接到 WiFi：<strong>{{ recoveryInfo?.current_ssid }}</strong></p>
+      <p>是否跳过 WiFi 配置，直接进入账号绑定步骤？</p>
+      <template #footer>
+        <el-button @click="rejectRecovery">重新配置</el-button>
+        <el-button type="primary" @click="acceptRecovery">是，继续</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
+import { formatApiError } from '@/utils/errorMessages'
 import { ElMessage } from 'element-plus'
 import { Refresh } from '@element-plus/icons-vue'
 import axios from 'axios'
@@ -240,6 +277,20 @@ const countdown = ref(5)
 
 // 设备信息
 const deviceInfo = ref<{ device_id: string; hostname: string } | null>(null)
+
+// 恢复检测
+const recoveryChecked = ref(false)
+const showRecoveryDialog = ref(false)
+const recoveryInfo = ref<{ skip_to_step: number; current_ssid: string } | null>(null)
+
+// 实时进度（步骤 3）
+interface ProgressItem {
+  text: string
+  status: 'pending' | 'running' | 'done' | 'error'
+}
+const progressItems = ref<ProgressItem[]>([])
+const retryCountdown = ref(0)
+let setupWs: WebSocket | null = null
 
 // 计算属性
 const sortedNetworks = computed(() => {
@@ -314,15 +365,11 @@ async function handleConnect() {
   connecting.value = true
   connectionError.value = ''
   currentStep.value = 3
-
-  connectingStatus.value = {
-    title: '正在连接 WiFi...',
-    message: `正在连接到 ${selectedNetwork.value.ssid}`
-  }
+  initProgress()
+  connectSetupWs()
 
   try {
-    // 连接 WiFi
-    const connectResponse = await axios.post(`${API_BASE}/api/system/wifi/connect`, {
+    const connectResponse = await apiClient.post(`${API_BASE}/api/system/wifi/connect`, {
       ssid: selectedNetwork.value.ssid,
       password: selectedNetwork.value.security === 'open' ? undefined : wifiPassword.value
     })
@@ -331,20 +378,20 @@ async function handleConnect() {
       throw new Error(connectResponse.data.message || '连接失败')
     }
 
-    connectingStatus.value = {
-      title: '连接成功！',
-      message: '正在跳转到账号设置...'
+    if (connectResponse.data.network_ok === false) {
+      connectionError.value = 'WiFi 已连接，但无法访问互联网，请检查路由器设置'
+      connecting.value = false
+      return
     }
 
-    // 等待一小段时间
-    await new Promise(resolve => setTimeout(resolve, 1000))
-
-    // 跳转到注册/登录步骤
+    connectingStatus.value = { title: '连接成功！', message: '正在跳转到账号设置...' }
+    await new Promise(resolve => setTimeout(resolve, 800))
     currentStep.value = 4
-
   } catch (error: any) {
-    connectionError.value = error.response?.data?.detail || error.message || '连接失败，请检查密码是否正确'
+    connectionError.value = formatApiError(error, 'wifi')
     connecting.value = false
+  } finally {
+    disconnectSetupWs()
   }
 }
 
@@ -359,14 +406,14 @@ async function handleAuthLogin() {
     await authStore.login(loginForm.username, loginForm.password)
     // 自动绑定设备
     const result = await authStore.autoBindDevice()
-    if (result.success) {
+    if (result.success || result.skipped) {
       currentStep.value = 5
       await completeSetup()
     } else {
-      ElMessage.error(result.error || '设备绑定失败')
+      ElMessage.error(formatApiError(result.error, 'auth'))
     }
   } catch (e: any) {
-    ElMessage.error(e.message || '登录失败')
+    ElMessage.error(formatApiError(e, 'auth'))
   } finally {
     authLoading.value = false
   }
@@ -383,14 +430,14 @@ async function handleAuthRegister() {
     await authStore.register(registerForm.username, registerForm.email, registerForm.password)
     // 注册后自动绑定设备
     const result = await authStore.autoBindDevice()
-    if (result.success) {
+    if (result.success || result.skipped) {
       currentStep.value = 5
       await completeSetup()
     } else {
-      ElMessage.error(result.error || '设备绑定失败')
+      ElMessage.error(formatApiError(result.error, 'auth'))
     }
   } catch (e: any) {
-    ElMessage.error(e.message || '注册失败')
+    ElMessage.error(formatApiError(e, 'auth'))
   } finally {
     authLoading.value = false
   }
@@ -424,16 +471,110 @@ function handleRetry() {
   currentStep.value = 2
 }
 
+// 恢复确认
+function acceptRecovery() {
+  showRecoveryDialog.value = false
+  if (recoveryInfo.value) {
+    selectedNetwork.value = {
+      ssid: recoveryInfo.value.current_ssid,
+      bssid: '',
+      signal_strength: 100,
+      security: 'wpa2',
+      frequency: '2.4GHz',
+      is_hidden: false,
+    }
+    currentStep.value = recoveryInfo.value.skip_to_step
+  }
+}
+
+function rejectRecovery() {
+  showRecoveryDialog.value = false
+  handleScan()
+}
+
+// WebSocket 驱动的进度
+function initProgress() {
+  progressItems.value = [
+    { text: '正在发送连接请求...', status: 'running' },
+    { text: '正在连接 WiFi...', status: 'pending' },
+    { text: '验证网络连通性...', status: 'pending' },
+  ]
+}
+
+function handleProgressEvent(event: { event: string; attempt?: number; retry_in?: number }) {
+  switch (event.event) {
+    case 'wifi_connecting':
+      progressItems.value[0].status = 'done'
+      progressItems.value[1].status = 'running'
+      progressItems.value[1].text = `正在连接 WiFi（第 ${event.attempt}/${3} 次）...`
+      break
+    case 'wifi_connected':
+      progressItems.value[1].status = 'done'
+      progressItems.value[2].status = 'running'
+      break
+    case 'wifi_failed':
+      if (event.retry_in) {
+        progressItems.value[1].text = `连接失败，${event.retry_in} 秒后重试...`
+        retryCountdown.value = event.retry_in
+        const timer = setInterval(() => {
+          retryCountdown.value--
+          if (retryCountdown.value <= 0) clearInterval(timer)
+        }, 1000)
+      }
+      break
+    case 'network_ok':
+      progressItems.value[2].status = 'done'
+      break
+    case 'network_failed':
+      progressItems.value[2].status = 'error'
+      progressItems.value[2].text = 'WiFi 已连接，但无法访问互联网'
+      connectionError.value = 'WiFi 已连接，但无法访问互联网，请检查路由器设置'
+      break
+  }
+}
+
+function connectSetupWs() {
+  const wsUrl = `${API_BASE.replace('http', 'ws')}/api/ws/setup`
+  setupWs = new WebSocket(wsUrl)
+  setupWs.onmessage = (e) => {
+    try {
+      const event = JSON.parse(e.data)
+      handleProgressEvent(event)
+    } catch { /* ignore */ }
+  }
+  setupWs.onerror = () => { /* ignore */ }
+}
+
+function disconnectSetupWs() {
+  if (setupWs) {
+    setupWs.close()
+    setupWs = null
+  }
+}
+
 // 初始化
 onMounted(async () => {
-  // 自动开始扫描
-  handleScan()
   // 获取设备信息
   try {
     const response = await axios.get(`${API_BASE}/api/system/device`)
     deviceInfo.value = response.data
   } catch {
     // ignore
+  }
+
+  // 检查是否可以从中断处恢复
+  try {
+    const recovery = await axios.get(`${API_BASE}/api/system/setup/recovery`)
+    recoveryChecked.value = true
+    if (recovery.data.can_recover) {
+      recoveryInfo.value = recovery.data
+      showRecoveryDialog.value = true
+    } else {
+      handleScan()
+    }
+  } catch {
+    recoveryChecked.value = true
+    handleScan()
   }
 })
 </script>
@@ -445,6 +586,34 @@ onMounted(async () => {
   min-height: 100vh;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   padding: 20px;
+}
+
+.progress-list {
+  margin: 20px 0;
+  text-align: left;
+
+  .progress-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 0;
+    opacity: 0.5;
+    color: white;
+
+    &.running, &.done, &.error { opacity: 1; }
+    &.done .progress-icon { color: #67c23a; }
+    &.error .progress-icon { color: #f56c6c; }
+  }
+
+  .mini-spinner {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(255,255,255,0.3);
+    border-top-color: white;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
 }
 
 .progress-bar {

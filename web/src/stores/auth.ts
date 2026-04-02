@@ -236,7 +236,7 @@ export const useAuthStore = defineStore('auth', () => {
   /**
    * 自动绑定当前设备（首次配置流程使用）
    */
-  async function autoBindDevice(): Promise<{ success: boolean; error?: string }> {
+  async function autoBindDevice(): Promise<{ success: boolean; skipped?: boolean; error?: string }> {
     if (!accessToken.value) {
       return { success: false, error: '未登录' }
     }
