@@ -32,8 +32,6 @@ declare module 'vue' {
     ElSkeleton: typeof import('element-plus/es')['ElSkeleton']
     ElSlider: typeof import('element-plus/es')['ElSlider']
     ElSwitch: typeof import('element-plus/es')['ElSwitch']
-    ElTabPane: typeof import('element-plus/es')['ElTabPane']
-    ElTabs: typeof import('element-plus/es')['ElTabs']
     ElTag: typeof import('element-plus/es')['ElTag']
     HardwareConfig: typeof import('./src/components/settings/HardwareConfig.vue')['default']
     LightPanel: typeof import('./src/components/room/LightPanel.vue')['default']

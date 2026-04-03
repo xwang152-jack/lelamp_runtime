@@ -211,37 +211,46 @@ async def stop_ap_mode() -> dict:
 @router.post("/setup/complete")
 async def complete_setup(request: SetupCompleteRequest) -> dict:
     """
-    完成配置并重启
+    完成配置
 
     Args:
-        request: 配置完成请求，包含 WiFi SSID 和重启延迟
+        request: 配置完成请求，包含 WiFi SSID
 
     Returns:
         操作结果
     """
     try:
-        global _restart_task, _restart_scheduled_at
-
         # 1. 标记配置完成
         await onboarding_manager.mark_setup_complete(request.wifi_ssid)
 
-        # 2. 停止 AP 模式
+        # 2. 停止 AP 模式（WiFi 客户端连接已在 connect 步骤建立）
         await ap_manager.stop_ap_mode()
 
-        # 3. 安排重启
-        restart_at = datetime.now(UTC) + timedelta(seconds=request.restart_delay)
-        _restart_scheduled_at = restart_at
-        _restart_task = asyncio.create_task(
-            _execute_restart(request.restart_delay, "Setup completed")
-        )
+        # 3. 触发 LED 反馈（绿色常亮 3 秒后恢复）
+        try:
+            from lelamp.service.rgb.rgb_service import RGBService
+            rgb = RGBService()
+            rgb.dispatch_event("solid", {"color": (0, 255, 0)})
 
-        logger.info(f"Setup completed for WiFi: {request.wifi_ssid}, restarting in {request.restart_delay}s")
+            async def _restore_led():
+                await asyncio.sleep(3)
+                rgb.dispatch_event("off", {})
+
+            asyncio.create_task(_restore_led())
+        except Exception:
+            pass  # NoOp on macOS
+
+        # 4. 广播配置完成事件
+        try:
+            await setup_event_bus.publish({"event": "setup_complete", "ssid": request.wifi_ssid})
+        except Exception:
+            pass
+
+        logger.info(f"Setup completed for WiFi: {request.wifi_ssid}")
 
         return {
             "success": True,
-            "message": "配置完成，设备即将重启",
-            "restart_at": restart_at.isoformat(),
-            "delay_seconds": request.restart_delay
+            "message": "配置完成",
         }
     except Exception as e:
         logger.error(f"Complete setup error: {e}", exc_info=True)

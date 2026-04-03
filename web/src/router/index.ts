@@ -77,37 +77,25 @@ router.beforeEach(async (to, _from, next) => {
     return
   }
 
-  // 如果用户已连接 WebSocket（在 room 或 settings 页面），允许访问
-  // 从 connectionStore 检查连接状态需要异步导入，这里简化处理
-  const isConnected = sessionStorage.getItem('lelamp_connected') === 'true'
+  // AP 模式检查：所有非 /setup 路径重定向到配网页面
+  if (to.path !== '/setup') {
+    try {
+      const API_BASE = import.meta.env.VITE_API_BASE_URL || ''
+      const response = await fetch(`${API_BASE}/api/system/setup/status`)
 
-  // 如果用户正在连接页面或已连接，跳过设置检查
-  if (to.path === '/connect' || to.path === '/room' || to.path === '/settings' || to.path === '/auth' || to.path === '/profile' || to.path === '/devices' || isConnected) {
-    // 对于 room 和 settings，如果未连接则跳转到 connect
-    if ((to.path === '/room' || to.path === '/settings') && !isConnected) {
-      // 允许通过，让页面自己处理连接状态
-    }
-    next()
-    return
-  }
+      if (response.ok) {
+        const data = await response.json()
 
-  // 检查设备配置状态（仅在访问首页时）
-  try {
-    const API_BASE = import.meta.env.VITE_API_BASE_URL || ''
-    const response = await fetch(`${API_BASE}/api/system/setup/status`)
-
-    if (response.ok) {
-      const data = await response.json()
-
-      // 如果设备在 AP 模式，跳转到设置页面
-      if (data.is_ap_mode && to.path !== '/setup') {
-        next({ path: '/setup', replace: true })
-        return
+        // 如果设备在 AP 模式，强制跳转到配网页面
+        if (data.is_ap_mode) {
+          next({ path: '/setup', replace: true })
+          return
+        }
       }
+    } catch (error) {
+      // API 不可用时继续正常流程
+      console.warn('Failed to check setup status:', error)
     }
-  } catch (error) {
-    // API 不可用时继续正常流程
-    console.warn('Failed to check setup status:', error)
   }
 
   next()

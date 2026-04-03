@@ -23,14 +23,14 @@
         <div class="welcome-icon">🪔</div>
         <h1>欢迎使用 LeLamp</h1>
         <p>让我们来配置您的智能台灯</p>
-        <p class="hint">这个过程只需要 2-3 分钟</p>
+        <p class="hint">这个过程只需要 1-2 分钟</p>
         <div v-if="deviceInfo" class="device-info-badge">
           <span class="badge-label">设备</span>
           <span class="badge-value">{{ deviceInfo.hostname || deviceInfo.device_id }}</span>
         </div>
       </div>
 
-      <!-- 步骤 2: WiFi 扫描 -->
+      <!-- 步骤 2: 选择 WiFi + 输入密码（合并） -->
       <div v-if="currentStep === 1" class="wifi-scan-step">
         <h2>选择您的 WiFi 网络</h2>
         <p class="step-description">正在扫描附近的 WiFi 网络...</p>
@@ -51,52 +51,56 @@
             :key="network.bssid"
             class="network-item"
             :class="{ selected: selectedNetwork?.bssid === network.bssid }"
-            @click="selectNetwork(network)"
           >
-            <div class="network-info">
-              <div class="network-name">{{ network.ssid }}</div>
-              <div class="network-meta">
-                <span>{{ network.security === 'open' ? '开放' : '加密' }}</span>
-                <span>{{ network.frequency }}</span>
+            <!-- 网络基本信息行 -->
+            <div class="network-row" @click="selectNetwork(network)">
+              <div class="network-info">
+                <div class="network-name">{{ network.ssid }}</div>
+                <div class="network-meta">
+                  <span>{{ network.security === 'open' ? '开放' : '加密' }}</span>
+                  <span>{{ network.frequency }}</span>
+                </div>
+              </div>
+              <div class="network-signal">
+                <el-icon class="signal-icon" :style="{ opacity: getSignalOpacity(network.signal_strength) }">
+                  <Signal />
+                </el-icon>
               </div>
             </div>
-            <div class="network-signal">
-              <el-icon class="signal-icon" :style="{ opacity: getSignalOpacity(network.signal_strength) }">
-                <Signal />
-              </el-icon>
+
+            <!-- 展开的密码输入区域 -->
+            <div v-if="selectedNetwork?.bssid === network.bssid" class="network-expand">
+              <el-form label-position="top" v-if="network.security !== 'open'">
+                <el-form-item label="密码">
+                  <el-input
+                    v-model="wifiPassword"
+                    type="password"
+                    placeholder="请输入 WiFi 密码"
+                    show-password
+                    size="large"
+                    @keyup.enter="handleConnect"
+                  />
+                </el-form-item>
+              </el-form>
+              <el-alert v-else type="success" :closable="false" show-icon>
+                这是一个开放网络，无需密码
+              </el-alert>
+              <el-button
+                type="primary"
+                class="connect-inline-btn"
+                :loading="connecting"
+                @click="handleConnect"
+              >
+                连接
+              </el-button>
             </div>
           </div>
         </div>
         <el-empty v-else-if="!scanning" description="未找到 WiFi 网络，请点击扫描按钮" />
       </div>
 
-      <!-- 步骤 3: 输入密码 -->
-      <div v-if="currentStep === 2" class="password-step">
-        <h2>输入 WiFi 密码</h2>
-        <div class="selected-network">
-          <div class="network-ssid">{{ selectedNetwork?.ssid }}</div>
-          <div class="network-security">{{ selectedNetwork?.security === 'open' ? '开放网络' : '需要密码' }}</div>
-        </div>
-
-        <el-form v-if="selectedNetwork?.security !== 'open'" label-position="top">
-          <el-form-item label="密码">
-            <el-input
-              v-model="wifiPassword"
-              type="password"
-              placeholder="请输入 WiFi 密码"
-              show-password
-              size="large"
-              @keyup.enter="handleNext"
-            />
-          </el-form-item>
-        </el-form>
-        <el-alert v-else type="success" :closable="false" show-icon>
-          这是一个开放网络，无需密码
-        </el-alert>
-      </div>
-
-      <!-- 步骤 4: 连接验证 -->
-      <div v-if="currentStep === 3" class="connecting-step">
+      <!-- 步骤 3: 连接中 -->
+      <div v-if="currentStep === 2" class="connecting-step">
         <h2>{{ connectionError ? '连接失败' : '正在连接...' }}</h2>
 
         <!-- 实时进度列表 -->
@@ -130,110 +134,26 @@
         </div>
       </div>
 
-      <!-- 步骤 5: 注册/登录 -->
-      <div v-if="currentStep === 4" class="auth-step">
-        <h2>创建账号或登录</h2>
-        <p class="step-description">绑定设备需要登录账号，首次使用请注册</p>
-
-        <el-tabs v-model="authTab" class="auth-tabs">
-          <el-tab-pane label="登录" name="login">
-            <el-form label-position="top" @submit.prevent="handleAuthLogin">
-              <el-form-item label="用户名">
-                <el-input v-model="loginForm.username" placeholder="请输入用户名" size="large" />
-              </el-form-item>
-              <el-form-item label="密码">
-                <el-input v-model="loginForm.password" type="password" placeholder="请输入密码"
-                          show-password size="large" @keyup.enter="handleAuthLogin" />
-              </el-form-item>
-              <el-button type="primary" class="auth-btn" :loading="authLoading" @click="handleAuthLogin">
-                登录并绑定设备
-              </el-button>
-            </el-form>
-          </el-tab-pane>
-
-          <el-tab-pane label="注册" name="register">
-            <el-form label-position="top" @submit.prevent="handleAuthRegister">
-              <el-form-item label="用户名">
-                <el-input v-model="registerForm.username" placeholder="3-50 个字符" size="large" />
-              </el-form-item>
-              <el-form-item label="邮箱">
-                <el-input v-model="registerForm.email" type="email" placeholder="your@email.com" size="large" />
-              </el-form-item>
-              <el-form-item label="密码">
-                <el-input v-model="registerForm.password" type="password" placeholder="至少 6 个字符"
-                          show-password size="large" />
-              </el-form-item>
-              <el-button type="primary" class="auth-btn" :loading="authLoading" @click="handleAuthRegister">
-                注册并绑定设备
-              </el-button>
-            </el-form>
-          </el-tab-pane>
-        </el-tabs>
-      </div>
-
-      <!-- 步骤 6: 完成 -->
-      <div v-if="currentStep === 5" class="complete-step">
+      <!-- 步骤 4: 完成 -->
+      <div v-if="currentStep === 3" class="complete-step">
         <div class="success-icon">✓</div>
         <h2>配置完成！</h2>
-        <p>LeLamp 即将重启并连接到您的 WiFi</p>
-
-        <!-- 倒计时阶段 -->
-        <div v-if="countdown > 0" class="countdown">
-          <span>{{ countdown }}</span> 秒后重启...
-        </div>
-
-        <!-- 等待重启上线 -->
-        <div v-else-if="postRebootChecking" class="reboot-checking">
-          <div class="spinner"></div>
-          <p>正在等待设备重启...</p>
-          <p class="hint">通常需要 15-30 秒</p>
-        </div>
-
-        <!-- 超时提示 -->
-        <div v-else-if="postRebootError" class="reboot-timeout">
-          <p>设备启动可能需要更长时间</p>
-          <p>请手动访问：</p>
-          <p class="access-url">http://lelamp.local:8000</p>
-          <el-button type="primary" @click="redirectToHome">
-            刷新页面
-          </el-button>
-        </div>
-
-        <!-- 上线后自动跳转（一般看不到） -->
-        <div v-else class="access-info">
-          <p>设备访问地址：</p>
-          <p class="access-url">http://lelamp.local:8000</p>
-        </div>
+        <p class="complete-ssid">WiFi 连接成功：{{ completedSsid }}</p>
+        <p class="complete-hint">设备正在切换到 WiFi 网络...</p>
       </div>
     </div>
 
     <!-- 底部导航 -->
     <div class="wizard-footer">
       <el-button
-        v-if="currentStep > 0 && currentStep < 4"
+        v-if="currentStep === 1"
         @click="handlePrevious"
         :disabled="connecting"
       >
         上一步
       </el-button>
-      <el-button
-        v-if="currentStep < 3"
-        type="primary"
-        @click="handleNext"
-        :disabled="!canProceed"
-      >
-        下一步
-      </el-button>
-      <el-button
-        v-if="currentStep === 2"
-        type="primary"
-        @click="handleConnect"
-        :loading="connecting"
-        :disabled="!canConnect"
-      >
-        连接
-      </el-button>
     </div>
+
     <!-- 恢复确认对话框 -->
     <el-dialog
       v-model="showRecoveryDialog"
@@ -243,7 +163,7 @@
       :show-close="false"
     >
       <p>设备已连接到 WiFi：<strong>{{ recoveryInfo?.current_ssid }}</strong></p>
-      <p>是否跳过 WiFi 配置，直接进入账号绑定步骤？</p>
+      <p>是否跳过 WiFi 配置，直接完成设置？</p>
       <template #footer>
         <el-button @click="rejectRecovery">重新配置</el-button>
         <el-button type="primary" @click="acceptRecovery">是，继续</el-button>
@@ -253,12 +173,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { formatApiError } from '@/utils/errorMessages'
 import { ElMessage } from 'element-plus'
 import { Refresh } from '@element-plus/icons-vue'
 import axios from 'axios'
-import { useAuthStore } from '@/stores'
 import type { WiFiNetwork } from '@/types/settings'
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || ''
@@ -272,16 +191,8 @@ const apiClient = axios.create({
   }
 })
 
-// Auth store
-const authStore = useAuthStore()
-const authTab = ref('login')
-const authLoading = ref(false)
-
-const loginForm = reactive({ username: '', password: '' })
-const registerForm = reactive({ username: '', email: '', password: '' })
-
-// 步骤定义（6 步）
-const steps = ['欢迎', '选择 WiFi', '输入密码', '连接中', '注册 / 登录', '完成']
+// 步骤定义（4 步）
+const steps = ['欢迎', '选择 WiFi', '连接中', '完成']
 const currentStep = ref(0)
 
 // WiFi 相关状态
@@ -294,9 +205,9 @@ const wifiPassword = ref('')
 const connecting = ref(false)
 const connectingStatus = ref({ title: '正在连接...', message: '请稍候' })
 const connectionError = ref('')
-const countdown = ref(5)
-const postRebootChecking = ref(false)
-const postRebootError = ref(false)
+
+// 完成状态
+const completedSsid = ref('')
 
 // 设备信息
 const deviceInfo = ref<{ device_id: string; hostname: string } | null>(null)
@@ -312,26 +223,11 @@ interface ProgressItem {
   status: 'pending' | 'running' | 'done' | 'error'
 }
 const progressItems = ref<ProgressItem[]>([])
-const retryCountdown = ref(0)
 let setupWs: WebSocket | null = null
 
 // 计算属性
 const sortedNetworks = computed(() => {
   return [...networks.value].sort((a, b) => b.signal_strength - a.signal_strength)
-})
-
-const canProceed = computed(() => {
-  if (currentStep.value === 1) return selectedNetwork.value !== null
-  if (currentStep.value === 2) {
-    if (selectedNetwork.value?.security === 'open') return true
-    return wifiPassword.value.length > 0
-  }
-  return true
-})
-
-const canConnect = computed(() => {
-  if (selectedNetwork.value?.security === 'open') return true
-  return wifiPassword.value.length > 0
 })
 
 // 获取信号强度不透明度
@@ -361,19 +257,6 @@ function selectNetwork(network: WiFiNetwork) {
   wifiPassword.value = ''
 }
 
-// 下一步
-function handleNext() {
-  if (currentStep.value === 1 && !selectedNetwork.value) {
-    ElMessage.warning('请先选择一个 WiFi 网络')
-    return
-  }
-  if (currentStep.value === 2 && !canProceed.value) {
-    ElMessage.warning('请输入 WiFi 密码')
-    return
-  }
-  currentStep.value++
-}
-
 // 上一步
 function handlePrevious() {
   if (currentStep.value > 0) {
@@ -385,9 +268,15 @@ function handlePrevious() {
 async function handleConnect() {
   if (!selectedNetwork.value) return
 
+  // 验证密码
+  if (selectedNetwork.value.security !== 'open' && wifiPassword.value.length === 0) {
+    ElMessage.warning('请输入 WiFi 密码')
+    return
+  }
+
   connecting.value = true
   connectionError.value = ''
-  currentStep.value = 3
+  currentStep.value = 2
   initProgress()
   connectSetupWs()
 
@@ -407,130 +296,56 @@ async function handleConnect() {
       return
     }
 
-    connectingStatus.value = { title: '连接成功！', message: '正在跳转到账号设置...' }
+    connectingStatus.value = { title: '连接成功！', message: '正在完成配置...' }
     await new Promise(resolve => setTimeout(resolve, 800))
-    currentStep.value = 4
-  } catch (error: any) {
-    connectionError.value = formatApiError(error, 'wifi')
-    connecting.value = false
-  } finally {
-    disconnectSetupWs()
-  }
-}
 
-// 登录并绑定设备
-async function handleAuthLogin() {
-  if (!loginForm.username || !loginForm.password) {
-    ElMessage.warning('请输入用户名和密码')
-    return
-  }
-  authLoading.value = true
-  try {
-    await authStore.login(loginForm.username, loginForm.password)
-    // 自动绑定设备
-    const result = await authStore.autoBindDevice()
-    if (result.success || result.skipped) {
-      currentStep.value = 5
-      await completeSetup()
-    } else {
-      ElMessage.error(formatApiError(result.error, 'auth'))
-    }
-  } catch (e: any) {
-    ElMessage.error(formatApiError(e, 'auth'))
-  } finally {
-    authLoading.value = false
-  }
-}
-
-// 注册并绑定设备
-async function handleAuthRegister() {
-  if (!registerForm.username || !registerForm.email || !registerForm.password) {
-    ElMessage.warning('请填写所有字段')
-    return
-  }
-  authLoading.value = true
-  try {
-    await authStore.register(registerForm.username, registerForm.email, registerForm.password)
-    // 注册后自动绑定设备
-    const result = await authStore.autoBindDevice()
-    if (result.success || result.skipped) {
-      currentStep.value = 5
-      await completeSetup()
-    } else {
-      ElMessage.error(formatApiError(result.error, 'auth'))
-    }
-  } catch (e: any) {
-    ElMessage.error(formatApiError(e, 'auth'))
-  } finally {
-    authLoading.value = false
-  }
-}
-
-// 完成配置
-async function completeSetup() {
-  try {
-    const response = await axios.post(`${API_BASE}/api/setup/complete`, {
-      wifi_ssid: selectedNetwork.value?.ssid || 'unknown',
-      restart_delay: countdown.value
+    // 调用 setup/complete
+    const ssid = selectedNetwork.value.ssid
+    await apiClient.post(`${API_BASE}/api/system/setup/complete`, {
+      wifi_ssid: ssid,
+      restart_delay: 0
     })
 
-    if (response.data.success) {
-      const timer = setInterval(() => {
-        countdown.value--
-        if (countdown.value <= 0) {
-          clearInterval(timer)
-          pollDeviceReboot()
-        }
-      }, 1000)
-    }
-  } catch (error) {
-    ElMessage.error('保存配置失败，请重试')
+    completedSsid.value = ssid
+    currentStep.value = 3
+  } catch (error: any) {
+    connectionError.value = formatApiError(error, 'wifi')
+  } finally {
+    connecting.value = false
+    disconnectSetupWs()
   }
-}
-
-async function pollDeviceReboot() {
-  postRebootChecking.value = true
-  const maxAttempts = 20  // 最多等 60 秒（每 3 秒一次）
-  for (let i = 0; i < maxAttempts; i++) {
-    await new Promise(resolve => setTimeout(resolve, 3000))
-    try {
-      const res = await axios.get(`${API_BASE}/api/setup/status`, { timeout: 5000 })
-      if (res.data.is_configured) {
-        postRebootChecking.value = false
-        window.location.href = '/'
-        return
-      }
-    } catch {
-      // 设备重启中，连接失败是正常的，继续等待
-    }
-  }
-  postRebootChecking.value = false
-  postRebootError.value = true
-}
-
-function redirectToHome() {
-  window.location.href = '/'
 }
 
 // 重试
 function handleRetry() {
   connectionError.value = ''
-  currentStep.value = 2
+  currentStep.value = 1
 }
 
 // 恢复确认
-function acceptRecovery() {
+async function acceptRecovery() {
   showRecoveryDialog.value = false
   if (recoveryInfo.value) {
+    const ssid = recoveryInfo.value.current_ssid
     selectedNetwork.value = {
-      ssid: recoveryInfo.value.current_ssid,
+      ssid: ssid,
       bssid: '',
       signal_strength: 100,
       security: 'wpa2',
       frequency: '2.4GHz',
       is_hidden: false,
     }
-    currentStep.value = recoveryInfo.value.skip_to_step
+    // 直接调用 setup/complete，跳到完成步骤
+    try {
+      await apiClient.post(`${API_BASE}/api/system/setup/complete`, {
+        wifi_ssid: ssid,
+        restart_delay: 0
+      })
+      completedSsid.value = ssid
+      currentStep.value = 3
+    } catch (error: any) {
+      ElMessage.error(formatApiError(error, 'wifi'))
+    }
   }
 }
 
@@ -562,11 +377,6 @@ function handleProgressEvent(event: { event: string; attempt?: number; retry_in?
     case 'wifi_failed':
       if (event.retry_in) {
         progressItems.value[1].text = `连接失败，${event.retry_in} 秒后重试...`
-        retryCountdown.value = event.retry_in
-        const timer = setInterval(() => {
-          retryCountdown.value--
-          if (retryCountdown.value <= 0) clearInterval(timer)
-        }, 1000)
       }
       break
     case 'network_ok':
@@ -793,23 +603,25 @@ onMounted(async () => {
 }
 
 .network-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16px;
   border: 2px solid var(--lelamp-bg-gray);
   border-radius: 12px;
-  cursor: pointer;
   transition: all 0.2s;
-
-  &:hover {
-    border-color: var(--lelamp-sky);
-    background: var(--lelamp-bg-gray);
-  }
 
   &.selected {
     border-color: var(--lelamp-sky);
     background: var(--lelamp-sky-light);
+  }
+
+  .network-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px;
+    cursor: pointer;
+
+    &:hover {
+      opacity: 0.85;
+    }
   }
 
   .network-info {
@@ -836,36 +648,14 @@ onMounted(async () => {
       color: var(--lelamp-mint);
     }
   }
-}
 
-.password-step {
-  background: var(--lelamp-bg-white);
-  border-radius: 16px;
-  padding: 30px;
-  max-width: 450px;
-  width: 100%;
+  .network-expand {
+    padding: 0 16px 16px 16px;
+    border-top: 1px solid var(--lelamp-bg-gray);
 
-  h2 {
-    margin-top: 0;
-    color: var(--lelamp-text-primary);
-  }
-
-  .selected-network {
-    padding: 16px;
-    background: var(--lelamp-bg-gray);
-    border-radius: 8px;
-    margin-bottom: 24px;
-
-    .network-ssid {
-      font-size: 18px;
-      font-weight: 500;
-      color: var(--lelamp-text-primary);
-    }
-
-    .network-security {
-      font-size: 14px;
-      color: var(--lelamp-text-secondary);
-      margin-top: 4px;
+    .connect-inline-btn {
+      width: 100%;
+      margin-top: 12px;
     }
   }
 }
@@ -902,33 +692,6 @@ onMounted(async () => {
   }
 }
 
-.auth-step {
-  background: var(--lelamp-bg-white);
-  border-radius: 16px;
-  padding: 30px;
-  max-width: 450px;
-  width: 100%;
-
-  h2 {
-    margin-top: 0;
-    color: var(--lelamp-text-primary);
-  }
-
-  .step-description {
-    color: var(--lelamp-text-secondary);
-    margin-bottom: 20px;
-  }
-
-  .auth-tabs {
-    margin-top: 10px;
-  }
-
-  .auth-btn {
-    width: 100%;
-    margin-top: 8px;
-  }
-}
-
 .complete-step {
   text-align: center;
   color: var(--lelamp-bg-white);
@@ -943,6 +706,7 @@ onMounted(async () => {
     justify-content: center;
     font-size: 48px;
     margin: 0 auto 20px;
+    color: #67c23a;
   }
 
   h2 {
@@ -950,24 +714,15 @@ onMounted(async () => {
     margin-bottom: 10px;
   }
 
-  .access-info {
-    margin-top: 16px;
-    padding: 16px 24px;
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 12px;
-
-    .access-url {
-      font-size: 18px;
-      font-weight: 500;
-      margin-top: 4px;
-      word-break: break-all;
-    }
+  .complete-ssid {
+    font-size: 18px;
+    opacity: 0.9;
+    margin-bottom: 8px;
   }
 
-  .countdown {
-    font-size: 48px;
-    font-weight: bold;
-    margin-top: 20px;
+  .complete-hint {
+    font-size: 14px;
+    opacity: 0.7;
   }
 }
 
