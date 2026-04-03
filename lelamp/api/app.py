@@ -118,6 +118,10 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 # 添加安全头中间件
 app.add_middleware(SecurityHeadersMiddleware)
 
+# Captive Portal 中间件（AP 模式下拦截手机连通性检测，重定向到配网页面）
+from lelamp.api.middleware.captive_portal import CaptivePortalMiddleware
+app.add_middleware(CaptivePortalMiddleware, setup_url="/setup")
+
 # 添加 GZip 压缩中间件
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
