@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-LeLamp Runtime 是 LeLamp 机器人台灯的 Python 控制系统。基于 LiveKit 实时语音对话，集成 DeepSeek LLM、百度语音、Qwen VL 视觉、舵机控制、RGB LED 灯效。运行在 Raspberry Pi 上，macOS 可开发调试（无硬件功能降级为 NoOp）。
+LeLamp Runtime 是 LeLamp 机器人台灯的 Python 控制系统。基于 LiveKit 实时语音对话，集成 DeepSeek LLM、百度语音、Qwen VL 视觉、舵机控制、RGB LED 灯效。运行在 Raspberry Pi 上，macOS 可开发调试（无硬件功能降级为 NoOp）。Python 版本约束：`>=3.12,<3.14`。
 
 ## Commands
 
@@ -15,6 +15,7 @@ uv sync                              # 基础依赖
 uv sync --extra dev                  # + 测试/lint 工具
 uv sync --extra api                  # + FastAPI/数据库
 uv sync --extra vision               # + MediaPipe（仅 arm64 macOS / x86_64 Linux / AMD64 Windows）
+uv sync --extra hardware             # + rpi-ws281x 等硬件依赖（仅 Raspberry Pi）
 GIT_LFS_SKIP_SMUDGE=1 uv sync       # LFS 问题时使用
 
 # 运行 Agent
@@ -102,7 +103,7 @@ web/                       # Vue 3 灯控面板（构建后由 FastAPI 托管，
 1. **`main.py`** — LiveKit 语音 Agent（`console` 文字模式 / `start` Worker 模式）
 2. **`lelamp/api/app.py`** — FastAPI 服务器（REST API + WebSocket，独立启动）
 
-两者共享数据库和配置，但运行时互不依赖。
+两者共享数据库和配置，但运行时互不依赖。配置加载策略不同：`main.py` 使用 `_require_env` 强制校验 LiveKit/DeepSeek/百度密钥，API 入口更宽容（未设置时使用默认值）。
 
 **单端口部署** — API 服务器通过 `StaticFiles` 托管 Vue 构建产物（`web/dist/`），用户通过 `http://<device>:8000` 同时访问 API 和前端。构建产物不存在时自动跳过静态文件托管（开发模式不受影响）。环境变量 `LELAMP_WEB_DIST` 控制构建产物路径。
 
@@ -129,6 +130,18 @@ web/                       # Vue 3 灯控面板（构建后由 FastAPI 托管，
 **LiveKit SDK 回调签名** — `data_received` 事件回调接收 `DataPacket` 对象（含 `.data` 和 `.participant`），不是独立的 `(data, participant)` 参数。
 
 **配置管理** — 所有配置通过 `lelamp/config.py` 的冻结 dataclass 加载，运行时不可变。
+
+**API 硬件降级** — API 入口（`app.py lifespan`）对硬件服务做降级：MotorsService 失败 → `NoOpMotorsService`，RGBService 失败 → `NoOpRGBService`。VisionService 在 API 模式下不启动（避免与 LiveKit Agent 争抢摄像头）。
+
+**数据库模型注册** — ORM 模型分布在 3 个文件，必须在 `init_db()` 之前全部 import 以注册到 `Base`：
+- `lelamp/database/models.py` — Conversation, OperationLog, DeviceState, UserSettings（内部 import models_auth）
+- `lelamp/database/models_auth.py` — User, DeviceBinding, RefreshToken
+- `lelamp/memory/models.py` — Memory, ConversationSummary
+
+**Follower/Leader 模式** — `lelamp/follower/` 和 `lelamp/leader/` 集成 HuggingFace LeRobot 框架：
+- `LeLampFollower`：5 轴舵机机器人控制类（FeetechMotorsBus + STS3215）
+- `LeLampLeader`：遥操作端，读取关节位置
+- 两者都注册到 LeRobot 配置注册表（`"lelamp_follower"` / `"lelamp_leader"`）
 
 ## Critical Patterns
 
@@ -157,6 +170,8 @@ SAFE_JOINT_RANGES = {
 - Agent 入口（`main.py entrypoint`）：调用 `init_db()` 创建所有表
 - API 入口（`lelamp/api/app.py lifespan`）：同样调用 `init_db()`
 - 新增 ORM 模型时必须在对应入口 `init_db()` 之前 import 以注册到 Base
+- SQLite 使用 WAL 模式，`LELAMP_DATABASE_URL` 支持切换到 PostgreSQL
+- 数据库连接：`get_db()` 用于 FastAPI 依赖注入，`get_db_context()` 用于手动管理
 
 ### 设备绑定与认证（`lelamp/api/services/`）
 - `device_secret`：首次 WiFi 配置时自动生成（`secrets.token_hex(8)`），持久化到 `setup_status.json`
@@ -181,6 +196,8 @@ SAFE_JOINT_RANGES = {
 
 常用可选变量：
 - `LELAMP_DEV_MODE=1` — 跳过 License 验证（开发用）
+- `LELAMP_LICENSE_KEY` — 设备授权码（生产必需）
+- `LELAMP_DATABASE_URL` (default: sqlite:///./lelamp.db) — 数据库连接字符串
 - `LELAMP_VISION_ENABLED` (default: true) — 云端视觉
 - `LELAMP_EDGE_VISION_ENABLED` (default: false) — 本地边缘视觉
 - `LELAMP_PROACTIVE_MONITOR` (default: true) — 主动视觉监控
@@ -188,8 +205,12 @@ SAFE_JOINT_RANGES = {
 - `LELAMP_JWT_SECRET` — JWT 签名密钥（未设置时随机生成，重启失效）
 - `LELAMP_DEVICE_SECRET` — 设备绑定密钥（优先从 setup_status.json 读取）
 - `LELAMP_WEB_DIST` (default: web/dist) — Vue 前端构建产物路径
+- `LELAMP_CORS_ORIGINS` — 自定义 CORS 允许的源列表
 - `MODELSCOPE_API_KEY` — Qwen VL 视觉模型
+- `FEISHU_APP_ID`, `FEISHU_APP_SECRET`, `FEISHU_RECEIVE_ID` — 飞书通知集成
+- `BOCHA_API_KEY` — 博查 AI 搜索
 - `LOG_LEVEL` (default: "INFO") — 日志级别
+- `LELAMP_LOG_TO_FILE` (default: false) — 启用文件日志
 
 完整变量列表见 `lelamp/config.py` 和各模块文档。
 
@@ -199,6 +220,36 @@ SAFE_JOINT_RANGES = {
 - **舵机**：Feetech servo SDK，串口通信 `/dev/ttyACM0`，macOS 无硬件时 NoOp
 - **摄像头**：支持旋转/翻转（`LELAMP_CAMERA_ROTATE_DEG`/`LELAMP_CAMERA_FLIP`），隐私保护 LED 指示
 - **音量**：`amixer` 控制 Line/Line DAC/HP 输出
+
+## Testing
+
+测试使用 pytest，共享 fixtures 在 `tests/conftest.py` 中定义：
+- `mock_config()` — 返回完整的 `AppConfig` 测试实例
+- `mock_motors_service()` / `mock_rgb_service()` / `mock_vision_service()` — Mock 硬件服务
+
+```bash
+# 运行单个测试文件
+uv run pytest tests/test_memory.py -v
+# 按名称匹配
+uv run pytest tests/ -k "test_setup" -v
+# 带覆盖率
+uv run pytest tests/ --cov=lelamp --cov-report=html
+```
+
+## API & WebSocket
+
+### API 路由（前缀 `/api`）
+`/auth`（认证）、`/devices`（设备管理）、`/history`（历史记录）、`/system`（系统信息）、`/settings`（设置）、`/livekit`（Token）、`/ws/{lamp_id}`（设备状态 WebSocket）、`/ws/setup`（配网进度 WebSocket）
+
+### 中间件栈（按添加顺序）
+SecurityHeadersMiddleware → CaptivePortalMiddleware → GZipMiddleware → CORSMiddleware
+
+### WebSocket 端点
+1. **设备状态** (`/api/ws/{lamp_id}`)：支持 JWT 认证或匿名，频道订阅系统（state/events/logs/notifications/conversations/health），命令系统支持 chat/RGB/电机/摄像头控制
+2. **配网进度** (`/api/ws/setup`)：使用 `SetupEventBus` asyncio 广播推送 WiFi 配网事件（wifi_connecting/connected/failed 等）
+
+### 配置同步
+`ConfigSyncService` 将数据库中的 UserSettings 同步回 `.env` 文件。API 的 settings 端点修改设置后会写回 `.env`，重启后生效。
 
 ## Security
 
@@ -210,3 +261,16 @@ SAFE_JOINT_RANGES = {
 - 设备密钥比较必须使用 `hmac.compare_digest()`（防时序攻击），禁止 `==`/`!=`
 - AP 热点密码每次启动时随机生成（`secrets.token_urlsafe(6)`），不再使用固定密码
 - LiveKit Token 端点强制使用认证用户身份，禁止用户指定 `identity`
+
+## Systemd Services
+
+生产环境使用 4 个 systemd 服务，启动链：`lelamp-setup` → `lelamp-setup-ap` → `lelamp-captive-portal` → `lelamp-livekit` + `lelamp-api`。工作目录 `/home/pi/lelamp_runtime`。
+
+```bash
+# 查看状态
+sudo systemctl status lelamp-{livekit,api}.service
+# 重启
+sudo systemctl restart lelamp-{livekit,api}.service
+# 查看日志
+sudo journalctl -u lelamp-{livekit,api}.service -f
+```
