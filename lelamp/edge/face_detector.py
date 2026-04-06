@@ -174,7 +174,7 @@ class FaceDetector:
             faces: List[FaceInfo] = []
             main_face_center: Optional[tuple] = None
 
-            if results.detections:
+            if getattr(results, "detections", None):
                 self._total_detections += 1
                 h, w = frame.shape[:2]
 
