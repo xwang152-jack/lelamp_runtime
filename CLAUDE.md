@@ -14,7 +14,8 @@ LeLamp Runtime 是 LeLamp 机器人台灯的 Python 控制系统。基于 LiveKi
 uv sync                              # 基础依赖
 uv sync --extra dev                  # + 测试/lint 工具
 uv sync --extra api                  # + FastAPI/数据库
-uv sync --extra vision               # + MediaPipe（仅 arm64 macOS / x86_64 Linux / AMD64 Windows）
+uv sync --extra vision               # + MediaPipe + OpenCV（仅 arm64 macOS / x86_64 Linux / AMD64 Windows）
+uv sync --extra dev --extra api --extra vision  # 完整开发依赖
 uv sync --extra hardware             # + rpi-ws281x 等硬件依赖（仅 Raspberry Pi）
 GIT_LFS_SKIP_SMUDGE=1 uv sync       # LFS 问题时使用
 
@@ -115,6 +116,7 @@ web/                       # Vue 3 灯控面板（构建后由 FastAPI 托管，
 - 跨线程共享状态 → `threading.Lock`（不是 `asyncio.Lock`）
 - 异步子进程 → `asyncio.create_subprocess_exec()`（不是 `subprocess.run`）
 - 时间戳临界区（`_light_override_until_ts` 等）→ 必须用 `_timestamps_lock` 保护
+- **后台任务追踪**：使用 `agent._track_task()` 追踪所有 `asyncio.create_task()`，确保 `shutdown()` 时能正确取消
 
 **Service 事件系统** — `ServiceBase` 基于 heapq 的优先级队列：
 - 优先级：CRITICAL(0) > HIGH(1) > NORMAL(2) > LOW(3)
@@ -128,6 +130,17 @@ web/                       # Vue 3 灯控面板（构建后由 FastAPI 托管，
 `main.py` 的 `entrypoint` 中已有此顺序。
 
 **LiveKit SDK 回调签名** — `data_received` 事件回调接收 `DataPacket` 对象（含 `.data` 和 `.participant`），不是独立的 `(data, participant)` 参数。
+
+**LiveKit 1.5+ turn_handling API** — `AgentSession` 使用 `turn_handling` 参数配置打断和结束点检测：
+```python
+session = AgentSession(
+    turn_handling={
+        "interruption": {"mode": "adaptive"},  # ML 区分真正打断 vs 假阳性
+        "endpointing": {"mode": "dynamic"},    # 自适应沉默阈值
+    },
+)
+```
+单次 `session.say()` 使用 `allow_interruptions=False/True` 控制打断行为。
 
 **配置管理** — 所有配置通过 `lelamp/config.py` 的冻结 dataclass 加载，运行时不可变。
 
@@ -145,7 +158,30 @@ web/                       # Vue 3 灯控面板（构建后由 FastAPI 托管，
 
 ## Critical Patterns
 
-### 舵机安全
+### Agent Tool 定义（LiveKit 1.5+ 最佳实践）
+
+所有 `@function_tool` 方法必须包含 `context: RunContext` 参数：
+```python
+from livekit.agents import function_tool, RunContext
+
+@function_tool()
+async def play_recording(
+    self,
+    context: RunContext,  # 必须
+    recording_name: str,
+) -> str:
+    ...
+```
+
+长时间运行的工具使用 `_tool_with_timeout()` 包装：
+```python
+async def vision_answer(self, context: RunContext, question: str) -> str:
+    return await self._tool_with_timeout(
+        self._do_vision_answer(question),
+        timeout_seconds=30.0,
+        error_message="视觉识别超时，请稍后重试",
+    )
+```
 所有 `move_joint` 调用必须验证 `SAFE_JOINT_RANGES`：
 ```python
 SAFE_JOINT_RANGES = {
@@ -211,6 +247,10 @@ SAFE_JOINT_RANGES = {
 - `BOCHA_API_KEY` — 博查 AI 搜索
 - `LOG_LEVEL` (default: "INFO") — 日志级别
 - `LELAMP_LOG_TO_FILE` (default: false) — 启用文件日志
+- `LELAMP_VAD_MIN_SPEECH_DURATION` — VAD 最小语音时长（秒）
+- `LELAMP_VAD_MIN_SILENCE_DURATION` — VAD 最小沉默时长（秒）
+- `LELAMP_VAD_PREFIX_PADDING_DURATION` — VAD 前缀填充时长（秒）
+- `LELAMP_VAD_ACTIVATION_THRESHOLD` — VAD 激活阈值
 
 完整变量列表见 `lelamp/config.py` 和各模块文档。
 
@@ -228,7 +268,9 @@ SAFE_JOINT_RANGES = {
 - `mock_motors_service()` / `mock_rgb_service()` / `mock_vision_service()` — Mock 硬件服务
 
 ```bash
-# 运行单个测试文件
+# Agent 行为测试（含 tool delegation、timeout、background task）
+uv run pytest tests/test_agent_behavior.py -v
+# 记忆系统测试
 uv run pytest tests/test_memory.py -v
 # 按名称匹配
 uv run pytest tests/ -k "test_setup" -v
