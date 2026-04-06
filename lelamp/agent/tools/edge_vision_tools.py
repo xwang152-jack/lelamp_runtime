@@ -6,6 +6,7 @@
 - 手势控制
 - 用户在场检测
 """
+
 import logging
 from typing import TYPE_CHECKING, Optional
 
@@ -81,11 +82,14 @@ class EdgeVisionTools:
 
             if result["gestures"]:
                 gestures = [g.value for g in result["gestures"]]
-                gesture_names = ', '.join(gestures)
+                gesture_names = ", ".join(gestures)
 
                 # 触发手势回调（如果有）
                 for gesture in result["gestures"]:
-                    if hasattr(self._hybrid_vision, 'gesture_callback') and self._hybrid_vision.gesture_callback:
+                    if (
+                        hasattr(self._hybrid_vision, "gesture_callback")
+                        and self._hybrid_vision.gesture_callback
+                    ):
                         try:
                             self._hybrid_vision.gesture_callback(gesture, {})
                         except Exception as callback_error:
@@ -136,10 +140,7 @@ class EdgeVisionTools:
         if self._hybrid_vision is None:
             return {"enabled": False}
 
-        return {
-            "enabled": True,
-            **self._hybrid_vision.get_stats()
-        }
+        return {"enabled": True, **self._hybrid_vision.get_stats()}
 
     async def quick_check(self, frame=None) -> str:
         """
@@ -173,7 +174,10 @@ class EdgeVisionTools:
 
                 # 触发手势回调
                 for gesture in gesture_result["gestures"]:
-                    if hasattr(self._hybrid_vision, 'gesture_callback') and self._hybrid_vision.gesture_callback:
+                    if (
+                        hasattr(self._hybrid_vision, "gesture_callback")
+                        and self._hybrid_vision.gesture_callback
+                    ):
                         try:
                             self._hybrid_vision.gesture_callback(gesture, {})
                         except Exception as callback_error:

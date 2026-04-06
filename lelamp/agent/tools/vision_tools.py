@@ -1,6 +1,7 @@
 """
 视觉工具模块
 """
+
 import asyncio
 import base64
 import json
@@ -11,7 +12,7 @@ import uuid
 import urllib.request
 from typing import TYPE_CHECKING
 
-from livekit.agents import function_tool
+from livekit.agents import function_tool, RunContext
 
 if TYPE_CHECKING:
     from lelamp.service.rgb.rgb_service import RGBService
@@ -59,8 +60,12 @@ class VisionTools:
         self._motion_lock = asyncio.Lock()
         self.logger = logging.getLogger("lelamp.agent.tools.vision")
 
-    @function_tool
-    async def vision_answer(self, question: str) -> str:
+    @function_tool()
+    async def vision_answer(
+        self,
+        context: RunContext,
+        question: str,
+    ) -> str:
         """
         Ask a question about what the lamp can see through its camera.
         询问关于灯通过摄像头能看到什么的问题。
@@ -92,13 +97,18 @@ class VisionTools:
                 return "当前没有可用画面。请确保摄像头已启用并在刷新。"
 
             jpeg_b64, _ = latest
-            return await self._qwen_client.describe(image_jpeg_b64=jpeg_b64, question=question)
+            return await self._qwen_client.describe(
+                image_jpeg_b64=jpeg_b64, question=question
+            )
         finally:
             # 恢复灯光状态
             self._restore_light_override(prev_override_until_ts)
 
-    @function_tool
-    async def check_homework(self) -> str:
+    @function_tool()
+    async def check_homework(
+        self,
+        context: RunContext,
+    ) -> str:
         """
         帮用户检查画面中的作业（数学、口算、填空等）。
         Analyze and check homework in the camera view (math, corrections, etc.).
@@ -139,13 +149,18 @@ class VisionTools:
                 "指出错误的地方并给出正确答案或解析，鼓励用户改进。如果看不清，请提示用户调整作业位置或补光。"
                 "请用中文回答，保持简洁。最后别忘了以LeLamp的性格损一下用户。"
             )
-            return await self._qwen_client.describe(image_jpeg_b64=jpeg_b64, question=prompt)
+            return await self._qwen_client.describe(
+                image_jpeg_b64=jpeg_b64, question=prompt
+            )
         finally:
             # 恢复灯光状态
             self._restore_light_override(prev_override_until_ts)
 
-    @function_tool
-    async def capture_to_feishu(self) -> str:
+    @function_tool()
+    async def capture_to_feishu(
+        self,
+        context: RunContext,
+    ) -> str:
         """
         拍照并通过飞书机器人推送（直接上传图片），拍照前会锁定动作并停止以确保清晰度。
         Capture a photo and push it to Feishu bot (direct upload), stops motion for clarity.
@@ -173,12 +188,21 @@ class VisionTools:
 
             # 3. 获取 Token
             async def _do_req(req):
-                return await asyncio.to_thread(lambda: urllib.request.urlopen(req, timeout=15).read())
+                return await asyncio.to_thread(
+                    lambda: urllib.request.urlopen(req, timeout=15).read()
+                )
 
-            token_url = "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal"
-            token_payload = json.dumps({"app_id": app_id, "app_secret": app_secret}).encode("utf-8")
+            token_url = (
+                "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal"
+            )
+            token_payload = json.dumps(
+                {"app_id": app_id, "app_secret": app_secret}
+            ).encode("utf-8")
             token_req = urllib.request.Request(
-                token_url, data=token_payload, headers={"Content-Type": "application/json"}, method="POST"
+                token_url,
+                data=token_payload,
+                headers={"Content-Type": "application/json"},
+                method="POST",
             )
 
             token_resp = json.loads(await _do_req(token_req))
@@ -209,7 +233,9 @@ class VisionTools:
             body.append(b"")
             body.append(b"message")
             body.append(f"--{boundary}".encode("utf-8"))
-            body.append(b'Content-Disposition: form-data; name="image"; filename="photo.jpg"')
+            body.append(
+                b'Content-Disposition: form-data; name="image"; filename="photo.jpg"'
+            )
             body.append(b"Content-Type: image/jpeg")
             body.append(b"")
             body.append(jpeg_data)
@@ -220,7 +246,9 @@ class VisionTools:
                 "Authorization": f"Bearer {token}",
                 "Content-Type": f"multipart/form-data; boundary={boundary}",
             }
-            upload_req = urllib.request.Request(upload_url, data=payload, headers=upload_headers, method="POST")
+            upload_req = urllib.request.Request(
+                upload_url, data=payload, headers=upload_headers, method="POST"
+            )
             upload_resp = json.loads(await _do_req(upload_req))
 
             image_key = upload_resp.get("data", {}).get("image_key")
@@ -229,16 +257,22 @@ class VisionTools:
 
             # 6. 发送消息
             msg_url = f"https://open.feishu.cn/open-apis/im/v1/messages?receive_id_type={receive_id_type}"
-            msg_payload = json.dumps({
-                "receive_id": receive_id,
-                "msg_type": "image",
-                "content": json.dumps({"image_key": image_key})
-            }).encode("utf-8")
+            msg_payload = json.dumps(
+                {
+                    "receive_id": receive_id,
+                    "msg_type": "image",
+                    "content": json.dumps({"image_key": image_key}),
+                }
+            ).encode("utf-8")
 
             msg_req = urllib.request.Request(
-                msg_url, data=msg_payload,
-                headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-                method="POST"
+                msg_url,
+                data=msg_payload,
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json",
+                },
+                method="POST",
             )
             msg_resp = json.loads(await _do_req(msg_req))
 

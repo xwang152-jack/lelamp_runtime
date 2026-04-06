@@ -1,10 +1,11 @@
 """
 电机控制工具模块
 """
+
 import logging
 from typing import TYPE_CHECKING, Optional
 
-from livekit.agents import function_tool
+from livekit.agents import function_tool, RunContext
 
 if TYPE_CHECKING:
     from lelamp.service.motors.motors_service import MotorsService
@@ -40,8 +41,12 @@ class MotorTools:
         self.state_manager = state_manager
         self.logger = logging.getLogger("lelamp.agent.tools.motor")
 
-    @function_tool
-    async def play_recording(self, recording_name: str) -> str:
+    @function_tool()
+    async def play_recording(
+        self,
+        context: RunContext,
+        recording_name: str,
+    ) -> str:
         """
         播放预录制的电机动作序列
 
@@ -51,7 +56,9 @@ class MotorTools:
         Returns:
             执行结果消息
         """
-        self.logger.debug(f"play_recording called with recording_name: {recording_name}")
+        self.logger.debug(
+            f"play_recording called with recording_name: {recording_name}"
+        )
         try:
             # 检查是否允许执行动作
             if not self.state_manager.can_execute_motion():
@@ -67,8 +74,13 @@ class MotorTools:
             self.logger.error(f"Error playing recording {recording_name}: {e}")
             return f"播放动作失败：{str(e)}"
 
-    @function_tool
-    async def move_joint(self, joint_name: str, angle: float) -> str:
+    @function_tool()
+    async def move_joint(
+        self,
+        context: RunContext,
+        joint_name: str,
+        angle: float,
+    ) -> str:
         """
         控制指定关节移动到目标角度
 
@@ -79,7 +91,9 @@ class MotorTools:
         Returns:
             执行结果消息
         """
-        self.logger.debug(f"move_joint called with joint_name={joint_name}, angle={angle}")
+        self.logger.debug(
+            f"move_joint called with joint_name={joint_name}, angle={angle}"
+        )
         try:
             # 验证关节名称
             if joint_name not in SAFE_JOINT_RANGES:
@@ -97,8 +111,7 @@ class MotorTools:
 
             # 分发移动指令
             self.motors_service.dispatch(
-                "move_joint",
-                {"joint_name": joint_name, "angle": angle_float}
+                "move_joint", {"joint_name": joint_name, "angle": angle_float}
             )
             return f"已将 {joint_name} 移动到 {angle_float} 度"
         except ValueError as e:
@@ -108,8 +121,11 @@ class MotorTools:
             self.logger.error(f"Error moving joint {joint_name}: {e}")
             return f"控制关节失败：{str(e)}"
 
-    @function_tool
-    async def get_joint_positions(self) -> str:
+    @function_tool()
+    async def get_joint_positions(
+        self,
+        context: RunContext,
+    ) -> str:
         """
         获取所有关节的当前位置（角度）
 
@@ -128,8 +144,12 @@ class MotorTools:
             self.logger.error(f"Error getting joint positions: {e}")
             return f"获取关节位置失败：{str(e)}"
 
-    @function_tool
-    async def get_motor_health(self, motor_name: Optional[str] = None) -> str:
+    @function_tool()
+    async def get_motor_health(
+        self,
+        context: RunContext,
+        motor_name: Optional[str] = None,
+    ) -> str:
         """
         获取舵机健康状态(温度、电压、负载等)
 
@@ -157,7 +177,7 @@ class MotorTools:
                 "healthy": "✅",
                 "warning": "⚠️",
                 "critical": "🔴",
-                "stalled": "🚫"
+                "stalled": "🚫",
             }
 
             if motor_name:
@@ -172,13 +192,13 @@ class MotorTools:
 
                 result = f"舵机 {motor_name} 健康状态 {status_emoji.get(latest['status'], '❓')}:\n"
                 result += f"- 状态: {latest['status']}\n"
-                if latest.get('temperature'):
+                if latest.get("temperature"):
                     result += f"- 温度: {latest['temperature']:.1f}°C\n"
-                if latest.get('voltage'):
+                if latest.get("voltage"):
                     result += f"- 电压: {latest['voltage']:.1f}V\n"
-                if latest.get('load'):
-                    result += f"- 负载: {latest['load']*100:.1f}%\n"
-                if latest.get('position') is not None:
+                if latest.get("load"):
+                    result += f"- 负载: {latest['load'] * 100:.1f}%\n"
+                if latest.get("position") is not None:
                     result += f"- 位置: {latest['position']:.1f}°\n"
 
                 result += "\n统计信息:\n"
@@ -194,7 +214,7 @@ class MotorTools:
                     latest = data.get("latest")
                     if latest:
                         result += f"{motor}: {status_emoji.get(latest['status'], '❓')} {latest['status']}"
-                        if latest.get('temperature'):
+                        if latest.get("temperature"):
                             result += f" (温度: {latest['temperature']:.1f}°C)"
                         result += "\n"
                     else:

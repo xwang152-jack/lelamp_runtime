@@ -65,20 +65,30 @@ def _load_config() -> AppConfig:
         livekit_url=_require_env("LIVEKIT_URL"),
         livekit_api_key=_require_env("LIVEKIT_API_KEY"),
         livekit_api_secret=_require_env("LIVEKIT_API_SECRET"),
-        deepseek_model=_get_env_str("DEEPSEEK_MODEL", "deepseek-chat") or "deepseek-chat",
-        deepseek_base_url=_get_env_str("DEEPSEEK_BASE_URL", "https://api.deepseek.com") or "https://api.deepseek.com",
+        deepseek_model=_get_env_str("DEEPSEEK_MODEL", "deepseek-chat")
+        or "deepseek-chat",
+        deepseek_base_url=_get_env_str("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
+        or "https://api.deepseek.com",
         deepseek_api_key=_require_env("DEEPSEEK_API_KEY"),
-        modelscope_base_url=_get_env_str("MODELSCOPE_BASE_URL", "https://api-inference.modelscope.cn/v1")
+        modelscope_base_url=_get_env_str(
+            "MODELSCOPE_BASE_URL", "https://api-inference.modelscope.cn/v1"
+        )
         or "https://api-inference.modelscope.cn/v1",
         modelscope_api_key=_get_env_str("MODELSCOPE_API_KEY", None),
-        modelscope_model=_get_env_str("MODELSCOPE_MODEL", "Qwen/Qwen3-VL-235B-A22B-Instruct")
+        modelscope_model=_get_env_str(
+            "MODELSCOPE_MODEL", "Qwen/Qwen3-VL-235B-A22B-Instruct"
+        )
         or "Qwen/Qwen3-VL-235B-A22B-Instruct",
         modelscope_timeout_s=_get_env_float("MODELSCOPE_TIMEOUT_S", 60.0),
         vision_enabled=_get_env_bool("LELAMP_VISION_ENABLED", True),
-        camera_index_or_path=_parse_index_or_path(_get_env_str("LELAMP_CAMERA_INDEX_OR_PATH", "0")),
+        camera_index_or_path=_parse_index_or_path(
+            _get_env_str("LELAMP_CAMERA_INDEX_OR_PATH", "0")
+        ),
         camera_width=_get_env_int("LELAMP_CAMERA_WIDTH", 1024),
         camera_height=_get_env_int("LELAMP_CAMERA_HEIGHT", 768),
-        vision_capture_interval_s=_get_env_float("LELAMP_VISION_CAPTURE_INTERVAL_S", 2.5),
+        vision_capture_interval_s=_get_env_float(
+            "LELAMP_VISION_CAPTURE_INTERVAL_S", 2.5
+        ),
         vision_jpeg_quality=_get_env_int("LELAMP_VISION_JPEG_QUALITY", 92),
         vision_max_age_s=_get_env_float("LELAMP_VISION_MAX_AGE_S", 15.0),
         camera_rotate_deg=_get_env_int("LELAMP_CAMERA_ROTATE_DEG", 0),
@@ -90,7 +100,8 @@ def _load_config() -> AppConfig:
         baidu_cuid=_get_env_str("BAIDU_SPEECH_CUID", "lelamp") or "lelamp",
         baidu_tts_per=_get_env_int("BAIDU_SPEECH_TTS_PER", 4),
         noise_cancellation_enabled=_get_env_bool("LELAMP_NOISE_CANCELLATION", True),
-        greeting_text=_get_env_str("LELAMP_GREETING_TEXT", "Hello! 小宝贝上线了.") or "",
+        greeting_text=_get_env_str("LELAMP_GREETING_TEXT", "Hello! 小宝贝上线了.")
+        or "",
         ota_url=_get_env_str("LELAMP_OTA_URL", "") or "",
     )
 
@@ -186,13 +197,14 @@ async def entrypoint(ctx: JobContext):
         qwen_client=qwen_client,
         ota_url=config.ota_url,
         motors_service=None,  # 使用默认创建的服务
-        rgb_service=None,     # 使用默认创建的服务
+        rgb_service=None,  # 使用默认创建的服务
         motor_config=motor_config,
     )
 
     # 注入记忆上下文到 system prompt
     if agent._memory_initialized:
         import uuid as _uuid
+
         agent._session_id = str(_uuid.uuid4())[:8]
         await agent.update_instructions(agent._build_dynamic_instructions())
         logger.info(f"Memory context injected, session_id={agent._session_id}")
@@ -220,6 +232,13 @@ async def entrypoint(ctx: JobContext):
             per=config.baidu_tts_per,
             state_cb=_on_state,
         ),
+        # 使用新的 turn_handling API (LiveKit 1.5+)
+        # adaptive: ML 模型区分真正的打断 vs 假阳性（咳嗽、背景音等）
+        # dynamic: 自适应沉默阈值，根据对话节奏动态调整
+        turn_handling={
+            "interruption": {"mode": "adaptive"},
+            "endpointing": {"mode": "dynamic"},
+        },
     )
 
     start_kwargs: dict[str, object] = {}
@@ -232,8 +251,10 @@ async def entrypoint(ctx: JobContext):
     @ctx.room.on("data_received")
     def on_data_received(data_packet):
         """处理来自 Web Client 的 Data Channel 消息"""
-        import asyncio
-        asyncio.create_task(agent.handle_data_message(data_packet.data, data_packet.participant))
+        # 使用 agent 的 _track_task 方法追踪后台任务
+        agent._track_task(
+            agent.handle_data_message(data_packet.data, data_packet.participant)
+        )
 
     try:
         await session.start(
@@ -242,6 +263,7 @@ async def entrypoint(ctx: JobContext):
             **start_kwargs,
         )
         if config.greeting_text:
+            # greeting 期间禁用打断
             await session.say(config.greeting_text, allow_interruptions=False)
     except Exception as e:
         logger.error(f"Session error: {e}")

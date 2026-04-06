@@ -4,6 +4,7 @@
 提供 save_memory / recall_memory / forget_memory 三个方法，
 由 LeLamp Agent 类通过 @function_tool 委托调用。
 """
+
 import logging
 
 from lelamp.memory.store import MemoryStore
@@ -33,9 +34,7 @@ class MemoryTools:
 
         content = content.strip()[: self.CONTENT_MAX_LENGTH]
 
-        valid_categories = {
-            "preference", "fact", "relationship", "context", "general"
-        }
+        valid_categories = {"preference", "fact", "relationship", "context", "general"}
         if category not in valid_categories:
             category = "general"
 

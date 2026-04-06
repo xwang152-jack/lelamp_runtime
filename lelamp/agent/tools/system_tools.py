@@ -3,6 +3,7 @@
 
 包含电机、RGB、系统控制和 OTA 更新相关的工具方法。
 """
+
 import asyncio
 import json
 import logging
@@ -14,7 +15,7 @@ import urllib.error
 import urllib.request
 from typing import TYPE_CHECKING, Any, Optional
 
-from livekit.agents import function_tool
+from livekit.agents import function_tool, RunContext
 
 # 从 motor_tools.py 导入 SAFE_JOINT_RANGES
 from lelamp.agent.tools.motor_tools import SAFE_JOINT_RANGES
@@ -69,8 +70,11 @@ class SystemTools:
 
     # ==================== 电机相关工具 ====================
 
-    @function_tool
-    async def get_available_recordings(self) -> str:
+    @function_tool()
+    async def get_available_recordings(
+        self,
+        context: RunContext,
+    ) -> str:
         """
         Discover your physical expressions! Get your repertoire of motor movements for body language.
         获取可用的录制动作列表。
@@ -84,9 +88,10 @@ class SystemTools:
         except Exception as e:
             return f"Error getting recordings: {str(e)}"
 
-    @function_tool
+    @function_tool()
     async def tune_motor_pid(
         self,
+        context: RunContext,
         motor_name: str,
         p_coefficient: int,
         i_coefficient: int = 0,
@@ -126,7 +131,9 @@ class SystemTools:
             bus.write("I_Coefficient", motor_name, i_coefficient)
             bus.write("D_Coefficient", motor_name, d_coefficient)
 
-            self.logger.info(f"Updated PID for {motor_name}: P={p_coefficient}, I={i_coefficient}, D={d_coefficient}")
+            self.logger.info(
+                f"Updated PID for {motor_name}: P={p_coefficient}, I={i_coefficient}, D={d_coefficient}"
+            )
 
             return f"成功更新舵机 {motor_name} 的 PID 参数:\n- P: {p_coefficient}\n- I: {i_coefficient}\n- D: {d_coefficient}\n\n请测试动作是否稳定,如有问题可恢复默认值(P=16, I=0, D=32)"
 
@@ -134,8 +141,12 @@ class SystemTools:
             self.logger.error(f"Failed to tune PID for {motor_name}: {e}")
             return f"更新 PID 参数失败: {str(e)}"
 
-    @function_tool
-    async def reset_motor_health_stats(self, motor_name: Optional[str] = None) -> str:
+    @function_tool()
+    async def reset_motor_health_stats(
+        self,
+        context: RunContext,
+        motor_name: Optional[str] = None,
+    ) -> str:
         """
         重置舵机健康统计数据(警告/危险/堵转计数)。
         Reset motor health statistics (warning/critical/stall counts).
@@ -153,8 +164,12 @@ class SystemTools:
         else:
             return "已重置所有舵机的健康统计数据"
 
-    @function_tool
-    async def get_motor_health(self, motor_name: Optional[str] = None) -> str:
+    @function_tool()
+    async def get_motor_health(
+        self,
+        context: RunContext,
+        motor_name: Optional[str] = None,
+    ) -> str:
         """
         获取舵机健康状态(温度、电压、负载等)
 
@@ -182,7 +197,7 @@ class SystemTools:
                 "healthy": "✅",
                 "warning": "⚠️",
                 "critical": "🔴",
-                "stalled": "🚫"
+                "stalled": "🚫",
             }
 
             if motor_name:
@@ -197,13 +212,13 @@ class SystemTools:
 
                 result = f"舵机 {motor_name} 健康状态 {status_emoji.get(latest['status'], '❓')}:\n"
                 result += f"- 状态: {latest['status']}\n"
-                if latest.get('temperature'):
+                if latest.get("temperature"):
                     result += f"- 温度: {latest['temperature']:.1f}°C\n"
-                if latest.get('voltage'):
+                if latest.get("voltage"):
                     result += f"- 电压: {latest['voltage']:.1f}V\n"
-                if latest.get('load'):
-                    result += f"- 负载: {latest['load']*100:.1f}%\n"
-                if latest.get('position') is not None:
+                if latest.get("load"):
+                    result += f"- 负载: {latest['load'] * 100:.1f}%\n"
+                if latest.get("position") is not None:
                     result += f"- 位置: {latest['position']:.1f}°\n"
 
                 result += "\n统计信息:\n"
@@ -219,7 +234,7 @@ class SystemTools:
                     latest = data.get("latest")
                     if latest:
                         result += f"{motor}: {status_emoji.get(latest['status'], '❓')} {latest['status']}"
-                        if latest.get('temperature'):
+                        if latest.get("temperature"):
                             result += f" (温度: {latest['temperature']:.1f}°C)"
                         result += "\n"
                     else:
@@ -232,8 +247,12 @@ class SystemTools:
 
     # ==================== RGB 效果扩展 ====================
 
-    @function_tool
-    async def set_rgb_brightness(self, percent: int) -> str:
+    @function_tool()
+    async def set_rgb_brightness(
+        self,
+        context: RunContext,
+        percent: int,
+    ) -> str:
         """
         调节灯光亮度（0-100）
         Adjust lamp brightness (0-100).
@@ -252,9 +271,10 @@ class SystemTools:
         self.rgb_service.dispatch("brightness", v, priority=Priority.HIGH)
         return f"已将灯光亮度设置为 {p}%"
 
-    @function_tool
+    @function_tool()
     async def rgb_effect_wave(
         self,
+        context: RunContext,
         red: int = 60,
         green: int = 180,
         blue: int = 255,
@@ -275,7 +295,9 @@ class SystemTools:
                 return error_msg
 
             # 设置灯光覆盖
-            self.state_manager.set_light_override(duration_s=self.LIGHT_OVERRIDE_DURATION_S)
+            self.state_manager.set_light_override(
+                duration_s=self.LIGHT_OVERRIDE_DURATION_S
+            )
 
             from lelamp.service import Priority
 
@@ -294,9 +316,10 @@ class SystemTools:
         except Exception as e:
             return f"开启波纹灯效失败：{str(e)}"
 
-    @function_tool
+    @function_tool()
     async def rgb_effect_fire(
         self,
+        context: RunContext,
         intensity: float = 1.0,
         fps: int = 30,
     ) -> str:
@@ -304,10 +327,14 @@ class SystemTools:
         火焰动态效果（8x8 矩阵）
         Fire animation effect on the 8x8 LED matrix.
         """
-        self.logger.debug(f"rgb_effect_fire called with intensity={intensity}, fps={fps}")
+        self.logger.debug(
+            f"rgb_effect_fire called with intensity={intensity}, fps={fps}"
+        )
         try:
             # 设置灯光覆盖
-            self.state_manager.set_light_override(duration_s=self.LIGHT_OVERRIDE_DURATION_S)
+            self.state_manager.set_light_override(
+                duration_s=self.LIGHT_OVERRIDE_DURATION_S
+            )
 
             from lelamp.service import Priority
 
@@ -320,9 +347,10 @@ class SystemTools:
         except Exception as e:
             return f"开启火焰灯效失败：{str(e)}"
 
-    @function_tool
+    @function_tool()
     async def rgb_effect_emoji(
         self,
+        context: RunContext,
         emoji: str = "smile",
         red: int = 255,
         green: int = 200,
@@ -342,12 +370,16 @@ class SystemTools:
             f"rgb_effect_emoji called with emoji={emoji}, fg=({red},{green},{blue}), bg=({bg_red},{bg_green},{bg_blue}), blink={blink}, period_s={period_s}, fps={fps}"
         )
         try:
-            is_valid, error_msg = validate_multiple_rgb_colors(red, green, blue, bg_red, bg_green, bg_blue)
+            is_valid, error_msg = validate_multiple_rgb_colors(
+                red, green, blue, bg_red, bg_green, bg_blue
+            )
             if not is_valid:
                 return error_msg
 
             # 设置灯光覆盖
-            self.state_manager.set_light_override(duration_s=self.LIGHT_OVERRIDE_DURATION_S)
+            self.state_manager.set_light_override(
+                duration_s=self.LIGHT_OVERRIDE_DURATION_S
+            )
 
             from lelamp.service import Priority
 
@@ -368,8 +400,11 @@ class SystemTools:
         except Exception as e:
             return f"开启表情动画失败：{str(e)}"
 
-    @function_tool
-    async def stop_rgb_effect(self) -> str:
+    @function_tool()
+    async def stop_rgb_effect(
+        self,
+        context: RunContext,
+    ) -> str:
         """
         停止动态特效/表情动画
         Stop all running RGB effects/animations.
@@ -385,8 +420,12 @@ class SystemTools:
 
     # ==================== 系统控制 ====================
 
-    @function_tool
-    async def set_volume(self, volume_percent: int) -> str:
+    @function_tool()
+    async def set_volume(
+        self,
+        context: RunContext,
+        volume_percent: int,
+    ) -> str:
         """
         Control system audio volume.
         控制系统音量（0-100）。
@@ -399,8 +438,14 @@ class SystemTools:
             # 使用 amixer 分别设置三个音频输出的音量
             for control in ("Line", "Line DAC", "HP"):
                 process = await asyncio.create_subprocess_exec(
-                    "sudo", "-u", self._amixer_user, "amixer",
-                    "-q", "sset", control, f"{volume_percent}%",
+                    "sudo",
+                    "-u",
+                    self._amixer_user,
+                    "amixer",
+                    "-q",
+                    "sset",
+                    control,
+                    f"{volume_percent}%",
                     stdout=asyncio.subprocess.DEVNULL,
                     stderr=asyncio.subprocess.DEVNULL,
                 )
@@ -410,8 +455,11 @@ class SystemTools:
         except Exception as e:
             return f"Error controlling volume: {str(e)}"
 
-    @function_tool
-    async def get_rate_limit_stats(self) -> str:
+    @function_tool()
+    async def get_rate_limit_stats(
+        self,
+        context: RunContext,
+    ) -> str:
         """
         获取 API 速率限制统计信息（调试用）
         Get API rate limiting statistics (for debugging).
@@ -427,8 +475,12 @@ class SystemTools:
             lines.append(f"  平均等待: {stat['avg_wait_time']:.2f}s")
         return "\n".join(lines)
 
-    @function_tool
-    async def web_search(self, query: str) -> str:
+    @function_tool()
+    async def web_search(
+        self,
+        context: RunContext,
+        query: str,
+    ) -> str:
         """
         当用户问到实时信息、新闻、天气或你不确定的知识时，使用此工具在线搜索。
         Get real-time information from the web.
@@ -451,26 +503,29 @@ class SystemTools:
         url = "https://api.bochaai.com/v1/web-search"
 
         # 导入 URL 验证函数
-        from lelamp.utils.url_validation import validate_external_url, ALLOWED_API_DOMAINS
+        from lelamp.utils.url_validation import (
+            validate_external_url,
+            ALLOWED_API_DOMAINS,
+        )
 
         # URL 安全验证
         if not validate_external_url(url, ALLOWED_API_DOMAINS):
             self.logger.error(f"搜索 API URL 验证失败: {url}")
             return "搜索服务配置错误"
 
-        payload = json.dumps({
-            "query": query.strip(),
-            "freshness": "oneDay",
-            "summary": True
-        }).encode("utf-8")
+        payload = json.dumps(
+            {"query": query.strip(), "freshness": "oneDay", "summary": True}
+        ).encode("utf-8")
 
         headers = {
             "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
         }
 
         def _call() -> dict:
-            req = urllib.request.Request(url=url, data=payload, headers=headers, method="POST")
+            req = urllib.request.Request(
+                url=url, data=payload, headers=headers, method="POST"
+            )
             with urllib.request.urlopen(req, timeout=15) as resp:
                 raw = resp.read()
             return json.loads(raw.decode("utf-8"))
@@ -509,8 +564,11 @@ class SystemTools:
 
     # ==================== OTA 更新 ====================
 
-    @function_tool
-    async def check_for_updates(self) -> str:
+    @function_tool()
+    async def check_for_updates(
+        self,
+        context: RunContext,
+    ) -> str:
         """
         检查系统是否有新的 OTA 更新。
         Check for system updates.
@@ -523,8 +581,11 @@ class SystemTools:
             return f"发现新版本 {version}！\n更新内容：{notes}\n请问是否需要现在更新？(请回复'确认更新')"
         return f"当前已是最新版本 ({version})。"
 
-    @function_tool
-    async def perform_ota_update(self) -> str:
+    @function_tool()
+    async def perform_ota_update(
+        self,
+        context: RunContext,
+    ) -> str:
         """
         执行系统更新 (OTA)。注意：更新成功后服务将重启。
         Perform system update. Note: Service will restart upon success.

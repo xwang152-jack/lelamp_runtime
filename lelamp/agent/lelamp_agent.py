@@ -4,6 +4,7 @@ LeLamp Agent - 主代理类
 从 main.py 提取的 LeLamp 类到独立模块。
 集成所有工具类和状态管理器。
 """
+
 import asyncio
 import base64
 import json
@@ -15,17 +16,25 @@ import threading
 import time
 from typing import TYPE_CHECKING, Optional
 
-from livekit.agents import Agent, function_tool
+from livekit.agents import Agent, function_tool, RunContext
 
 from lelamp.service import Priority
 from lelamp.agent.states import ConversationState, StateColors, StateManager
-from lelamp.agent.tools import MotorTools, RGBTools, VisionTools, SystemTools, EdgeVisionTools, MemoryTools
+from lelamp.agent.tools import (
+    MotorTools,
+    RGBTools,
+    VisionTools,
+    SystemTools,
+    EdgeVisionTools,
+    MemoryTools,
+)
 from lelamp.utils import get_rate_limiter, get_all_rate_limiter_stats
 
 # 边缘视觉服务（可选依赖）
 try:
     from lelamp.edge.hybrid_vision import HybridVisionService
     from lelamp.service.vision.proactive_vision_monitor import ProactiveVisionMonitor
+
     EDGE_VISION_AVAILABLE = True
 except ImportError:
     EDGE_VISION_AVAILABLE = False
@@ -103,14 +112,10 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
 
         # 初始化速率限制器
         self._search_rate_limiter = get_rate_limiter(
-            name="web_search",
-            rate=2.0,
-            capacity=5
+            name="web_search", rate=2.0, capacity=5
         )
         self._vision_rate_limiter = get_rate_limiter(
-            name="vision_api",
-            rate=0.5,
-            capacity=2
+            name="vision_api", rate=0.5, capacity=2
         )
 
         # 保存依赖
@@ -132,7 +137,9 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
 
         # 初始化或使用注入的服务
         if motors_service is None:
-            motors_enabled = (os.getenv("LELAMP_MOTORS_ENABLED") or "1").strip().lower() in (
+            motors_enabled = (
+                os.getenv("LELAMP_MOTORS_ENABLED") or "1"
+            ).strip().lower() in (
                 "1",
                 "true",
                 "yes",
@@ -149,8 +156,12 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
                         motor_config=motor_config,
                     )
                 except Exception as e:
-                    logger.warning(f"MotorsService init failed, fallback to NoOpMotorsService: {e}")
-                    from lelamp.service.motors.noop_motors_service import NoOpMotorsService
+                    logger.warning(
+                        f"MotorsService init failed, fallback to NoOpMotorsService: {e}"
+                    )
+                    from lelamp.service.motors.noop_motors_service import (
+                        NoOpMotorsService,
+                    )
 
                     self.motors_service = NoOpMotorsService()
             else:
@@ -181,7 +192,9 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
                         led_channel=0,
                     )
                 except Exception as e:
-                    logger.warning(f"RGBService init failed, fallback to NoOpRGBService: {e}")
+                    logger.warning(
+                        f"RGBService init failed, fallback to NoOpRGBService: {e}"
+                    )
                     from lelamp.service.rgb.noop_rgb_service import NoOpRGBService
 
                     self.rgb_service = NoOpRGBService()
@@ -196,7 +209,9 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
         try:
             self.motors_service.start()
         except Exception as e:
-            logger.warning(f"MotorsService start failed, fallback to NoOpMotorsService: {e}")
+            logger.warning(
+                f"MotorsService start failed, fallback to NoOpMotorsService: {e}"
+            )
             from lelamp.service.motors.noop_motors_service import NoOpMotorsService
 
             self.motors_service = NoOpMotorsService()
@@ -204,12 +219,14 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
         self.rgb_service.start()
 
         # 注册舵机故障回调（两个服务均已启动后）
-        if hasattr(self.motors_service, '_motor_fault_callback'):
+        if hasattr(self.motors_service, "_motor_fault_callback"):
             self.motors_service._motor_fault_callback = self._on_motor_health_change
 
         # 初始化状态管理器
         motion_cooldown_s = float(os.getenv("LELAMP_MOTION_COOLDOWN_S") or "3.0")
-        suppress_motion_after_light_s = float(os.getenv("LELAMP_SUPPRESS_MOTION_AFTER_LIGHT_S") or "5.0")
+        suppress_motion_after_light_s = float(
+            os.getenv("LELAMP_SUPPRESS_MOTION_AFTER_LIGHT_S") or "5.0"
+        )
         self._state_manager = StateManager(
             motion_cooldown_s=motion_cooldown_s,
             suppress_motion_after_light_s=suppress_motion_after_light_s,
@@ -217,12 +234,10 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
 
         # 初始化工具类
         self._motor_tools = MotorTools(
-            motors_service=self.motors_service,
-            state_manager=self._state_manager
+            motors_service=self.motors_service, state_manager=self._state_manager
         )
         self._rgb_tools = RGBTools(
-            rgb_service=self.rgb_service,
-            state_manager=self._state_manager
+            rgb_service=self.rgb_service, state_manager=self._state_manager
         )
         self._vision_tools = VisionTools(
             vision_service=vision_service,
@@ -230,7 +245,7 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
             rgb_service=self.rgb_service,
             motors_service=self.motors_service,
             state_manager=self._state_manager,
-            rate_limiter=self._vision_rate_limiter
+            rate_limiter=self._vision_rate_limiter,
         )
         self._system_tools = SystemTools(
             motors_service=self.motors_service,
@@ -238,26 +253,31 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
             ota_manager=self._ota_manager,
             ota_url=ota_url,
             state_manager=self._state_manager,
-            get_rate_limit_stats_func=get_all_rate_limiter_stats
+            get_rate_limit_stats_func=get_all_rate_limiter_stats,
         )
 
         # 初始化边缘视觉服务（可选）
         self._hybrid_vision: Optional["HybridVisionService"] = None
         self._edge_vision_tools: Optional[EdgeVisionTools] = None
         self._vision_monitor = None
-        
-        edge_vision_enabled = (os.getenv("LELAMP_EDGE_VISION_ENABLED") or "0").strip().lower() in (
-            "1", "true", "yes", "on"
-        )
+
+        edge_vision_enabled = (
+            os.getenv("LELAMP_EDGE_VISION_ENABLED") or "0"
+        ).strip().lower() in ("1", "true", "yes", "on")
         if edge_vision_enabled and EDGE_VISION_AVAILABLE:
             try:
                 # 手势置信度阈值
                 _GESTURE_HIGH_CONF = 0.80
-                _GESTURE_MID_CONF  = 0.60
+                _GESTURE_MID_CONF = 0.60
                 _GESTURE_NAMES = {
-                    "thumbs_up": "点赞", "thumbs_down": "踩", "peace": "耶",
-                    "wave": "挥手", "fist": "握拳", "point": "指向",
-                    "ok": "OK", "open": "张开手掌",
+                    "thumbs_up": "点赞",
+                    "thumbs_down": "踩",
+                    "peace": "耶",
+                    "wave": "挥手",
+                    "fist": "握拳",
+                    "point": "指向",
+                    "ok": "OK",
+                    "open": "张开手掌",
                 }
 
                 # 手势回调：检测到手势时触发动作
@@ -265,12 +285,16 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
                     confidence = context.get("confidence", 1.0)
 
                     if confidence < _GESTURE_MID_CONF:
-                        logger.debug(f"手势 {gesture.value} 置信度过低 ({confidence:.2f})，忽略")
+                        logger.debug(
+                            f"手势 {gesture.value} 置信度过低 ({confidence:.2f})，忽略"
+                        )
                         return
 
                     if confidence < _GESTURE_HIGH_CONF:
                         gesture_name = _GESTURE_NAMES.get(gesture.value, gesture.value)
-                        logger.info(f"手势 {gesture.value} 置信度中等 ({confidence:.2f})，请求语音确认")
+                        logger.info(
+                            f"手势 {gesture.value} 置信度中等 ({confidence:.2f})，请求语音确认"
+                        )
                         if self._event_loop and self._event_loop.is_running():
                             asyncio.run_coroutine_threadsafe(
                                 self._speak_proactively(f"你是在比{gesture_name}吗？"),
@@ -278,7 +302,9 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
                             )
                         return
 
-                    logger.info(f"检测到手势: {gesture.value} (confidence={confidence:.2f})")
+                    logger.info(
+                        f"检测到手势: {gesture.value} (confidence={confidence:.2f})"
+                    )
                     if gesture.value == "thumbs_up":
                         self.motors_service.dispatch("play", "nod")
                     elif gesture.value == "thumbs_down":
@@ -291,7 +317,7 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
                             self.rgb_service.dispatch("off")
                         else:
                             self.rgb_service.dispatch("solid", (255, 255, 255))
-                
+
                 # 在场回调：用户在场状态变化
                 def on_presence(present: bool):
                     if present:
@@ -300,7 +326,7 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
                     else:
                         logger.info("用户离开")
                         # 可以在这里添加自动休眠逻辑
-                
+
                 self._hybrid_vision = HybridVisionService(
                     cloud_vision_client=qwen_client,
                     enable_face=True,
@@ -309,17 +335,16 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
                     gesture_callback=on_gesture,
                     presence_callback=on_presence,
                 )
-                
+
                 self._edge_vision_tools = EdgeVisionTools(
-                    hybrid_vision=self._hybrid_vision,
-                    state_manager=self._state_manager
+                    hybrid_vision=self._hybrid_vision, state_manager=self._state_manager
                 )
 
                 # 启动主动监听服务
                 # 检查是否通过环境变量禁用
-                enable_monitor = os.getenv("LELAMP_PROACTIVE_MONITOR", "1").strip().lower() in (
-                    "1", "true", "yes", "on"
-                )
+                enable_monitor = os.getenv(
+                    "LELAMP_PROACTIVE_MONITOR", "1"
+                ).strip().lower() in ("1", "true", "yes", "on")
 
                 if enable_monitor:
                     # 获取监控配置
@@ -337,10 +362,14 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
                         idle_fps=idle_fps,
                     )
                     self._vision_monitor.start()
-                    logger.info(f"边缘视觉服务已启用（主动监听模式: {active_fps}/{idle_fps} FPS）")
+                    logger.info(
+                        f"边缘视觉服务已启用（主动监听模式: {active_fps}/{idle_fps} FPS）"
+                    )
                 else:
                     self._vision_monitor = None
-                    logger.info("边缘视觉服务已启用（语音触发模式，通过 LELAMP_PROACTIVE_MONITOR=0 禁用主动监控）")
+                    logger.info(
+                        "边缘视觉服务已启用（语音触发模式，通过 LELAMP_PROACTIVE_MONITOR=0 禁用主动监控）"
+                    )
             except Exception as e:
                 logger.warning(f"边缘视觉服务初始化失败: {e}")
                 self._hybrid_vision = None
@@ -354,9 +383,9 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
         self._user_text_lock = threading.Lock()
 
         # 启动动画
-        boot_anim_enabled = (os.getenv("LELAMP_BOOT_ANIMATION") or "1").strip().lower() in (
-            "1", "true", "yes", "on"
-        )
+        boot_anim_enabled = (
+            os.getenv("LELAMP_BOOT_ANIMATION") or "1"
+        ).strip().lower() in ("1", "true", "yes", "on")
         if boot_anim_enabled:
             self.motors_service.dispatch("play", "wake_up")
         self.rgb_service.dispatch("solid", (255, 255, 255))
@@ -370,19 +399,25 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
         # 用于运行 amixer 的用户名（可配置）
         self._amixer_user = os.getenv("LELAMP_AMIXER_USER", "pi")
 
+        # ==================== 后台任务追踪 ====================
+        # 使用集合追踪所有后台 asyncio.Task，避免任务泄漏
+        self._background_tasks: set[asyncio.Task] = set()
+
         # ==================== 记忆系统初始化 ====================
         self._memory_initialized = False
         self._memory_store = None  # type: ignore
         self._memory_consolidator = None  # type: ignore
         self._memory_tools = None  # type: ignore
         self._conversation_turns: list[dict] = []
-        self._consolidation_offset: int = 0  # 已整合到哪一轮（turns[offset:] 是待整合的新轮次）
+        self._consolidation_offset: int = (
+            0  # 已整合到哪一轮（turns[offset:] 是待整合的新轮次）
+        )
         self._consolidation_in_progress: bool = False  # 防止并发整合
         self._session_id: str = ""
 
-        memory_enabled = (os.getenv("LELAMP_MEMORY_ENABLED") or "1").strip().lower() in (
-            "1", "true", "yes", "on"
-        )
+        memory_enabled = (
+            os.getenv("LELAMP_MEMORY_ENABLED") or "1"
+        ).strip().lower() in ("1", "true", "yes", "on")
         if memory_enabled:
             try:
                 from lelamp.memory.store import MemoryStore
@@ -402,23 +437,64 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
                 self._memory_initialized = True
                 logger.info("Memory system initialized")
             except Exception as e:
-                logger.warning(f"Memory system init failed, continuing without memory: {e}")
+                logger.warning(
+                    f"Memory system init failed, continuing without memory: {e}"
+                )
                 self._memory_initialized = False
 
     # ==================== 核心方法 ====================
+
+    def _track_task(self, coro) -> asyncio.Task:
+        """
+        创建一个被追踪的后台任务
+
+        Args:
+            coro: 协程对象
+
+        Returns:
+            创建的 Task 对象
+        """
+        task = asyncio.create_task(coro)
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
+        return task
+
+    async def _tool_with_timeout(
+        self,
+        coro,
+        timeout_seconds: float,
+        error_message: str = "操作超时，请稍后重试",
+    ) -> str:
+        """
+        执行带 timeout 的协程
+
+        Args:
+            coro: 要执行的协程
+            timeout_seconds: 超时时间（秒）
+            error_message: 超时时返回的错误消息
+
+        Returns:
+            协程执行结果或超时错误消息
+        """
+        try:
+            return await asyncio.wait_for(coro, timeout=timeout_seconds)
+        except asyncio.TimeoutError:
+            logger.warning(f"Tool operation timed out after {timeout_seconds}s")
+            return error_message
 
     async def _initialize_async(self) -> None:
         """异步初始化任务（在有事件循环时调用）"""
         if self._event_loop is None:
             self._event_loop = asyncio.get_running_loop()
-        if hasattr(self, '_pending_volume_set'):
+        if hasattr(self, "_pending_volume_set"):
             await self._set_system_volume(self._pending_volume_set)
-            delattr(self, '_pending_volume_set')
+            delattr(self, "_pending_volume_set")
 
     async def _speak_proactively(self, text: str) -> None:
         """从异步上下文主动发声（手势确认、故障提示等）"""
         try:
             if hasattr(self, "session") and self.session is not None:
+                # 使用 VAD 打断模式允许用户打断（与 AgentSession 的 adaptive 模式配合）
                 await self.session.say(text, allow_interruptions=True)
             else:
                 logger.info(f"[speak_proactively] session not ready: {text}")
@@ -439,6 +515,7 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
             return
 
         import random as _random
+
         # 去重：同一舵机同一状态不重复通知
         if self._motor_fault_notified.get(motor_name) == new_status:
             return
@@ -481,7 +558,9 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
 
         # 追踪对话轮用于记忆整合
         if self._memory_initialized and self._session_id:
-            self._conversation_turns.append({"role": "user", "content": text, "ts": time.time()})
+            self._conversation_turns.append(
+                {"role": "user", "content": text, "ts": time.time()}
+            )
             # 硬上限防止内存泄漏
             if len(self._conversation_turns) > 200:
                 drop = len(self._conversation_turns) - 100
@@ -524,13 +603,15 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
         elif state == "thinking":
             rgb = StateColors.THINKING
         elif state == "speaking":
-            rgb = random.choice([
-                (255, 80, 80),
-                (80, 255, 120),
-                (80, 160, 255),
-                (255, 200, 80),
-                (255, 80, 220),
-            ])
+            rgb = random.choice(
+                [
+                    (255, 80, 80),
+                    (80, 255, 120),
+                    (80, 160, 255),
+                    (255, 200, 80),
+                    (255, 80, 220),
+                ]
+            )
         elif state == "idle":
             rgb = StateColors.IDLE
         else:
@@ -539,7 +620,12 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
         if state == "speaking":
             self.rgb_service.dispatch(
                 "breath",
-                {"rgb": rgb, "period_s": 1.6, "min_brightness": 10, "max_brightness": 255},
+                {
+                    "rgb": rgb,
+                    "period_s": 1.6,
+                    "min_brightness": 10,
+                    "max_brightness": 255,
+                },
                 priority=Priority.HIGH,
             )
         else:
@@ -553,15 +639,37 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
             volume_percent: 音量百分比 (0-100)
         """
         try:
-            cmd_line = ["sudo", "-u", self._amixer_user, "amixer", "sset", "Line", f"{volume_percent}%"]
-            cmd_line_dac = ["sudo", "-u", self._amixer_user, "amixer", "sset", "Line DAC", f"{volume_percent}%"]
-            cmd_line_hp = ["sudo", "-u", self._amixer_user, "amixer", "sset", "HP", f"{volume_percent}%"]
+            cmd_line = [
+                "sudo",
+                "-u",
+                self._amixer_user,
+                "amixer",
+                "sset",
+                "Line",
+                f"{volume_percent}%",
+            ]
+            cmd_line_dac = [
+                "sudo",
+                "-u",
+                self._amixer_user,
+                "amixer",
+                "sset",
+                "Line DAC",
+                f"{volume_percent}%",
+            ]
+            cmd_line_hp = [
+                "sudo",
+                "-u",
+                self._amixer_user,
+                "amixer",
+                "sset",
+                "HP",
+                f"{volume_percent}%",
+            ]
 
             for cmd in [cmd_line, cmd_line_dac, cmd_line_hp]:
                 proc = await asyncio.create_subprocess_exec(
-                    *cmd,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE
+                    *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
                 )
                 await proc.communicate()
 
@@ -600,7 +708,9 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
 
         # --- 近期对话摘要（最近 72h，最多 2 条，200 token 预算）---
         try:
-            summary_token_budget = int(os.getenv("LELAMP_MEMORY_SUMMARY_TOKEN_BUDGET", "200"))
+            summary_token_budget = int(
+                os.getenv("LELAMP_MEMORY_SUMMARY_TOKEN_BUDGET", "200")
+            )
             summaries = self._memory_store.get_recent_summaries(
                 lamp_id=self._lamp_id,
                 hours=72,
@@ -608,8 +718,12 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
             )
             if summaries:
                 used = 0
-                lines = ["\n\n# Recent Conversations", "Summary of recent sessions with this user:"]
+                lines = [
+                    "\n\n# Recent Conversations",
+                    "Summary of recent sessions with this user:",
+                ]
                 from lelamp.memory.store import _CHARS_PER_TOKEN
+
                 for s in summaries:
                     entry = f"- {s.summary}"
                     est = len(entry) / _CHARS_PER_TOKEN + 5
@@ -636,16 +750,15 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
         ):
             return
 
-        new_turns = self._conversation_turns[self._consolidation_offset:]
+        new_turns = self._conversation_turns[self._consolidation_offset :]
         if not new_turns:
             return
 
-        should = (
-            self._memory_consolidator.should_consolidate(new_turns)
-            or self._memory_consolidator.should_consolidate_by_tokens(new_turns)
-        )
+        should = self._memory_consolidator.should_consolidate(
+            new_turns
+        ) or self._memory_consolidator.should_consolidate_by_tokens(new_turns)
         if should:
-            asyncio.create_task(self._run_consolidation())
+            self._track_task(self._run_consolidation())
 
     async def _run_consolidation(self) -> None:
         """后台执行记忆整合（非阻塞）"""
@@ -654,7 +767,7 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
         self._consolidation_in_progress = True
         try:
             # 只整合 offset 之后的新轮次
-            new_turns = list(self._conversation_turns[self._consolidation_offset:])
+            new_turns = list(self._conversation_turns[self._consolidation_offset :])
             if not new_turns:
                 return
 
@@ -669,7 +782,9 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
                 if result.new_memories_count > 0:
                     new_instructions = self._build_dynamic_instructions()
                     await self.update_instructions(new_instructions)
-                    logger.info(f"Memory consolidated: {result.new_memories_count} new memories")
+                    logger.info(
+                        f"Memory consolidated: {result.new_memories_count} new memories"
+                    )
         except Exception as e:
             logger.warning(f"Background consolidation failed (non-critical): {e}")
         finally:
@@ -677,23 +792,39 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
 
     # ==================== 电机工具方法 ====================
 
-    @function_tool
-    async def play_recording(self, recording_name: str) -> str:
+    @function_tool()
+    async def play_recording(
+        self,
+        context: RunContext,
+        recording_name: str,
+    ) -> str:
         """Express yourself through physical movement! Use this only when user explicitly asks for it."""
-        return await self._motor_tools.play_recording(recording_name)
+        return await self._motor_tools.play_recording(context, recording_name)
 
-    @function_tool
-    async def move_joint(self, joint_name: str, angle: float) -> str:
+    @function_tool()
+    async def move_joint(
+        self,
+        context: RunContext,
+        joint_name: str,
+        angle: float,
+    ) -> str:
         """控制指定关节移动到目标角度。可用关节：base_yaw（底座水平旋转）、base_pitch（底座俯仰）、elbow_pitch（肘部俯仰）、wrist_roll（腕部滚转）、wrist_pitch（灯头俯仰）。角度单位为度。"""
-        return await self._motor_tools.move_joint(joint_name, angle)
+        return await self._motor_tools.move_joint(context, joint_name, angle)
 
-    @function_tool
-    async def get_joint_positions(self) -> str:
+    @function_tool()
+    async def get_joint_positions(
+        self,
+        context: RunContext,
+    ) -> str:
         """获取所有关节的当前位置（角度）。用于了解台灯当前的姿态。"""
-        return await self._motor_tools.get_joint_positions()
+        return await self._motor_tools.get_joint_positions(context)
 
-    @function_tool
-    async def get_motor_health(self, motor_name: Optional[str] = None) -> str:
+    @function_tool()
+    async def get_motor_health(
+        self,
+        context: RunContext,
+        motor_name: Optional[str] = None,
+    ) -> str:
         """
         获取舵机健康状态(温度、电压、负载等)。
         Get motor health status (temperature, voltage, load, etc.).
@@ -701,15 +832,16 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
         Args:
             motor_name: 舵机名称(base_yaw/base_pitch/elbow_pitch/wrist_roll/wrist_pitch),留空则返回所有舵机
         """
-        return await self._system_tools.get_motor_health(motor_name)
+        return await self._system_tools.get_motor_health(context, motor_name)
 
-    @function_tool
+    @function_tool()
     async def tune_motor_pid(
         self,
+        context: RunContext,
         motor_name: str,
         p_coefficient: int,
         i_coefficient: int = 0,
-        d_coefficient: int = 32
+        d_coefficient: int = 32,
     ) -> str:
         """
         远程调整舵机 PID 参数(商用功能,用于优化动作性能)。
@@ -723,10 +855,16 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
 
         注意: 不当的 PID 参数可能导致舵机抖动或无法稳定,请谨慎调整!
         """
-        return await self._system_tools.tune_motor_pid(motor_name, p_coefficient, i_coefficient, d_coefficient)
+        return await self._system_tools.tune_motor_pid(
+            context, motor_name, p_coefficient, i_coefficient, d_coefficient
+        )
 
-    @function_tool
-    async def reset_motor_health_stats(self, motor_name: Optional[str] = None) -> str:
+    @function_tool()
+    async def reset_motor_health_stats(
+        self,
+        context: RunContext,
+        motor_name: Optional[str] = None,
+    ) -> str:
         """
         重置舵机健康统计数据(警告/危险/堵转计数)。
         Reset motor health statistics (warning/critical/stall counts).
@@ -734,33 +872,51 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
         Args:
             motor_name: 舵机名称,留空则重置所有舵机
         """
-        return await self._system_tools.reset_motor_health_stats(motor_name)
+        return await self._system_tools.reset_motor_health_stats(context, motor_name)
 
-    @function_tool
-    async def get_available_recordings(self) -> str:
+    @function_tool()
+    async def get_available_recordings(
+        self,
+        context: RunContext,
+    ) -> str:
         """Discover your physical expressions! Get your repertoire of motor movements for body language."""
-        return await self._system_tools.get_available_recordings()
+        return await self._system_tools.get_available_recordings(context)
 
     # ==================== RGB 工具方法 ====================
 
-    @function_tool
-    async def set_rgb_solid(self, red: int, green: int, blue: int) -> str:
+    @function_tool()
+    async def set_rgb_solid(
+        self,
+        context: RunContext,
+        red: int,
+        green: int,
+        blue: int,
+    ) -> str:
         """Express emotions and moods through solid lamp colors!"""
-        return await self._rgb_tools.set_rgb_solid(red, green, blue)
+        return await self._rgb_tools.set_rgb_solid(context, red, green, blue)
 
-    @function_tool
-    async def paint_rgb_pattern(self, pattern: str) -> str:
+    @function_tool()
+    async def paint_rgb_pattern(
+        self,
+        context: RunContext,
+        pattern: str,
+    ) -> str:
         """Create dynamic visual patterns and animations with your lamp!"""
-        return await self._rgb_tools.paint_rgb_pattern(pattern)
+        return await self._rgb_tools.paint_rgb_pattern(context, pattern)
 
-    @function_tool
-    async def set_rgb_brightness(self, percent: int) -> str:
+    @function_tool()
+    async def set_rgb_brightness(
+        self,
+        context: RunContext,
+        percent: int,
+    ) -> str:
         """调节灯光亮度（0-100）"""
-        return await self._system_tools.set_rgb_brightness(percent)
+        return await self._system_tools.set_rgb_brightness(context, percent)
 
-    @function_tool
+    @function_tool()
     async def rgb_effect_rainbow(
         self,
+        context: RunContext,
         speed: float = 1.0,
         saturation: float = 1.0,
         value: float = 1.0,
@@ -780,25 +936,27 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
                 "speed": float(speed),
                 "saturation": float(saturation),
                 "value": float(value),
-                "fps": int(fps)
+                "fps": int(fps),
             },
             priority=Priority.HIGH,
         )
         return "已开启彩虹动态灯效"
 
-    @function_tool
+    @function_tool()
     async def rgb_effect_breathing(
         self,
+        context: RunContext,
         r: int = 0,
         g: int = 150,
-        b: int = 255
+        b: int = 255,
     ) -> str:
         """启动呼吸效果"""
-        return await self._rgb_tools.rgb_effect_breathing(r, g, b)
+        return await self._rgb_tools.rgb_effect_breathing(context, r, g, b)
 
-    @function_tool
+    @function_tool()
     async def rgb_effect_wave(
         self,
+        context: RunContext,
         red: int = 60,
         green: int = 180,
         blue: int = 255,
@@ -807,20 +965,24 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
         fps: int = 30,
     ) -> str:
         """波纹/呼吸波动效果（8x8 矩阵）"""
-        return await self._system_tools.rgb_effect_wave(red, green, blue, speed, freq, fps)
+        return await self._system_tools.rgb_effect_wave(
+            context, red, green, blue, speed, freq, fps
+        )
 
-    @function_tool
+    @function_tool()
     async def rgb_effect_fire(
         self,
+        context: RunContext,
         intensity: float = 1.0,
         fps: int = 30,
     ) -> str:
         """火焰动态效果（8x8 矩阵）"""
-        return await self._system_tools.rgb_effect_fire(intensity, fps)
+        return await self._system_tools.rgb_effect_fire(context, intensity, fps)
 
-    @function_tool
+    @function_tool()
     async def rgb_effect_emoji(
         self,
+        context: RunContext,
         emoji: str = "smile",
         red: int = 255,
         green: int = 200,
@@ -834,57 +996,94 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
     ) -> str:
         """表情动画（smile/sad/wink/angry/heart）"""
         return await self._system_tools.rgb_effect_emoji(
-            emoji, red, green, blue, bg_red, bg_green, bg_blue, blink, period_s, fps
+            context,
+            emoji,
+            red,
+            green,
+            blue,
+            bg_red,
+            bg_green,
+            bg_blue,
+            blink,
+            period_s,
+            fps,
         )
 
-    @function_tool
-    async def stop_rgb_effect(self) -> str:
+    @function_tool()
+    async def stop_rgb_effect(
+        self,
+        context: RunContext,
+    ) -> str:
         """停止动态特效/表情动画"""
-        return await self._system_tools.stop_rgb_effect()
+        return await self._system_tools.stop_rgb_effect(context)
 
     # ==================== 视觉工具方法 ====================
 
-    @function_tool
-    async def vision_answer(self, question: str) -> str:
+    @function_tool()
+    async def vision_answer(
+        self,
+        context: RunContext,
+        question: str,
+    ) -> str:
         """Ask a question about what the lamp can see through its camera."""
-        return await self._vision_tools.vision_answer(question)
+        return await self._tool_with_timeout(
+            self._vision_tools.vision_answer(context, question),
+            timeout_seconds=30.0,
+            error_message="视觉识别超时，请稍后重试",
+        )
 
-    @function_tool
-    async def check_homework(self) -> str:
+    @function_tool()
+    async def check_homework(
+        self,
+        context: RunContext,
+    ) -> str:
         """
         帮用户检查画面中的作业（数学、口算、填空等）。
         Analyze and check homework in the camera view (math, corrections, etc.).
         """
-        return await self._vision_tools.check_homework()
+        return await self._tool_with_timeout(
+            self._vision_tools.check_homework(context),
+            timeout_seconds=45.0,
+            error_message="作业检查超时，请稍后重试",
+        )
 
-    @function_tool
-    async def capture_to_feishu(self) -> str:
+    @function_tool()
+    async def capture_to_feishu(
+        self,
+        context: RunContext,
+    ) -> str:
         """拍照并通过飞书机器人推送（直接上传图片），拍照前会锁定动作并停止以确保清晰度。"""
-        return await self._vision_tools.capture_to_feishu()
+        return await self._vision_tools.capture_to_feishu(context)
 
     # ==================== 边缘视觉工具方法 ====================
 
-    @function_tool
-    async def quick_identify(self) -> str:
+    @function_tool()
+    async def quick_identify(
+        self,
+        context: RunContext,
+    ) -> str:
         """
         快速识别当前画面中的物体（本地推理，低延迟）。
         Quick identify objects in the current view (local inference, low latency).
-        
+
         适用于简单问题如"这是什么"，无需调用云端 API。
         """
         if self._edge_vision_tools is None:
             # 降级到云端视觉
-            return await self.vision_answer("这是什么")
-        
+            return await self.vision_answer(context, "这是什么")
+
         # 获取当前帧
         frame = None
         if self._vision_service:
             frame = self._vision_service.get_latest_frame()
-        
+
         return await self._edge_vision_tools.quick_identify(frame)
 
-    @function_tool
-    async def detect_gesture(self) -> str:
+    @function_tool()
+    async def detect_gesture(
+        self,
+        context: RunContext,
+    ) -> str:
         """
         检测当前画面中的手势（本地推理，带LED和动作反馈）。
         Detect hand gestures in the current view (local inference, with LED and motion feedback).
@@ -910,51 +1109,68 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
 
         return result
 
-    @function_tool
-    async def check_presence(self) -> str:
+    @function_tool()
+    async def check_presence(
+        self,
+        context: RunContext,
+    ) -> str:
         """
         检测用户是否在场（本地推理）。
         Check if user is present (local inference).
-        
+
         用于自动唤醒/休眠功能。
         """
         if self._edge_vision_tools is None:
             return "在场检测服务未启用。请设置环境变量 LELAMP_EDGE_VISION_ENABLED=1"
-        
+
         frame = None
         if self._vision_service:
             frame = self._vision_service.get_latest_frame()
-        
+
         return await self._edge_vision_tools.check_presence(frame)
 
-    @function_tool
-    async def get_edge_vision_stats(self) -> str:
+    @function_tool()
+    async def get_edge_vision_stats(
+        self,
+        context: RunContext,
+    ) -> str:
         """
         获取边缘视觉服务统计信息（调试用）。
         Get edge vision service statistics (for debugging).
         """
         if self._edge_vision_tools is None:
             return "边缘视觉服务未启用"
-        
+
         stats = self._edge_vision_tools.get_stats()
-        
+
         lines = ["边缘视觉服务统计:"]
         lines.append(f"- 总查询数: {stats.get('total_queries', 0)}")
         lines.append(f"- 本地查询: {stats.get('local_queries', 0)}")
         lines.append(f"- 云端查询: {stats.get('cloud_queries', 0)}")
         lines.append(f"- 混合查询: {stats.get('hybrid_queries', 0)}")
-        
-        services = stats.get('services', {})
+
+        services = stats.get("services", {})
         lines.append("- 服务状态:")
-        lines.append(f"  - 人脸检测: {'启用' if services.get('face_detector') else '禁用'}")
-        lines.append(f"  - 手势追踪: {'启用' if services.get('hand_tracker') else '禁用'}")
-        lines.append(f"  - 物体检测: {'启用' if services.get('object_detector') else '禁用'}")
-        lines.append(f"  - 云端视觉: {'启用' if services.get('cloud_vision') else '禁用'}")
+        lines.append(
+            f"  - 人脸检测: {'启用' if services.get('face_detector') else '禁用'}"
+        )
+        lines.append(
+            f"  - 手势追踪: {'启用' if services.get('hand_tracker') else '禁用'}"
+        )
+        lines.append(
+            f"  - 物体检测: {'启用' if services.get('object_detector') else '禁用'}"
+        )
+        lines.append(
+            f"  - 云端视觉: {'启用' if services.get('cloud_vision') else '禁用'}"
+        )
 
         return "\n".join(lines)
 
-    @function_tool
-    async def quick_check(self) -> str:
+    @function_tool()
+    async def quick_check(
+        self,
+        context: RunContext,
+    ) -> str:
         """
         快速检查 - 同时检测用户在场和手势（本地推理）。
         Quick check - detect user presence and gestures simultaneously (local inference).
@@ -970,8 +1186,11 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
 
         return await self._edge_vision_tools.quick_check(frame)
 
-    @function_tool
-    async def get_vision_monitor_status(self) -> str:
+    @function_tool()
+    async def get_vision_monitor_status(
+        self,
+        context: RunContext,
+    ) -> str:
         """
         获取主动监听服务状态（调试用）。
         Get proactive vision monitor status (for debugging).
@@ -981,17 +1200,21 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
 
         stats = self._vision_monitor.get_stats()
         return f"""主动监听服务状态：
-- 运行中: {stats['running']}
-- 模式: {stats['mode']}
-- 用户在场: {stats['user_present']}
-- 在场时长: {stats['user_present_duration']:.1f}秒
-- 检测次数: {stats['detection_count']}
-- 手势次数: {stats['gesture_count']}
-- 手势检测: {'启用' if stats['auto_gesture_enabled'] else '禁用'}
-- 在场检测: {'启用' if stats['auto_presence_enabled'] else '禁用'}"""
+- 运行中: {stats["running"]}
+- 模式: {stats["mode"]}
+- 用户在场: {stats["user_present"]}
+- 在场时长: {stats["user_present_duration"]:.1f}秒
+- 检测次数: {stats["detection_count"]}
+- 手势次数: {stats["gesture_count"]}
+- 手势检测: {"启用" if stats["auto_gesture_enabled"] else "禁用"}
+- 在场检测: {"启用" if stats["auto_presence_enabled"] else "禁用"}"""
 
-    @function_tool
-    async def toggle_vision_monitor(self, enable: bool = None) -> str:
+    @function_tool()
+    async def toggle_vision_monitor(
+        self,
+        context: RunContext,
+        enable: bool = None,
+    ) -> str:
         """
         启用或禁用主动监听服务。
         Toggle proactive vision monitoring service.
@@ -1019,8 +1242,12 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
         else:
             return "主动监听服务已经停止。"
 
-    @function_tool
-    async def set_vision_monitor_mode(self, mode: str) -> str:
+    @function_tool()
+    async def set_vision_monitor_mode(
+        self,
+        context: RunContext,
+        mode: str,
+    ) -> str:
         """
         设置主动监听模式。
         Set proactive vision monitoring mode.
@@ -1043,18 +1270,29 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
 
     # ==================== 系统工具方法 ====================
 
-    @function_tool
-    async def set_volume(self, volume_percent: int) -> str:
+    @function_tool()
+    async def set_volume(
+        self,
+        context: RunContext,
+        volume_percent: int,
+    ) -> str:
         """Control system audio volume."""
-        return await self._system_tools.set_volume(volume_percent)
+        return await self._system_tools.set_volume(context, volume_percent)
 
-    @function_tool
-    async def get_rate_limit_stats(self) -> str:
+    @function_tool()
+    async def get_rate_limit_stats(
+        self,
+        context: RunContext,
+    ) -> str:
         """获取 API 速率限制统计信息（调试用）"""
-        return await self._system_tools.get_rate_limit_stats()
+        return await self._system_tools.get_rate_limit_stats(context)
 
-    @function_tool
-    async def web_search(self, query: str) -> str:
+    @function_tool()
+    async def web_search(
+        self,
+        context: RunContext,
+        query: str,
+    ) -> str:
         """
         当用户问到实时信息、新闻、天气或你不确定的知识时，使用此工具在线搜索。
         Get real-time information from the web.
@@ -1066,32 +1304,47 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
         if not await self._search_rate_limiter.acquire(tokens=1, timeout=5.0):
             return "搜索太频繁了，请稍后再试。本灯也要休息一下的。"
 
-        return await self._system_tools.web_search(query)
+        return await self._tool_with_timeout(
+            self._system_tools.web_search(context, query),
+            timeout_seconds=15.0,
+            error_message="搜索超时，请稍后重试",
+        )
 
-    @function_tool
-    async def check_for_updates(self) -> str:
+    @function_tool()
+    async def check_for_updates(
+        self,
+        context: RunContext,
+    ) -> str:
         """
         检查系统是否有新的 OTA 更新。
         Check for system updates.
         """
-        return await self._system_tools.check_for_updates()
+        return await self._system_tools.check_for_updates(context)
 
-    @function_tool
-    async def perform_ota_update(self) -> str:
+    @function_tool()
+    async def perform_ota_update(
+        self,
+        context: RunContext,
+    ) -> str:
         """
         执行系统更新 (OTA)。注意：更新成功后服务将重启。
         Perform system update. Note: Service will restart upon success.
         """
-        result = await self._system_tools.perform_ota_update()
+        result = await self._system_tools.perform_ota_update(context)
         if "更新成功" in result or "服务将在" in result:
-            # 创建重启任务
-            asyncio.create_task(self._restart_later())
+            # 创建重启任务（使用 track_task 确保任务被追踪）
+            self._track_task(self._restart_later())
         return result
 
     # ==================== 记忆工具方法 ====================
 
-    @function_tool
-    async def save_memory(self, content: str, category: str = "general") -> str:
+    @function_tool()
+    async def save_memory(
+        self,
+        context: RunContext,
+        content: str,
+        category: str = "general",
+    ) -> str:
         """
         记住一个重要信息（用户偏好、事实、上下文等）。
         Remember an important piece of information (user preference, fact, context, etc.).
@@ -1104,8 +1357,12 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
             return "记忆功能未启用"
         return await self._memory_tools.save_memory(content, category)
 
-    @function_tool
-    async def recall_memory(self, query: str) -> str:
+    @function_tool()
+    async def recall_memory(
+        self,
+        context: RunContext,
+        query: str,
+    ) -> str:
         """
         搜索你的记忆，查找相关信息。
         Search your memory for relevant information about past conversations or user preferences.
@@ -1117,8 +1374,12 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
             return "记忆功能未启用"
         return await self._memory_tools.recall_memory(query)
 
-    @function_tool
-    async def forget_memory(self, content_hint: str) -> str:
+    @function_tool()
+    async def forget_memory(
+        self,
+        context: RunContext,
+        content_hint: str,
+    ) -> str:
         """
         删除一条记忆（当信息过时或不再相关时使用）。
         Delete a memory (use when information is outdated or no longer relevant).
@@ -1155,23 +1416,23 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
             participant: 发送者信息
         """
         try:
-            message_str = data.decode('utf-8')
+            message_str = data.decode("utf-8")
             logger.debug(f"收到 Data Channel 消息: {message_str}")
             message = json.loads(message_str)
 
-            msg_type = message.get('type')
+            msg_type = message.get("type")
 
-            if msg_type == 'chat':
+            if msg_type == "chat":
                 # 聊天消息 - 转换为语音输入
-                content = message.get('content', '')
+                content = message.get("content", "")
                 if content:
                     await self.note_user_text(content)
                     logger.info(f"收到文字消息: {content}")
 
-            elif msg_type == 'command':
+            elif msg_type == "command":
                 # 控制指令 - 路由到对应的功能
-                action = message.get('action')
-                params = message.get('params', {})
+                action = message.get("action")
+                params = message.get("params", {})
                 logger.info(f"执行指令: {action}, 参数: {params}")
 
                 result = await self._execute_command(action, params)
@@ -1209,50 +1470,57 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
         Returns:
             执行结果描述
         """
+        # 创建 mock context 用于直接调用（Data Channel 场景）
+        from unittest.mock import MagicMock
+
+        mock_context = MagicMock(spec=RunContext)
+
         try:
             # 播放录制动画
-            if action == 'play_recording':
-                recording_name = params.get('recording_name')
+            if action == "play_recording":
+                recording_name = params.get("recording_name")
                 if recording_name:
-                    return await self.play_recording(recording_name)
+                    return await self.play_recording(mock_context, recording_name)
                 return "缺少录制名称参数"
 
             # 移动关节
-            elif action == 'move_joint':
-                joint_name = params.get('joint_name')
-                angle = params.get('angle')
+            elif action == "move_joint":
+                joint_name = params.get("joint_name")
+                angle = params.get("angle")
                 if joint_name and angle is not None:
-                    return await self.move_joint(joint_name, float(angle))
+                    return await self.move_joint(mock_context, joint_name, float(angle))
                 return "缺少关节名称或角度参数"
 
             # 设置纯色灯光
-            elif action == 'set_rgb_solid':
-                r = params.get('r')
-                g = params.get('g')
-                b = params.get('b')
+            elif action == "set_rgb_solid":
+                r = params.get("r")
+                g = params.get("g")
+                b = params.get("b")
                 if r is not None and g is not None and b is not None:
-                    return await self.set_rgb_solid(int(r), int(g), int(b))
+                    return await self.set_rgb_solid(
+                        mock_context, int(r), int(g), int(b)
+                    )
                 return "缺少 RGB 参数"
 
             # 停止灯效
-            elif action == 'stop_rgb_effect':
-                return await self.stop_rgb_effect()
+            elif action == "stop_rgb_effect":
+                return await self.stop_rgb_effect(mock_context)
 
             # 灯效动画
-            elif action.startswith('rgb_effect_'):
-                effect_name = action.replace('rgb_effect_', '')
-                return await self._execute_rgb_effect(effect_name)
+            elif action.startswith("rgb_effect_"):
+                effect_name = action.replace("rgb_effect_", "")
+                return await self._execute_rgb_effect(mock_context, effect_name)
 
             # 视觉功能
-            elif action == 'vision_answer':
-                question = params.get('question', '这是什么')
-                result = await self.vision_answer(question)
+            elif action == "vision_answer":
+                question = params.get("question", "这是什么")
+                result = await self.vision_answer(mock_context, question)
                 # 发送视觉结果 (包含图片)
                 await self._send_vision_result(result)
                 return result
 
-            elif action == 'check_homework':
-                result = await self.check_homework()
+            elif action == "check_homework":
+                result = await self.check_homework(mock_context)
                 await self._send_vision_result(result)
                 return result
 
@@ -1263,22 +1531,23 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
             logger.error(f"执行指令失败: {action}, 错误: {e}")
             return f"执行失败: {str(e)}"
 
-    async def _execute_rgb_effect(self, effect_name: str) -> str:
+    async def _execute_rgb_effect(self, context: RunContext, effect_name: str) -> str:
         """
         执行 RGB 灯效
 
         Args:
+            context: RunContext
             effect_name: 效果名称
 
         Returns:
             执行结果描述
         """
         effect_map = {
-            'breathing': lambda: self.rgb_effect_breathing(0, 150, 255),
-            'rainbow': lambda: self.rgb_effect_rainbow(),
-            'wave': lambda: self.rgb_effect_wave(),
-            'fire': lambda: self.rgb_effect_fire(),
-            'emoji': lambda: self.rgb_effect_emoji(),
+            "breathing": lambda: self.rgb_effect_breathing(context, 0, 150, 255),
+            "rainbow": lambda: self.rgb_effect_rainbow(context),
+            "wave": lambda: self.rgb_effect_wave(context),
+            "fire": lambda: self.rgb_effect_fire(context),
+            "emoji": lambda: self.rgb_effect_emoji(context),
         }
 
         effect_func = effect_map.get(effect_name)
@@ -1294,12 +1563,8 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
             content: 消息内容
         """
         try:
-            if hasattr(self, 'send_message_callback') and self.send_message_callback:
-                message = {
-                    "type": "chat",
-                    "content": content,
-                    "timestamp": time.time()
-                }
+            if hasattr(self, "send_message_callback") and self.send_message_callback:
+                message = {"type": "chat", "content": content, "timestamp": time.time()}
                 await self.send_message_callback(message)
                 logger.debug(f"发送聊天消息: {content}")
         except Exception as e:
@@ -1314,21 +1579,21 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
             image_base64: 图片 base64 编码（可选）
         """
         try:
-            if hasattr(self, 'send_message_callback') and self.send_message_callback:
+            if hasattr(self, "send_message_callback") and self.send_message_callback:
                 # 如果没有提供图片，尝试从 vision_service 获取最新帧
                 if image_base64 is None and self._vision_service:
                     frame_data = self._vision_service.get_latest_frame()
                     if frame_data:
-                        image_base64 = base64.b64encode(frame_data).decode('utf-8')
+                        image_base64 = base64.b64encode(frame_data).decode("utf-8")
                 # 如果 image_base64 是 bytes，转换为 base64 字符串
                 elif isinstance(image_base64, bytes):
-                    image_base64 = base64.b64encode(image_base64).decode('utf-8')
+                    image_base64 = base64.b64encode(image_base64).decode("utf-8")
 
                 message = {
                     "type": "vision_result",
                     "content": result,
                     "image_base64": image_base64,
-                    "timestamp": time.time()
+                    "timestamp": time.time(),
                 }
                 await self.send_message_callback(message)
                 logger.debug(f"发送视觉结果: {result[:100]}...")
@@ -1343,11 +1608,11 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
             active: 摄像头是否激活
         """
         try:
-            if hasattr(self, 'send_message_callback') and self.send_message_callback:
+            if hasattr(self, "send_message_callback") and self.send_message_callback:
                 message = {
                     "type": "camera_status",
                     "active": active,
-                    "timestamp": time.time()
+                    "timestamp": time.time(),
                 }
                 await self.send_message_callback(message)
                 logger.debug(f"更新摄像头状态: {active}")
@@ -1366,6 +1631,12 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
         if self._vision_monitor is not None and self._vision_monitor._running:
             logger.info("Stopping proactive vision monitor...")
             self._vision_monitor.stop()
+
+        # 取消所有追踪的后台任务
+        for task in self._background_tasks:
+            if not task.done():
+                logger.debug(f"Cancelling background task: {task}")
+                task.cancel()
 
         # 记录未整合的对话轮数
         if self._memory_initialized and self._conversation_turns:

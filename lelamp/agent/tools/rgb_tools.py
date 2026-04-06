@@ -1,11 +1,12 @@
 """
 RGB 灯光控制工具模块
 """
+
 import logging
 import random
 from typing import TYPE_CHECKING
 
-from livekit.agents import function_tool
+from livekit.agents import function_tool, RunContext
 
 from .utils import validate_rgb_color
 
@@ -33,8 +34,14 @@ class RGBTools:
         self.state_manager = state_manager
         self.logger = logging.getLogger("lelamp.agent.tools.rgb")
 
-    @function_tool
-    async def set_rgb_solid(self, r: int, g: int, b: int) -> str:
+    @function_tool()
+    async def set_rgb_solid(
+        self,
+        context: RunContext,
+        r: int,
+        g: int,
+        b: int,
+    ) -> str:
         """
         设置纯色灯光
 
@@ -68,8 +75,12 @@ class RGBTools:
             self.logger.error(f"Error setting RGB solid: {e}")
             return f"设置纯色失败：{str(e)}"
 
-    @function_tool
-    async def paint_rgb_pattern(self, pattern: str) -> str:
+    @function_tool()
+    async def paint_rgb_pattern(
+        self,
+        context: RunContext,
+        pattern: str,
+    ) -> str:
         """
         绘制预定义的 LED 图案
 
@@ -84,7 +95,9 @@ class RGBTools:
             from lelamp.service import Priority
 
             # 分发图案事件
-            self.rgb_service.dispatch("pattern", {"pattern": pattern}, priority=Priority.NORMAL)
+            self.rgb_service.dispatch(
+                "pattern", {"pattern": pattern}, priority=Priority.NORMAL
+            )
 
             # 设置灯光覆盖
             self.state_manager.set_light_override(duration_s=10.0)
@@ -95,8 +108,12 @@ class RGBTools:
             self.logger.error(f"Error painting RGB pattern: {e}")
             return f"绘制图案失败：{str(e)}"
 
-    @function_tool
-    async def rgb_effect_rainbow(self, speed: float = 1.0) -> str:
+    @function_tool()
+    async def rgb_effect_rainbow(
+        self,
+        context: RunContext,
+        speed: float = 1.0,
+    ) -> str:
         """
         启动彩虹效果
 
@@ -114,7 +131,7 @@ class RGBTools:
             self.rgb_service.dispatch(
                 "effect",
                 {"name": "rainbow", "speed": float(speed)},
-                priority=Priority.NORMAL
+                priority=Priority.NORMAL,
             )
 
             # 设置较长的灯光覆盖时间（动画效果需要更长时间）
@@ -126,8 +143,14 @@ class RGBTools:
             self.logger.error(f"Error starting rainbow effect: {e}")
             return f"启动彩虹效果失败：{str(e)}"
 
-    @function_tool
-    async def rgb_effect_breathing(self, r: int, g: int, b: int) -> str:
+    @function_tool()
+    async def rgb_effect_breathing(
+        self,
+        context: RunContext,
+        r: int,
+        g: int,
+        b: int,
+    ) -> str:
         """
         启动呼吸效果
 
@@ -150,9 +173,7 @@ class RGBTools:
 
             # 分发呼吸效果 - 使用 "breath" 事件类型
             self.rgb_service.dispatch(
-                "breath",
-                {"rgb": (r, g, b)},
-                priority=Priority.NORMAL
+                "breath", {"rgb": (r, g, b)}, priority=Priority.NORMAL
             )
 
             # 设置灯光覆盖
@@ -164,8 +185,11 @@ class RGBTools:
             self.logger.error(f"Error starting breathing effect: {e}")
             return f"启动呼吸效果失败：{str(e)}"
 
-    @function_tool
-    async def rgb_effect_random_animation(self) -> str:
+    @function_tool()
+    async def rgb_effect_random_animation(
+        self,
+        context: RunContext,
+    ) -> str:
         """
         启动随机颜色动画（用于 speaking 状态）
 
@@ -178,13 +202,13 @@ class RGBTools:
         try:
             # 彩虹色系
             colors = [
-                (255, 0, 0),      # 红
-                (255, 165, 0),    # 橙
-                (255, 255, 0),    # 黄
-                (0, 255, 0),      # 绿
-                (0, 0, 255),      # 蓝
-                (75, 0, 130),     # 靛
-                (238, 130, 238)   # 紫
+                (255, 0, 0),  # 红
+                (255, 165, 0),  # 橙
+                (255, 255, 0),  # 黄
+                (0, 255, 0),  # 绿
+                (0, 0, 255),  # 蓝
+                (75, 0, 130),  # 靛
+                (238, 130, 238),  # 紫
             ]
             color = random.choice(colors)
 
@@ -192,9 +216,7 @@ class RGBTools:
 
             # 分发呼吸效果
             self.rgb_service.dispatch(
-                "effect",
-                {"name": "breathing", "color": color},
-                priority=Priority.HIGH
+                "effect", {"name": "breathing", "color": color}, priority=Priority.HIGH
             )
 
             # 注意：speaking 动画不设置 light_override，允许状态切换
