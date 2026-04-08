@@ -128,22 +128,30 @@ def init_db() -> None:
     """
     初始化数据库表
 
-    增强版：
-    - 自动启用 WAL 模式
-    - 创建必要的索引
-    - 优化表结构
+    1. create_all() 确保所有表存在（幂等，只创建缺失的表）
+    2. stamp Alembic 版本（让后续增量迁移生效）
+    3. 启用 WAL 模式
     """
     try:
-        # 创建所有表
         Base.metadata.create_all(bind=engine)
-
-        # 启用 WAL 模式
-        enable_wal_mode()
-
-        logger.info("Database tables created successfully")
+        logger.info("Database tables ensured")
     except Exception as e:
         logger.error(f"Failed to initialize database: {e}")
         raise e
+
+    try:
+        from alembic.config import Config
+        from alembic import command
+
+        alembic_cfg = Config()
+        alembic_cfg.set_main_option("script_location", "alembic")
+        alembic_cfg.set_main_option("sqlalchemy.url", DATABASE_URL)
+        command.stamp(alembic_cfg, "head")
+        logger.info("Alembic version stamped")
+    except Exception:
+        logger.debug("Alembic not available, skipping stamp")
+
+    enable_wal_mode()
 
 
 def drop_db() -> None:

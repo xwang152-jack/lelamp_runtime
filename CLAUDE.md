@@ -32,6 +32,13 @@ uv run pytest tests/test_memory.py -v                # 记忆系统测试
 uv run pytest tests/ -k "test_setup" -v              # 按名称匹配
 uv run pytest tests/ --cov=lelamp --cov-report=html  # 覆盖率
 
+# 数据库迁移（Alembic）
+uv run alembic revision --autogenerate -m "描述"  # 生成迁移（模型变更后执行）
+uv run alembic upgrade head                       # 应用所有迁移
+uv run alembic downgrade -1                       # 回退一步
+uv run alembic history                            # 查看迁移历史
+uv run alembic current                            # 查看当前版本
+
 # Lint & Format
 uv run ruff check lelamp/
 uv run ruff check --fix lelamp/
@@ -203,9 +210,11 @@ SAFE_JOINT_RANGES = {
 - 禁用调试：`LELAMP_MEMORY_ENABLED=0`
 
 ### 数据库初始化
-- Agent 入口（`main.py entrypoint`）：调用 `init_db()` 创建所有表
-- API 入口（`lelamp/api/app.py lifespan`）：同样调用 `init_db()`
+- `init_db()` 优先使用 Alembic 迁移（`alembic upgrade head`），Alembic 不可用时 fallback 到 `create_all()`
+- Agent 入口（`main.py entrypoint`）和 API 入口（`lelamp/api/app.py lifespan`）均调用 `init_db()`
 - 新增 ORM 模型时必须在对应入口 `init_db()` 之前 import 以注册到 Base
+- 同时需要在 `alembic/env.py` 中导入新模型（用于 autogenerate 检测）
+- Schema 变更流程：修改模型 → `alembic revision --autogenerate -m "描述"` → 检查生成结果 → `alembic upgrade head`
 - SQLite 使用 WAL 模式，`LELAMP_DATABASE_URL` 支持切换到 PostgreSQL
 - 数据库连接：`get_db()` 用于 FastAPI 依赖注入，`get_db_context()` 用于手动管理
 
