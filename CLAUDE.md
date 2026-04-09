@@ -96,11 +96,11 @@ lelamp/
 ├── integrations/          # 外部 AI 客户端（百度语音、Qwen VL）+ 统一异常处理
 ├── api/                   # FastAPI REST + WebSocket + Vue 静态托管
 │   ├── app.py             #   FastAPI 主应用（含 SPA 静态文件托管）
-│   ├── routes/            #   REST 端点（auth/livekit/system/wifi/websocket）
+│   ├── routes/            #   REST 端点（auth/livekit/system/wifi/websocket，多数需认证）
 │   ├── services/          #   业务服务（auth/wifi/ap/onboarding/mdns）
-│   └── middleware/         #   JWT 认证中间件
+│   └── middleware/         #   JWT 认证中间件（get_current_user/get_current_admin/get_current_user_optional）
 ├── database/              # SQLAlchemy ORM（SQLite/PostgreSQL）
-├── config.py              # 冻结 dataclass 配置，环境变量加载
+├── config.py              # 冻结 dataclass 配置，环境变量加载（load_config + load_config_strict）
 ├── cache/                 # TTL 缓存（视觉/搜索 API）
 └── utils/                 # 限流、安全（License/SSRF/OTA）、URL 校验
 web/                       # Vue 3 灯控面板（构建后由 FastAPI 托管，单端口访问）
@@ -111,7 +111,7 @@ web/                       # Vue 3 灯控面板（构建后由 FastAPI 托管，
 1. **`main.py`** — LiveKit 语音 Agent（`console` 文字模式 / `start` Worker 模式）
 2. **`lelamp/api/app.py`** — FastAPI 服务器（REST API + WebSocket，独立启动）
 
-两者共享数据库和配置，但运行时互不依赖。配置加载策略不同：`main.py` 使用 `_require_env` 强制校验 LiveKit/DeepSeek/百度密钥，API 入口更宽容（未设置时使用默认值）。
+两者共享数据库和配置，但运行时互不依赖。配置加载策略不同：`main.py` 使用 `load_config_strict()` 强制校验 LiveKit/DeepSeek/百度密钥（缺少时报错退出），API 入口使用 `load_config()` 更宽容（未设置时使用默认值）。两者均定义在 `lelamp/config.py` 中。
 
 **单端口部署** — API 服务器通过 `StaticFiles` 托管 Vue 构建产物（`web/dist/`），用户通过 `http://<device>:8000` 同时访问 API 和前端。构建产物不存在时自动跳过静态文件托管（开发模式不受影响）。环境变量 `LELAMP_WEB_DIST` 控制构建产物路径。
 
@@ -123,7 +123,7 @@ web/                       # Vue 3 灯控面板（构建后由 FastAPI 托管，
 - 跨线程共享状态 → `threading.Lock`（不是 `asyncio.Lock`）
 - 异步子进程 → `asyncio.create_subprocess_exec()`（不是 `subprocess.run`）
 - 时间戳临界区（`_light_override_until_ts` 等）→ 必须用 `_timestamps_lock` 保护
-- **后台任务追踪**：使用 `agent._track_task()` 追踪所有 `asyncio.create_task()`，确保 `shutdown()` 时能正确取消
+- **后台任务追踪**：所有 `asyncio.create_task()` 必须追踪，确保 `shutdown()` 时能正确取消。Agent 内使用 `self._track_task(coro)`；API 路由模块使用模块级 `_background_tasks` 集合 + `_track_background_task()` 辅助函数；工具类（如 `SystemTools`）使用 `self._tasks` 集合
 
 **Service 事件系统** — `ServiceBase` 基于 heapq 的优先级队列：
 - 优先级：CRITICAL(0) > HIGH(1) > NORMAL(2) > LOW(3)
@@ -149,7 +149,7 @@ session = AgentSession(
 ```
 单次 `session.say()` 使用 `allow_interruptions=False/True` 控制打断行为。
 
-**配置管理** — 所有配置通过 `lelamp/config.py` 的冻结 dataclass 加载，运行时不可变。
+**配置管理** — 所有配置通过 `lelamp/config.py` 的冻结 dataclass 加载，运行时不可变。提供两个入口：`load_config()`（宽容模式，API 使用）和 `load_config_strict()`（严格模式，Agent 使用，强制校验关键密钥）。`main.py` 不再重复定义配置加载逻辑。
 
 **API 硬件降级** — API 入口（`app.py lifespan`）对硬件服务做降级：MotorsService 失败 → `NoOpMotorsService`，RGBService 失败 → `NoOpRGBService`。VisionService 在 API 模式下不启动（避免与 LiveKit Agent 争抢摄像头）。
 
@@ -179,6 +179,7 @@ async def play_recording(
 ) -> str:
     ...
 ```
+Data Channel 命令执行（WebSocket → `_execute_command`）使用轻量级 `_DataContext` 作为 context 占位（不导入 `unittest.mock`）。
 
 长时间运行的工具使用 `_tool_with_timeout()` 包装：
 ```python
@@ -200,8 +201,14 @@ SAFE_JOINT_RANGES = {
 ### 外部 API 调用
 - 异常处理：`lelamp/integrations/exceptions.py` 统一异常层次 + `@retry_on_error` 指数退避
 - 限流：`lelamp/utils/rate_limiter.py` 令牌桶算法
-- URL 校验：`lelamp/utils/url_validation.py` SSRF 防护
+- URL 校验：`lelamp/utils/url_validation.py` SSRF 防护（HTTPS 强制 + 域名白名单 + 私有/保留/组播 IP 阻断）
 - 缓存：`lelamp/cache/cache_manager.py` TTL + LRU
+
+### 时间戳规范
+- 所有代码使用 `datetime.now(UTC)`，禁止 `datetime.utcnow()`（Python 3.12+ 已废弃）
+- SQLAlchemy `default=` / `onupdate=` 使用 `lambda: datetime.now(UTC)`（可调用对象）
+- Pydantic `default_factory=` 同上
+- 确保 `from datetime import datetime, UTC`
 
 ### 记忆系统（`lelamp/memory/`）
 - `MemoryStore`：`threading.Lock` 保护的 CRUD，LIKE 搜索，token 预算控制（~400 tokens，~0.67 chars/token 中文）
@@ -250,7 +257,7 @@ SAFE_JOINT_RANGES = {
 - `LELAMP_JWT_SECRET` — JWT 签名密钥（未设置时随机生成，重启失效）
 - `LELAMP_DEVICE_SECRET` — 设备绑定密钥（优先从 setup_status.json 读取）
 - `LELAMP_WEB_DIST` (default: web/dist) — Vue 前端构建产物路径
-- `LELAMP_CORS_ORIGINS` — 自定义 CORS 允许的源列表
+- `LELAMP_CORS_ORIGINS` — 自定义 CORS 允许的源列表（逗号分隔，开发环境内网 IP 通过此变量配置，不要硬编码）
 - `MODELSCOPE_API_KEY` — Qwen VL 视觉模型
 - `FEISHU_APP_ID`, `FEISHU_APP_SECRET`, `FEISHU_RECEIVE_ID` — 飞书通知集成
 - `BOCHA_API_KEY` — 博查 AI 搜索
@@ -290,13 +297,19 @@ uv run pytest tests/ --cov=lelamp --cov-report=html
 ## API & WebSocket
 
 ### API 路由（前缀 `/api`）
-`/auth`（认证）、`/devices`（设备管理）、`/history`（历史记录）、`/system`（系统信息）、`/settings`（设置）、`/livekit`（Token）、`/ws/{lamp_id}`（设备状态 WebSocket）、`/ws/setup`（配网进度 WebSocket）
+`/auth`（认证）、`/devices`（设备管理，需认证）、`/history`（历史记录，需认证）、`/system`（系统信息）、`/settings`（设置，需认证）、`/livekit`（Token）、`/ws/{lamp_id}`（设备状态 WebSocket）、`/ws/setup`（配网进度 WebSocket）
+
+### API 认证级别
+- **`Depends(get_current_user)`**：settings（全部端点）、devices（command/conversations/operations/statistics/list）、history（全部端点）
+- **`Depends(get_current_admin)`**：system（restart/restart/cancel）
+- **`Depends(get_current_user_optional)`**：devices（state/health，匿名可查看基本状态）
+- **无认证**：system（setup/*、wifi/*、device、info、health）、auth（register/login）
 
 ### 中间件栈（按添加顺序）
 SecurityHeadersMiddleware → CaptivePortalMiddleware → GZipMiddleware → CORSMiddleware
 
 ### WebSocket 端点
-1. **设备状态** (`/api/ws/{lamp_id}`)：支持 JWT 认证或匿名，频道订阅系统（state/events/logs/notifications/conversations/health），命令系统支持 chat/RGB/电机/摄像头控制
+1. **设备状态** (`/api/ws/{lamp_id}`)：支持 JWT 认证（通过 query 参数 `token`），匿名连接仅允许只读操作（ping/pong、subscribe）。硬件控制命令（chat/RGB/电机/摄像头）需要有效 JWT token，匿名连接会收到 `AUTH_REQUIRED` 错误。频道订阅系统支持 state/events/logs/notifications/conversations/health。
 2. **配网进度** (`/api/ws/setup`)：使用 `SetupEventBus` asyncio 广播推送 WiFi 配网事件（wifi_connecting/connected/failed 等）
 
 ### 配置同步
@@ -308,8 +321,9 @@ SecurityHeadersMiddleware → CaptivePortalMiddleware → GZipMiddleware → COR
 - `LELAMP_LICENSE_SECRET` 生产环境必须使用强随机密钥
 - `LELAMP_JWT_SECRET` 生产环境必须设置为固定强随机密钥
 - OTA 更新强制 HTTPS + SHA256 校验
-- 外部 API URL 经过域名白名单 + 私有 IP 阻断
-- 设备密钥比较必须使用 `hmac.compare_digest()`（防时序攻击），禁止 `==`/`!=`
+- 外部 API URL 经过域名白名单 + 私有/保留/组播 IP 阻断（`is_private`/`is_loopback`/`is_link_local`/`is_reserved`/`is_multicast`/`is_unspecified`）
+- 所有密钥比较（License 验证、设备绑定）必须使用 `hmac.compare_digest()`（防时序攻击），禁止 `==`/`!=`
+- API 异常处理器不向客户端返回原始异常详情（`str(exc)`），仅返回通用错误消息，详细信息记录到服务端日志
 - AP 热点密码每次启动时随机生成（`secrets.token_urlsafe(6)`），不再使用固定密码
 - LiveKit Token 端点强制使用认证用户身份，禁止用户指定 `identity`
 
