@@ -65,7 +65,7 @@ router.beforeEach(async (to, _from, next) => {
     authStore.restoreAuth()
   }
 
-  // 只有 /profile 和 /devices 需要登录
+  // 需要登录的路由检查
   const requiresLogin = to.meta.requiresLogin === true
 
   if (requiresLogin && !authStore.isAuthenticated) {

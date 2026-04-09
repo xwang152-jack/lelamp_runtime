@@ -15,6 +15,7 @@ import type {
 } from '@/types/settings'
 
 import { useConnectionStore } from '@/stores/connection'
+import { useAuthStore } from '@/stores/auth'
 
 /**
  * 获取当前的 API 基础 URL
@@ -39,11 +40,18 @@ function getFetchConfig(
   method: string = 'GET',
   body?: any
 ): RequestInit {
+  const authStore = useAuthStore()
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  }
+
+  if (authStore.accessToken) {
+    headers['Authorization'] = `Bearer ${authStore.accessToken}`
+  }
+
   const config: RequestInit = {
     method,
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers,
     credentials: 'include',
   }
 

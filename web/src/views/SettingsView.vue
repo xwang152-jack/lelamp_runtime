@@ -128,6 +128,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useSettingsStore } from '@/stores'
+import { useAuthStore } from '@/stores'
 
 // Import all settings components
 import WiFiSettings from '@/components/settings/WiFiSettings.vue'
@@ -144,6 +145,7 @@ import { triggerRestart } from '@/api/settings'
 const router = useRouter()
 const route = useRoute()
 const settingsStore = useSettingsStore()
+const authStore = useAuthStore()
 
 const activeTab = ref('wifi')
 const lampId = ref<string>('')
@@ -183,11 +185,20 @@ onMounted(async () => {
   settingsStore.setLampId(lampId.value)
   activeTab.value = (route.query.tab as string) || 'wifi'
 
+  // WiFi 状态不需要认证，始终加载
   try {
-    await settingsStore.fetchSettings()
     await settingsStore.fetchWiFiStatus()
   } catch (e) {
-    ElMessage.error('加载设置失败')
+    // 静默处理，WiFi 不可用时页面仍可用
+  }
+
+  // 系统设置需要认证，未登录时跳过
+  if (authStore.isAuthenticated) {
+    try {
+      await settingsStore.fetchSettings()
+    } catch (e) {
+      ElMessage.error('加载设置失败')
+    }
   }
 })
 
