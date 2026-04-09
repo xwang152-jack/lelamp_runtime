@@ -7,7 +7,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query, status
 from typing import Dict, Set, Optional
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, UTC
 from openai import AsyncOpenAI
 from lelamp.config import load_config
 from lelamp.api.services.auth_service import AuthService
@@ -26,6 +26,17 @@ from lelamp.service.base import Priority
 logger = logging.getLogger("lelamp.api.websocket")
 
 router = APIRouter()
+
+# 后台任务追踪集合，防止任务被 GC 回收
+_background_tasks: set[asyncio.Task] = set()
+
+
+def _track_background_task(coro) -> asyncio.Task:
+    """追踪后台 asyncio 任务，完成后自动移除"""
+    task = asyncio.create_task(coro)
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+    return task
 
 
 # =============================================================================
@@ -78,7 +89,7 @@ class ConnectionManager:
         connection_msg = {
             "type": "connected",
             "lamp_id": lamp_id,
-            "server_time": datetime.utcnow().isoformat(),
+            "server_time": datetime.now(UTC).isoformat(),
             "message": "WebSocket connection established"
         }
 
@@ -346,7 +357,7 @@ async def websocket_endpoint(
                 # 心跳响应
                 await websocket.send_json({
                     "type": "pong",
-                    "timestamp": datetime.utcnow().isoformat()
+                    "timestamp": datetime.now(UTC).isoformat()
                 })
 
             elif isinstance(message, WSSubscribe):
@@ -359,14 +370,14 @@ async def websocket_endpoint(
                     await websocket.send_json({
                         "type": "subscription_confirmed",
                         "channels": list(valid_channels),
-                        "timestamp": datetime.utcnow().isoformat()
+                        "timestamp": datetime.now(UTC).isoformat()
                     })
                 else:
                     await websocket.send_json({
                         "type": "error",
                         "message": "没有有效的频道",
                         "code": "INVALID_CHANNELS",
-                        "timestamp": datetime.utcnow().isoformat()
+                        "timestamp": datetime.now(UTC).isoformat()
                     })
 
             elif isinstance(message, WSUnsubscribe):
@@ -379,11 +390,21 @@ async def websocket_endpoint(
                 logger.info(f"收到客户端命令: {message.action}, 参数: {message.params}")
                 action = message.action
                 params = message.params or {}
-                
+
+                # 匿名连接权限检查：硬件控制和聊天命令需要认证
+                if user_info is None:
+                    await websocket.send_json({
+                        "type": "error",
+                        "message": "此操作需要认证，请提供有效的 JWT token",
+                        "code": "AUTH_REQUIRED",
+                        "timestamp": datetime.now(UTC).isoformat(),
+                    })
+                    continue
+
                 rgb_service = getattr(websocket.app.state, "rgb_service", None)
                 motors_service = getattr(websocket.app.state, "motors_service", None)
                 agent = getattr(websocket.app.state, "agent", None)
-                
+
                 if action == "chat":
                     text = params.get("text", "")
                     logger.info(f"收到聊天消息: {text}")
@@ -437,7 +458,7 @@ async def websocket_endpoint(
                                     "content": "抱歉，我的大脑暂时断线了。"
                                 })
                             
-                    asyncio.create_task(process_chat(text))
+                    _track_background_task(process_chat(text))
                 else:
                     # 对于非聊天的其他指令，直接使用硬件服务处理
                     try:
@@ -464,7 +485,7 @@ async def websocket_endpoint(
                             "success": success,
                             "result": result,
                             "error": error_message,
-                            "timestamp": datetime.utcnow().isoformat()
+                            "timestamp": datetime.now(UTC).isoformat()
                         }
                         await websocket.send_json(response)
                         logger.info(f"已发送命令执行结果: {success}")
@@ -476,7 +497,7 @@ async def websocket_endpoint(
                             "action": action,
                             "success": False,
                             "error": str(e),
-                            "timestamp": datetime.utcnow().isoformat()
+                            "timestamp": datetime.now(UTC).isoformat()
                         })
 
 
@@ -570,7 +591,7 @@ async def execute_direct_command(action: str, params: dict, rgb_service, motors_
             # 异步调用 agent 的方法
             if hasattr(agent, '_set_system_volume'):
                 import asyncio
-                asyncio.create_task(agent._set_system_volume(volume_percent))
+                _track_background_task(agent._set_system_volume(volume_percent))
                 return True
 
         # 摄像头激活命令
@@ -616,7 +637,7 @@ async def push_state_update(lamp_id: str, state_data: dict) -> int:
     message = {
         "type": "state_update",
         "data": state_data,
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": datetime.now(UTC).isoformat()
     }
     return await manager.broadcast_to_device(lamp_id, message, channel="state")
 
@@ -637,7 +658,7 @@ async def push_event(lamp_id: str, event_type: str, event_data: dict) -> int:
         "type": "event",
         "event_type": event_type,
         "data": event_data,
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": datetime.now(UTC).isoformat()
     }
     return await manager.broadcast_to_device(lamp_id, message, channel="events")
 
@@ -656,7 +677,7 @@ async def push_log(lamp_id: str, log_entry: dict) -> int:
     message = {
         "type": "log",
         "log_entry": log_entry,
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": datetime.now(UTC).isoformat()
     }
     return await manager.broadcast_to_device(lamp_id, message, channel="logs")
 
@@ -683,7 +704,7 @@ async def push_notification(
         "type": "notification",
         "message": message,
         "level": level,
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": datetime.now(UTC).isoformat()
     }
 
     if metadata:
@@ -717,7 +738,7 @@ async def push_camera_frame(
         "frame_b64": frame_b64,
         "width": width,
         "height": height,
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": datetime.now(UTC).isoformat()
     }
     if detections:
         message["detections"] = detections
@@ -744,7 +765,7 @@ async def push_camera_status(
     message = {
         "type": "camera_status",
         "active": active,
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": datetime.now(UTC).isoformat()
     }
 
     if privacy_granted is not None:

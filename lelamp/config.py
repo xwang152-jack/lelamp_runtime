@@ -220,6 +220,56 @@ def load_config() -> AppConfig:
     )
 
 
+def load_config_strict() -> AppConfig:
+    """加载应用配置（严格模式，要求关键环境变量）
+
+    用于 Agent 入口 (main.py)，缺少 LiveKit/DeepSeek/Baidu 密钥时抛出异常。
+    """
+    return AppConfig(
+        # LiveKit（强制要求）
+        livekit_url=_require_env("LIVEKIT_URL"),
+        livekit_api_key=_require_env("LIVEKIT_API_KEY"),
+        livekit_api_secret=_require_env("LIVEKIT_API_SECRET"),
+
+        # LLM
+        deepseek_model=_get_env_str("DEEPSEEK_MODEL", "deepseek-chat") or "deepseek-chat",
+        deepseek_base_url=_get_env_str("DEEPSEEK_BASE_URL", "https://api.deepseek.com") or "https://api.deepseek.com",
+        deepseek_api_key=_require_env("DEEPSEEK_API_KEY"),
+
+        # Vision
+        modelscope_base_url=_get_env_str("MODELSCOPE_BASE_URL", "https://api-inference.modelscope.cn/v1") or "https://api-inference.modelscope.cn/v1",
+        modelscope_api_key=_get_env_str("MODELSCOPE_API_KEY"),
+        modelscope_model=_get_env_str("MODELSCOPE_MODEL", "Qwen/Qwen3-VL-235B-A22B-Instruct") or "Qwen/Qwen3-VL-235B-A22B-Instruct",
+        modelscope_timeout_s=_get_env_float("MODELSCOPE_TIMEOUT_S", 60.0),
+        vision_enabled=_get_env_bool("LELAMP_VISION_ENABLED", True),
+        camera_index_or_path=_parse_index_or_path(_get_env_str("LELAMP_CAMERA_INDEX_OR_PATH", "0")),
+        camera_width=_get_env_int("LELAMP_CAMERA_WIDTH", 1024),
+        camera_height=_get_env_int("LELAMP_CAMERA_HEIGHT", 768),
+        vision_capture_interval_s=_get_env_float("LELAMP_VISION_CAPTURE_INTERVAL_S", 2.5),
+        vision_jpeg_quality=_get_env_int("LELAMP_VISION_JPEG_QUALITY", 92),
+        vision_max_age_s=_get_env_float("LELAMP_VISION_MAX_AGE_S", 15.0),
+        camera_rotate_deg=_get_env_int("LELAMP_CAMERA_ROTATE_DEG", 0),
+        camera_flip=_get_env_str("LELAMP_CAMERA_FLIP", "none") or "none",
+
+        # Speech（强制要求）
+        baidu_api_key=_require_env("BAIDU_SPEECH_API_KEY"),
+        baidu_secret_key=_require_env("BAIDU_SPEECH_SECRET_KEY"),
+        baidu_cuid=_get_env_str("BAIDU_SPEECH_CUID", "lelamp") or "lelamp",
+        baidu_tts_per=_get_env_int("BAIDU_SPEECH_TTS_PER", 4),
+
+        # Hardware
+        lamp_port=_get_env_str("LELAMP_PORT", "/dev/ttyACM0") or "/dev/ttyACM0",
+        lamp_id=_get_env_str("LELAMP_ID", "lelamp") or "lelamp",
+
+        # Features
+        noise_cancellation_enabled=_get_env_bool("LELAMP_NOISE_CANCELLATION", True),
+        greeting_text=_get_env_str("LELAMP_GREETING_TEXT", "你好！我是 LeLamp，你的智能台灯。") or "你好！我是 LeLamp，你的智能台灯。",
+
+        # OTA
+        ota_url=_get_env_str("LELAMP_OTA_URL", "") or "",
+    )
+
+
 def load_motor_config() -> MotorConfig:
     """加载电机配置"""
     config = load_config()

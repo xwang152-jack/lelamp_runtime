@@ -18,6 +18,8 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
 
 from lelamp.database.session import get_db
+from lelamp.database.models_auth import User
+from lelamp.api.middleware.auth import get_current_admin
 from lelamp.api.services.wifi_manager import wifi_manager, WiFiNetwork
 from lelamp.api.services.ap_manager import ap_manager, ClientInfo
 from lelamp.api.services.onboarding import onboarding_manager
@@ -33,6 +35,9 @@ from lelamp.api.models.responses import (
 )
 
 logger = logging.getLogger(__name__)
+
+# 后台任务追踪集合
+_bg_tasks: set[asyncio.Task] = set()
 
 router = APIRouter()
 
@@ -236,7 +241,9 @@ async def complete_setup(request: SetupCompleteRequest) -> dict:
                 await asyncio.sleep(3)
                 rgb.dispatch_event("off", {})
 
-            asyncio.create_task(_restore_led())
+            _task = asyncio.create_task(_restore_led())
+            _bg_tasks.add(_task)
+            _task.add_done_callback(_bg_tasks.discard)
         except Exception:
             pass  # NoOp on macOS
 
@@ -556,7 +563,10 @@ async def _execute_restart(delay: int, reason: str | None):
 
 
 @router.post("/restart", response_model=RestartResponse)
-async def trigger_restart(request: RestartRequest) -> RestartResponse:
+async def trigger_restart(
+    request: RestartRequest,
+    admin_user: User = Depends(get_current_admin),
+) -> RestartResponse:
     """
     触发服务重启
 
@@ -596,7 +606,9 @@ async def trigger_restart(request: RestartRequest) -> RestartResponse:
 
 
 @router.post("/restart/cancel")
-async def cancel_restart() -> dict:
+async def cancel_restart(
+    admin_user: User = Depends(get_current_admin),
+) -> dict:
     """
     取消计划的重启
 

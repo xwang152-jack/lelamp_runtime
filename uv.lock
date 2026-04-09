@@ -1325,7 +1325,7 @@ requires-dist = [
     { name = "fastapi", marker = "extra == 'api'", specifier = ">=0.110.0" },
     { name = "feetech-servo-sdk", specifier = ">=1.0.0,<2.0.0" },
     { name = "httpx", specifier = ">=0.28.1,<1.0.0" },
-    { name = "lerobot", git = "https://github.com/huggingface/lerobot" },
+    { name = "lerobot", git = "https://github.com/huggingface/lerobot?tag=v0.3.3" },
     { name = "livekit", specifier = ">=1.0.23" },
     { name = "livekit-agents", specifier = ">=1.5.0" },
     { name = "livekit-plugins-noise-cancellation", specifier = ">=0.2.5" },
@@ -1360,8 +1360,8 @@ provides-extras = ["hardware", "vision", "dev", "api"]
 
 [[package]]
 name = "lerobot"
-version = "0.3.4"
-source = { git = "https://github.com/huggingface/lerobot#55198de096f46a8e0447a8795129dd9ee84c088c" }
+version = "0.3.3"
+source = { git = "https://github.com/huggingface/lerobot?tag=v0.3.3#b883328e6c95681ca90a18b102e4ae5e1f91e2bf" }
 dependencies = [
     { name = "av" },
     { name = "cmake" },

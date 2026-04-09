@@ -5,7 +5,7 @@
 import json
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, UTC
 from pathlib import Path
 from threading import Lock
 from typing import Any, Dict
@@ -115,7 +115,7 @@ class SetupStateManager:
         """标记设置完成"""
         state = self.load_state()
         state["setup_completed"] = True
-        state["setup_completed_at"] = datetime.utcnow().isoformat()
+        state["setup_completed_at"] = datetime.now(UTC).isoformat()
         state["last_ip_address"] = ip_address
         state["current_step"] = "completed"
         self.save_state(state)

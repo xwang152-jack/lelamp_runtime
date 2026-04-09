@@ -34,15 +34,19 @@ def validate_external_url(url: str, allowed_domains: list[str]) -> bool:
             logger.error(f"域名不在白名单中: {hostname}")
             return False
 
-        # 3. 防止 SSRF 到内网地址
+        # 3. 防止 SSRF 到内网/保留地址
+        # 注意：本检查存在 DNS rebinding 时间窗口（检查与请求之间 DNS 记录可能改变）。
+        # 对于安全性要求极高的场景，应使用 HTTP 客户端的 DNS 解析钩子
+        # 在实际发起请求时再次校验 IP。
         try:
             # 解析域名到 IP
             ip = socket.gethostbyname(hostname)
             ip_obj = ipaddress.ip_address(ip)
 
-            # 检查是否为私有 IP 或回环地址
-            if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local:
-                logger.error(f"禁止访问内网地址: {ip} (from {hostname})")
+            # 检查是否为危险地址类型
+            if (ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local
+                    or ip_obj.is_reserved or ip_obj.is_multicast or ip_obj.is_unspecified):
+                logger.error(f"禁止访问内网/保留地址: {ip} (from {hostname})")
                 return False
 
         except socket.gaierror as e:

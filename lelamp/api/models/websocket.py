@@ -5,7 +5,7 @@ WebSocket 消息模型
 """
 from pydantic import BaseModel, Field
 from typing import Literal, Optional, Any, Dict, List
-from datetime import datetime
+from datetime import datetime, UTC
 
 
 # =============================================================================
@@ -17,7 +17,7 @@ class WSMessage(BaseModel):
     """WebSocket 基础消息"""
     type: str
     data: Optional[Dict[str, Any]] = None
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 # =============================================================================
@@ -33,7 +33,7 @@ class WSPing(BaseModel):
 class WSPong(BaseModel):
     """服务端心跳响应"""
     type: Literal["pong"]
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class WSSubscribe(BaseModel):
@@ -70,7 +70,7 @@ class WSSubscriptionConfirmed(BaseModel):
     """订阅确认"""
     type: Literal["subscription_confirmed"]
     channels: List[str]
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class WSStateUpdate(BaseModel):
@@ -80,7 +80,7 @@ class WSStateUpdate(BaseModel):
         ...,
         description="设备状态数据"
     )
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class WSEvent(BaseModel):
@@ -94,7 +94,7 @@ class WSEvent(BaseModel):
         ...,
         description="事件数据"
     )
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class WSLog(BaseModel):
@@ -104,7 +104,7 @@ class WSLog(BaseModel):
         ...,
         description="日志条目"
     )
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class WSNotification(BaseModel):
@@ -112,7 +112,7 @@ class WSNotification(BaseModel):
     type: Literal["notification"]
     message: str
     level: Literal["info", "warning", "error"] = "info"
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
     metadata: Optional[Dict[str, Any]] = None
 
 
@@ -121,7 +121,7 @@ class WSError(BaseModel):
     type: Literal["error"]
     message: str
     code: Optional[str] = None
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 # =============================================================================
@@ -136,21 +136,21 @@ class WSConversationUpdate(BaseModel):
         ...,
         description="对话数据"
     )
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class WSUserMessage(BaseModel):
     """用户消息"""
     type: Literal["user_message"]
     message: str
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class AIMessage(BaseModel):
     """AI 响应消息"""
     type: Literal["ai_message"]
     message: str
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 # =============================================================================
@@ -167,7 +167,7 @@ class WSCameraFrame(BaseModel):
     )
     width: Optional[int] = Field(None, description="图像宽度")
     height: Optional[int] = Field(None, description="图像高度")
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class WSCameraStatus(BaseModel):
@@ -178,7 +178,7 @@ class WSCameraStatus(BaseModel):
         description="摄像头是否激活"
     )
     privacy_granted: Optional[bool] = Field(None, description="隐私同意状态")
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 # =============================================================================
@@ -193,7 +193,7 @@ class WSHealthUpdate(BaseModel):
         ...,
         description="健康状态数据"
     )
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class WSWarning(BaseModel):
@@ -201,7 +201,7 @@ class WSWarning(BaseModel):
     type: Literal["warning"]
     message: str
     warning_type: str
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 # =============================================================================
@@ -213,7 +213,7 @@ class WSConnected(BaseModel):
     """连接确认"""
     type: Literal["connected"]
     lamp_id: str
-    server_time: datetime = Field(default_factory=datetime.utcnow)
+    server_time: datetime = Field(default_factory=lambda: datetime.now(UTC))
     message: str = "WebSocket connection established"
 
 

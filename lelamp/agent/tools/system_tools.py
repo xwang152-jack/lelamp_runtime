@@ -65,6 +65,9 @@ class SystemTools:
         self._get_rate_limit_stats = get_rate_limit_stats_func
         self.logger = logging.getLogger("lelamp.agent.tools.system")
 
+        # 后台任务追踪集合
+        self._tasks: set[asyncio.Task] = set()
+
         # 用于运行 amixer 的用户名（可配置）
         self._amixer_user = os.getenv("LELAMP_AMIXER_USER", "pi")
 
@@ -601,7 +604,9 @@ class SystemTools:
         result = self._ota_manager.perform_update()
         if "更新成功" in result:
             # Schedule a restart
-            asyncio.create_task(self._restart_later())
+            task = asyncio.create_task(self._restart_later())
+            self._tasks.add(task)
+            task.add_done_callback(self._tasks.discard)
             return f"{result} 服务将在 {self.RESTART_DELAY_S} 秒后重启。"
         return f"更新失败：{result}"
 

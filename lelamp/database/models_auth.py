@@ -6,7 +6,7 @@ Defines database models for:
 - DeviceBinding: User-device relationships with permissions
 - RefreshToken: JWT refresh token storage
 """
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from sqlalchemy import String, Boolean, DateTime, ForeignKey, Integer
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from typing import Optional, List
@@ -23,7 +23,7 @@ class User(Base):
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC), nullable=False)
     last_login: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     # 关系
@@ -42,7 +42,7 @@ class DeviceBinding(Base):
     device_id: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
     device_secret: Mapped[str] = mapped_column(String(100), nullable=False)  # 设备出厂密钥
     permission_level: Mapped[str] = mapped_column(String(20), default="member", nullable=False)  # admin/member/guest
-    bound_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    bound_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
     # 关系
@@ -64,7 +64,7 @@ class RefreshToken(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
     token: Mapped[str] = mapped_column(String(500), unique=True, nullable=False, index=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC), nullable=False)
     revoked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     # 关系

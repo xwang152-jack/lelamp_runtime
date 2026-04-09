@@ -12,6 +12,8 @@ from sqlalchemy.orm import Session
 
 from lelamp.database.session import get_db
 from lelamp.database.models import UserSettings
+from lelamp.database.models_auth import User
+from lelamp.api.middleware.auth import get_current_user
 from lelamp.api.services.config_sync import config_sync_service
 from lelamp.api.models.requests import AppSettingsUpdateRequest
 from lelamp.api.models.responses import AppSettingsResponse
@@ -28,6 +30,7 @@ router = APIRouter()
 @router.get("/", response_model=AppSettingsResponse)
 async def get_settings(
     lamp_id: str = Query(..., description="设备 ID"),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ) -> AppSettingsResponse:
     """
@@ -57,6 +60,7 @@ async def get_settings(
 async def update_settings(
     request: AppSettingsUpdateRequest,
     lamp_id: str = Query(..., description="设备 ID"),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ) -> AppSettingsResponse:
     """
@@ -105,6 +109,7 @@ async def update_settings(
 @router.post("/reset")
 async def reset_settings(
     lamp_id: str = Query(..., description="设备 ID"),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ) -> dict:
     """
@@ -141,7 +146,9 @@ async def reset_settings(
 
 
 @router.get("/fields")
-async def get_setting_fields() -> dict:
+async def get_setting_fields(
+    current_user: User = Depends(get_current_user),
+) -> dict:
     """
     获取可配置的字段列表
 

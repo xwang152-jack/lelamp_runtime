@@ -26,7 +26,7 @@ dependencies = [
 ]
 
 [tool.uv.sources]
-lerobot = { git = "https://github.com/huggingface/lerobot" }
+lerobot = { git = "https://github.com/huggingface/lerobot", tag = "v0.3.3" }
 
 [project.optional-dependencies]
 hardware = [

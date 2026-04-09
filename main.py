@@ -22,10 +22,6 @@ from lelamp.utils.logging import setup_logging as setup_enhanced_logging
 from lelamp.config import (
     _get_env_str,
     _get_env_bool,
-    _get_env_int,
-    _get_env_float,
-    _require_env,
-    _parse_index_or_path,
     AppConfig,
     load_motor_config,
 )
@@ -61,49 +57,8 @@ def _setup_logging() -> None:
 
 
 def _load_config() -> AppConfig:
-    return AppConfig(
-        livekit_url=_require_env("LIVEKIT_URL"),
-        livekit_api_key=_require_env("LIVEKIT_API_KEY"),
-        livekit_api_secret=_require_env("LIVEKIT_API_SECRET"),
-        deepseek_model=_get_env_str("DEEPSEEK_MODEL", "deepseek-chat")
-        or "deepseek-chat",
-        deepseek_base_url=_get_env_str("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
-        or "https://api.deepseek.com",
-        deepseek_api_key=_require_env("DEEPSEEK_API_KEY"),
-        modelscope_base_url=_get_env_str(
-            "MODELSCOPE_BASE_URL", "https://api-inference.modelscope.cn/v1"
-        )
-        or "https://api-inference.modelscope.cn/v1",
-        modelscope_api_key=_get_env_str("MODELSCOPE_API_KEY", None),
-        modelscope_model=_get_env_str(
-            "MODELSCOPE_MODEL", "Qwen/Qwen3-VL-235B-A22B-Instruct"
-        )
-        or "Qwen/Qwen3-VL-235B-A22B-Instruct",
-        modelscope_timeout_s=_get_env_float("MODELSCOPE_TIMEOUT_S", 60.0),
-        vision_enabled=_get_env_bool("LELAMP_VISION_ENABLED", True),
-        camera_index_or_path=_parse_index_or_path(
-            _get_env_str("LELAMP_CAMERA_INDEX_OR_PATH", "0")
-        ),
-        camera_width=_get_env_int("LELAMP_CAMERA_WIDTH", 1024),
-        camera_height=_get_env_int("LELAMP_CAMERA_HEIGHT", 768),
-        vision_capture_interval_s=_get_env_float(
-            "LELAMP_VISION_CAPTURE_INTERVAL_S", 2.5
-        ),
-        vision_jpeg_quality=_get_env_int("LELAMP_VISION_JPEG_QUALITY", 92),
-        vision_max_age_s=_get_env_float("LELAMP_VISION_MAX_AGE_S", 15.0),
-        camera_rotate_deg=_get_env_int("LELAMP_CAMERA_ROTATE_DEG", 0),
-        camera_flip=_get_env_str("LELAMP_CAMERA_FLIP", "none") or "none",
-        lamp_port=_get_env_str("LELAMP_PORT", "/dev/ttyACM0") or "/dev/ttyACM0",
-        lamp_id=_get_env_str("LELAMP_ID", "lelamp") or "lelamp",
-        baidu_api_key=_require_env("BAIDU_SPEECH_API_KEY"),
-        baidu_secret_key=_require_env("BAIDU_SPEECH_SECRET_KEY"),
-        baidu_cuid=_get_env_str("BAIDU_SPEECH_CUID", "lelamp") or "lelamp",
-        baidu_tts_per=_get_env_int("BAIDU_SPEECH_TTS_PER", 4),
-        noise_cancellation_enabled=_get_env_bool("LELAMP_NOISE_CANCELLATION", True),
-        greeting_text=_get_env_str("LELAMP_GREETING_TEXT", "Hello! 小宝贝上线了.")
-        or "",
-        ota_url=_get_env_str("LELAMP_OTA_URL", "") or "",
-    )
+    from lelamp.config import load_config_strict
+    return load_config_strict()
 
 
 def _build_vad() -> object:

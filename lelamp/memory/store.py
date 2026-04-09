@@ -6,7 +6,7 @@ asyncio 上下文和线程上下文的并发安全。
 """
 import logging
 import threading
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
@@ -96,7 +96,7 @@ class MemoryStore:
                 # 更新访问时间和计数
                 for m in result:
                     m.access_count += 1
-                    m.last_accessed = datetime.utcnow()
+                    m.last_accessed = datetime.now(UTC)
                 if result:
                     db.commit()
 
@@ -280,7 +280,7 @@ class MemoryStore:
         with self._lock:
             db = _make_session()
             try:
-                since = datetime.utcnow() - timedelta(hours=hours)
+                since = datetime.now(UTC) - timedelta(hours=hours)
                 rows = (
                     db.query(ConversationSummary)
                     .filter(

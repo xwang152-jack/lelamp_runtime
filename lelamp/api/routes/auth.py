@@ -90,8 +90,8 @@ async def login(
         )
 
     # 更新最后登录时间
-    from datetime import datetime
-    user.last_login = datetime.utcnow()
+    from datetime import datetime, UTC
+    user.last_login = datetime.now(UTC)
     db.commit()
 
     # 创建令牌

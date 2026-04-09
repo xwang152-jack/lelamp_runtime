@@ -45,6 +45,7 @@ app = FastAPI(
 # 生产环境：应该设置具体的域名
 
 # 从环境变量读取允许的源，如果没有则使用默认列表
+# 开发环境的内网 IP 请通过 LELAMP_CORS_ORIGINS 环境变量配置
 allowed_origins = os.getenv("LELAMP_CORS_ORIGINS", "").split(",") if os.getenv("LELAMP_CORS_ORIGINS") else [
     "http://localhost:5173",
     "http://localhost:5174",
@@ -52,20 +53,7 @@ allowed_origins = os.getenv("LELAMP_CORS_ORIGINS", "").split(",") if os.getenv("
     "http://127.0.0.1:5173",
     "http://127.0.0.1:5174",
     "http://127.0.0.1:3000",
-    "http://192.168.0.104:5173",
-    "http://192.168.0.104:3000",
-    "http://192.168.0.105:5173",
-    "http://192.168.0.105:3000",
 ]
-
-# 开发模式下添加当前访问的 IP
-if os.getenv("LELAMP_DEV_MODE", "0") == "1":
-    # 开发模式：允许所有 localhost 和内网 IP
-    allowed_origins.extend([
-        "http://10.251.145.7:5173",
-        "http://10.251.145.7:5174",
-    ])
-    # 可以通过环境变量添加更多源
 
 app.add_middleware(
     CORSMiddleware,
@@ -359,10 +347,7 @@ async def handle_integrity_error(request: Request, exc: IntegrityError):
     logger.error(f"Database integrity error: {exc}")
     return JSONResponse(
         status_code=status.HTTP_400_BAD_REQUEST,
-        content={
-            "detail": "Database constraint violation",
-            "error": str(exc.orig) if hasattr(exc, 'orig') else str(exc),
-        },
+        content={"detail": "数据操作冲突，请检查输入是否重复"},
     )
 
 
@@ -386,7 +371,7 @@ async def handle_generic_exception(request: Request, exc: Exception):
     logger.error(f"Unhandled exception: {exc}", exc_info=True)
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content={"detail": "Internal server error", "error": str(exc)},
+        content={"detail": "服务内部错误，请稍后重试"},
     )
 
 

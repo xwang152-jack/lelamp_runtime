@@ -7,7 +7,7 @@ Provides:
 - User authentication and registration
 - Device binding management
 """
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from typing import Optional, Dict
 import os
 import hmac
@@ -54,9 +54,9 @@ class AuthService:
         """创建访问令牌"""
         to_encode = data.copy()
         if expires_delta:
-            expire = datetime.utcnow() + expires_delta
+            expire = datetime.now(UTC) + expires_delta
         else:
-            expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+            expire = datetime.now(UTC) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
 
         to_encode.update({"exp": expire, "type": "access"})
         encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
@@ -65,7 +65,7 @@ class AuthService:
     @staticmethod
     def create_refresh_token(user_id: int, db: Session) -> str:
         """创建刷新令牌"""
-        expire = datetime.utcnow() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+        expire = datetime.now(UTC) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
         jti = str(uuid.uuid4())  # JWT ID: 唯一标识符
         token_data = {
             "user_id": user_id,

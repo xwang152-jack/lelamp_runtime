@@ -8,6 +8,8 @@ from sqlalchemy.orm import Session
 import logging
 
 from lelamp.database.session import get_db
+from lelamp.database.models_auth import User
+from lelamp.api.middleware.auth import get_current_user
 from lelamp.database import crud
 from lelamp.api.models.responses import (
     ConversationResponse,
@@ -27,6 +29,7 @@ router = APIRouter()
 @router.get("/conversations/{conversation_id}", response_model=ConversationResponse)
 async def get_conversation_by_id(
     conversation_id: int,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ) -> ConversationResponse:
     """
@@ -71,6 +74,7 @@ async def get_conversation_by_id(
 @router.get("/operations/{operation_id}", response_model=OperationResponse)
 async def get_operation_by_id(
     operation_id: int,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ) -> OperationResponse:
     """

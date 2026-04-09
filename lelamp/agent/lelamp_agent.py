@@ -50,12 +50,27 @@ if TYPE_CHECKING:
 logger = logging.getLogger("lelamp")
 
 
+class _DataContext:
+    """Data Channel 命令执行的轻量 context 占位。
+
+    @function_tool 方法声明了 context: RunContext 参数，
+    但在 Data Channel 命令执行时不通过 AgentSession 调度，
+    不需要完整的 RunContext 功能。此类仅作为位置参数占位。
+    """
+    pass
+
+
 class LeLamp(Agent):
     """
     LeLamp 智能台灯代理
 
     一个笨拙但乐于助人的机器人台灯，具有讽刺意味的性格。
     支持电机控制、RGB 灯光、视觉交互和语音对话。
+
+    TODO: 本类已超过 1600 行，需要拆分。建议方向：
+    - 将 WebSocket 命令处理 (_execute_command) 提取到独立的 CommandHandler
+    - 将对话状态管理提取到 ConversationManager
+    参考：lelamp/agent/tools/system_tools.py 已有的拆分模式
     """
 
     # 类常量
@@ -1470,10 +1485,8 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
         Returns:
             执行结果描述
         """
-        # 创建 mock context 用于直接调用（Data Channel 场景）
-        from unittest.mock import MagicMock
-
-        mock_context = MagicMock(spec=RunContext)
+        # 创建轻量 context 用于直接调用（Data Channel 场景）
+        mock_context = _DataContext()
 
         try:
             # 播放录制动画

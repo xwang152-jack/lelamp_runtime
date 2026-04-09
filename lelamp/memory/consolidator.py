@@ -14,7 +14,7 @@ import logging
 import threading
 import time
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, UTC
 from typing import Optional
 
 import httpx
@@ -255,7 +255,7 @@ class MemoryConsolidator:
         summary = data.get("summary", "")
         if summary:
             try:
-                now = datetime.utcnow()
+                now = datetime.now(UTC)
                 self._store.save_summary(
                     lamp_id=lamp_id,
                     session_id=session_id,
@@ -333,7 +333,7 @@ class MemoryConsolidator:
         fallback_summary = "【自动降级摘要】" + " | ".join(user_lines[:5])  # 最多 5 条
 
         try:
-            now = datetime.utcnow()
+            now = datetime.now(UTC)
             self._store.save_summary(
                 lamp_id=lamp_id,
                 session_id=session_id,

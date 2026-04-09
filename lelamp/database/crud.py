@@ -5,7 +5,7 @@ Provides database operations for Conversation, OperationLog, DeviceState,
 and UserSettings models with proper error handling and type hints.
 """
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy import func, and_
@@ -118,7 +118,7 @@ def get_recent_conversations(
     Returns:
         List of Conversation objects within the time window
     """
-    time_threshold = datetime.utcnow() - timedelta(hours=hours)
+    time_threshold = datetime.now(UTC) - timedelta(hours=hours)
     return (
         db.query(Conversation)
         .filter(
@@ -144,7 +144,7 @@ def delete_old_conversations(db: Session, days: int = 30) -> int:
     Returns:
         Number of conversations deleted
     """
-    time_threshold = datetime.utcnow() - timedelta(days=days)
+    time_threshold = datetime.now(UTC) - timedelta(days=days)
     count = (
         db.query(Conversation)
         .filter(Conversation.timestamp < time_threshold)
@@ -244,7 +244,7 @@ def get_recent_operation_logs(
     Returns:
         List of OperationLog objects within the time window
     """
-    time_threshold = datetime.utcnow() - timedelta(hours=hours)
+    time_threshold = datetime.now(UTC) - timedelta(hours=hours)
     return (
         db.query(OperationLog)
         .filter(
@@ -281,7 +281,7 @@ def get_operation_statistics(
 
         Returns None if no operations found in the time window
     """
-    time_threshold = datetime.utcnow() - timedelta(days=days)
+    time_threshold = datetime.now(UTC) - timedelta(days=days)
 
     # Get all operations in time window
     operations = (
@@ -404,7 +404,7 @@ def get_device_state_history(
     Returns:
         List of DeviceState objects within the time window
     """
-    time_threshold = datetime.utcnow() - timedelta(hours=hours)
+    time_threshold = datetime.now(UTC) - timedelta(hours=hours)
     return (
         db.query(DeviceState)
         .filter(
@@ -430,7 +430,7 @@ def delete_old_device_states(db: Session, days: int = 7) -> int:
     Returns:
         Number of device states deleted
     """
-    time_threshold = datetime.utcnow() - timedelta(days=days)
+    time_threshold = datetime.now(UTC) - timedelta(days=days)
     count = (
         db.query(DeviceState)
         .filter(DeviceState.timestamp < time_threshold)

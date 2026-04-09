@@ -5,7 +5,7 @@
 MemoryConsolidator 的 LLM 调用通过 mock 测试。
 """
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 from unittest.mock import patch, MagicMock
 
 from sqlalchemy import create_engine
@@ -90,7 +90,7 @@ class TestMemoryModel:
     def test_create_conversation_summary(self, memory_db):
         from lelamp.memory.models import ConversationSummary
 
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         s = ConversationSummary(
             lamp_id="test",
             session_id="sess_123",
@@ -178,7 +178,7 @@ class TestMemoryStore:
         assert updated.importance == 9
 
     def test_save_and_get_summary(self, store):
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         store.save_summary(
             lamp_id="lamp_1",
             session_id="sess_1",
@@ -194,7 +194,7 @@ class TestMemoryStore:
         assert "数学" in summaries[0].summary
 
     def test_get_recent_summaries_hours_filter(self, store):
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         old = now - timedelta(hours=200)
 
         store.save_summary(
@@ -648,12 +648,12 @@ async def test_consolidation_raw_archive_on_repeated_failure(store):
 
 def test_build_dynamic_instructions_includes_summary(store):
     """_build_dynamic_instructions 注入近期对话摘要"""
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, UTC
     from unittest.mock import MagicMock, patch
     from lelamp.agent.lelamp_agent import LeLamp
 
     # 存入一条近期摘要
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
     store.save_summary(
         lamp_id="lamp_test_summary",
         session_id="sess_inject",
@@ -680,13 +680,13 @@ def test_build_dynamic_instructions_includes_summary(store):
 
 def test_build_dynamic_instructions_no_summary_within_budget(store):
     """摘要超出 token 预算时不注入"""
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, UTC
     from unittest.mock import MagicMock, patch
     import os
     from lelamp.agent.lelamp_agent import LeLamp
 
     # 存入一条极长的摘要（超出 200 token 预算）
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
     long_summary = "用户说了很多话。" * 200  # ~1600 字符 > 200 token 预算
     store.save_summary(
         lamp_id="lamp_test_budget",

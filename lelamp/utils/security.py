@@ -1,4 +1,5 @@
 import hashlib
+import hmac
 import os
 import uuid
 import platform
@@ -43,8 +44,6 @@ def generate_license_key(device_id: str, secret: str | None = None) -> str:
     Raises:
         RuntimeError: 如果未设置 LELAMP_LICENSE_SECRET 环境变量
     """
-    import hmac
-
     if secret is None:
         secret = os.getenv("LELAMP_LICENSE_SECRET")
         if not secret:
@@ -93,7 +92,7 @@ def verify_license() -> bool:
         logger.error(f"无法验证授权码: {e}")
         return False
 
-    if provided_key != expected_key:
+    if not hmac.compare_digest(provided_key, expected_key):
         logger.error(f"授权码无效！设备 ID: {device_id}")
         # 不输出提供的授权码（避免日志泄露）
         return False

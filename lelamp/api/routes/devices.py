@@ -7,12 +7,14 @@
 from fastapi import APIRouter, HTTPException, Depends, Query
 from sqlalchemy.orm import Session
 from typing import Dict, List, Optional
-from datetime import datetime
+from datetime import datetime, UTC
 import logging
 import uuid
 import re
 
 from lelamp.database.session import get_db
+from lelamp.database.models_auth import User
+from lelamp.api.middleware.auth import get_current_user, get_current_user_optional
 from lelamp.database import crud
 from lelamp.api.models.responses import (
     DeviceStateResponse,
@@ -94,6 +96,7 @@ def validate_pagination(skip: int, limit: int) -> tuple[int, int]:
 @router.get("/{lamp_id}/state", response_model=DeviceStateResponse)
 async def get_device_state(
     lamp_id: str,
+    current_user: Optional[User] = Depends(get_current_user_optional),
     db: Session = Depends(get_db)
 ) -> DeviceStateResponse:
     """
@@ -134,7 +137,7 @@ async def get_device_state(
             lamp_id=lamp_id,
             status="offline",
             conversation_state="unknown",
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(UTC),
             motor_positions={},
             light_color={"r": 0, "g": 0, "b": 0},
             camera_active=False,
@@ -146,6 +149,7 @@ async def get_device_state(
 async def send_device_command(
     lamp_id: str,
     command: Dict,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ) -> CommandResponse:
     """
@@ -223,7 +227,7 @@ async def send_device_command(
         success=True,
         command_id=command_id,
         message="Command received",
-        timestamp=datetime.utcnow(),
+        timestamp=datetime.now(UTC),
     )
 
 
@@ -237,6 +241,7 @@ async def get_conversations(
     lamp_id: str,
     skip: int = Query(0, ge=0, description="跳过记录数"),
     limit: int = Query(50, ge=1, le=100, description="返回记录数"),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ) -> ConversationListResponse:
     """
@@ -301,6 +306,7 @@ async def get_operations(
     skip: int = Query(0, ge=0, description="跳过记录数"),
     limit: int = Query(50, ge=1, le=100, description="返回记录数"),
     hours: int = Query(24, ge=1, le=168, description="时间窗口（小时）"),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ) -> OperationListResponse:
     """
@@ -335,9 +341,9 @@ async def get_operations(
     # 查询总数
     from sqlalchemy import func
     from lelamp.database.models import OperationLog
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, UTC
 
-    time_threshold = datetime.utcnow() - timedelta(hours=hours)
+    time_threshold = datetime.now(UTC) - timedelta(hours=hours)
     total = (
         db.query(func.count(OperationLog.id))
         .filter(
@@ -374,6 +380,7 @@ async def get_operations(
 @router.get("/{lamp_id}/health", response_model=HealthResponse)
 async def get_device_health(
     lamp_id: str,
+    current_user: Optional[User] = Depends(get_current_user_optional),
     db: Session = Depends(get_db)
 ) -> HealthResponse:
     """
@@ -415,7 +422,7 @@ async def get_device_health(
             lamp_id=lamp_id,
             overall_status="unknown",
             motors=[],
-            last_check=datetime.utcnow(),
+            last_check=datetime.now(UTC),
         )
 
 
@@ -428,6 +435,7 @@ async def get_device_health(
 async def get_device_statistics(
     lamp_id: str,
     days: int = Query(7, ge=1, le=30, description="统计天数"),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ) -> Dict:
     """
@@ -486,6 +494,7 @@ async def get_device_statistics(
 
 @router.get("", response_model=DeviceListResponse)
 async def list_devices(
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ) -> DeviceListResponse:
     """
