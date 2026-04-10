@@ -3,12 +3,12 @@
 # 同步代码到树莓派（通过 rsync 直推）
 #
 # 用法: bash scripts/tools/sync_to_pi.sh [PI_HOST]
-# 示例: bash scripts/tools/sync_to_pi.sh pi@192.168.0.106
+# 示例: bash scripts/tools/sync_to_pi.sh pi@192.168.3.129
 #
 
 set -e
 
-PI_HOST="${1:-pi@192.168.0.106}"
+PI_HOST="${1:-pi@192.168.3.129}"
 PI_DIR="/home/pi/lelamp_runtime"
 
 echo "=== 同步代码到树莓派 ==="
@@ -22,6 +22,20 @@ if ! ssh -o ConnectTimeout=5 "$PI_HOST" "echo ok" > /dev/null 2>&1; then
     exit 1
 fi
 echo "  SSH 连接正常"
+
+# 1.5 清理残留的 main.py 进程（防止手动调试遗留进程抢占资源）
+echo "[1.5/4] 清理残留进程..."
+ssh "$PI_HOST" "
+    # 找出所有 main.py 的 python3 进程，排除 systemd 管理的进程
+    PIDS=\$(ps aux | grep 'main.py' | grep -v grep | grep -v 'tmux\|systemd' | awk '{print \$2}')
+    if [ -n \"\$PIDS\" ]; then
+        echo \"  终止残留进程: \$PIDS\"
+        sudo kill -9 \$PIDS 2>/dev/null || true
+        sleep 1
+    else
+        echo '  无残留进程'
+    fi
+"
 
 # 2. rsync 同步文件
 echo "[2/4] 同步文件..."

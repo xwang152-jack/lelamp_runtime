@@ -46,7 +46,7 @@ class HealthThresholds:
     """健康阈值配置"""
     temp_warning_c: float = 65.0      # 温度警告阈值
     temp_critical_c: float = 75.0     # 温度危险阈值
-    voltage_min_v: float = 4.5        # 最低电压
+    voltage_min_v: float = 5.0        # 最低电压
     voltage_max_v: float = 13.0       # 最高电压
     load_warning: float = 0.8         # 负载警告阈值
     load_stall: float = 0.95          # 堵转阈值
