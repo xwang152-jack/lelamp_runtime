@@ -55,6 +55,7 @@ class ProactiveVisionMonitor:
         # 智能调节
         auto_adjust_fps: bool = True,
         min_user_presence_time: float = 2.0,  # 确认用户在场的时间(秒)
+        absence_threshold_s: float = 5.0,     # 持续未检测到人脸后判离开的时长(秒)
     ):
         """
         初始化主动监听服务
@@ -71,6 +72,7 @@ class ProactiveVisionMonitor:
             presence_check_interval_s: 在场检测间隔
             auto_adjust_fps: 自动调节帧率
             min_user_presence_time: 确认用户在场最短时间
+            absence_threshold_s: 持续未检测到人脸后判离开的时长
         """
         self._hybrid_vision = hybrid_vision
         self._vision_service = vision_service
@@ -89,6 +91,7 @@ class ProactiveVisionMonitor:
         # 智能调节参数
         self._auto_adjust = auto_adjust_fps
         self._min_presence_time = min_user_presence_time
+        self._absence_threshold_s = absence_threshold_s
 
         # 状态
         self._mode = MonitorMode.IDLE
@@ -99,6 +102,8 @@ class ProactiveVisionMonitor:
         # 统计
         self._user_present = False
         self._user_present_since = 0.0
+        self._last_seen_time = 0.0
+        self._last_notified_present = False
         self._last_gesture_time = 0.0
         self._last_presence_check = 0.0
         self._detection_count = 0
@@ -254,27 +259,35 @@ class ProactiveVisionMonitor:
                         present = False
 
             with self._state_lock:
-                # 用户状态变化
-                if present != self._user_present:
-                    if present:
-                        # 用户刚出现
+                if present:
+                    # 检测到人脸：开始/重置计时
+                    if not self._user_present:
                         self._user_present_since = current_time
-                        logger.info("用户出现在视野中")
-                    else:
-                        # 用户刚离开
-                        if self._user_present and \
-                           (current_time - self._user_present_since) >= self._min_presence_time:
+                    self._last_seen_time = current_time
+                    self._user_present = True
+                else:
+                    # 未检测到人脸：检查是否超过离开阈值
+                    if self._user_present:
+                        if (current_time - self._last_seen_time) >= self._absence_threshold_s:
+                            self._user_present = False
+                            self._last_notified_present = False
                             logger.info("用户离开视野")
                             self._set_mode(MonitorMode.IDLE)
-
-                    self._user_present = present
-
-                    # 触发在场回调
-                    if self._presence_callback:
-                        try:
-                            self._presence_callback(present)
-                        except Exception as e:
-                            logger.error(f"Presence callback error: {e}")
+                            if self._presence_callback:
+                                try:
+                                    self._presence_callback(False)
+                                except Exception as e:
+                                    logger.error(f"Presence callback error: {e}")
+                # 仅在状态从不在场变为在场且持续足够久时触发回调
+                if self._user_present and not self._last_notified_present:
+                    if (current_time - self._user_present_since) >= self._min_presence_time:
+                        self._last_notified_present = True
+                        logger.info("用户出现在视野中")
+                        if self._presence_callback:
+                            try:
+                                self._presence_callback(True)
+                            except Exception as e:
+                                logger.error(f"Presence callback error: {e}")
 
                 # 智能调节采样频率
                 if self._auto_adjust:
