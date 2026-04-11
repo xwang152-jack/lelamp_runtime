@@ -104,6 +104,8 @@ class ProactiveVisionMonitor:
         self._user_present_since = 0.0
         self._last_seen_time = 0.0
         self._last_notified_present = False
+        self._absent_count = 0
+        self._absent_frame_threshold = 5  # 连续5帧未检测到才判离开
         self._last_gesture_time = 0.0
         self._last_presence_check = 0.0
         self._detection_count = 0
@@ -261,23 +263,24 @@ class ProactiveVisionMonitor:
             with self._state_lock:
                 if present:
                     # 检测到人脸：开始/重置计时
+                    self._absent_count = 0
                     if not self._user_present:
                         self._user_present_since = current_time
                     self._last_seen_time = current_time
                     self._user_present = True
                 else:
-                    # 未检测到人脸：检查是否超过离开阈值
-                    if self._user_present:
-                        if (current_time - self._last_seen_time) >= self._absence_threshold_s:
-                            self._user_present = False
-                            self._last_notified_present = False
-                            logger.info("用户离开视野")
-                            self._set_mode(MonitorMode.IDLE)
-                            if self._presence_callback:
-                                try:
-                                    self._presence_callback(False)
-                                except Exception as e:
-                                    logger.error(f"Presence callback error: {e}")
+                    # 未检测到人脸：累计缺失帧数
+                    self._absent_count += 1
+                    if self._user_present and self._absent_count >= self._absent_frame_threshold:
+                        self._user_present = False
+                        self._last_notified_present = False
+                        logger.info("用户离开视野")
+                        self._set_mode(MonitorMode.IDLE)
+                        if self._presence_callback:
+                            try:
+                                self._presence_callback(False)
+                            except Exception as e:
+                                logger.error(f"Presence callback error: {e}")
                 # 仅在状态从不在场变为在场且持续足够久时触发回调
                 if self._user_present and not self._last_notified_present:
                     if (current_time - self._user_present_since) >= self._min_presence_time:
