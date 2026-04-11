@@ -235,26 +235,9 @@ async def lifespan(app: FastAPI):
     # VisionService 由 LiveKit Agent 独占管理，API 不启动以避免摄像头争抢
     vision_service = None
 
-    # 初始化 LeLamp Agent
-    try:
-        from lelamp.agent.lelamp_agent import LeLamp
-        agent = LeLamp(
-            port="/dev/ttyACM0",
-            lamp_id="lelamp",
-            motors_service=app.state.motors_service,
-            rgb_service=app.state.rgb_service,
-            vision_service=vision_service,  # 传入 vision_service
-        )
-
-        async def broadcast_callback(msg):
-            await manager.broadcast_to_device("lelamp", msg)
-
-        agent.send_message_callback = broadcast_callback
-        app.state.agent = agent
-        logger.info("LeLamp Agent initialized")
-    except Exception as e:
-        logger.error(f"LeLamp Agent init failed: {e}", exc_info=True)
-        app.state.agent = None
+    # LeLamp Agent 由 LiveKit 进程（main.py）独占管理
+    # API 进程不创建 Agent，避免串口/电机/摄像头争抢
+    app.state.agent = None
 
     # 启动后台状态轮询任务
     polling_task = asyncio.create_task(state_polling_task())

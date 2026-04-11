@@ -232,7 +232,7 @@ class ProactiveVisionMonitor:
             self._detect_gestures(frame, current_time)
 
     def _check_presence(self, frame, current_time: float):
-        """检测用户在场"""
+        """检测用户在场（直接信任 FaceDetector 的防抖结果）"""
         try:
             if not self._hybrid_vision:
                 return
@@ -249,48 +249,30 @@ class ProactiveVisionMonitor:
             # 缓存人脸检测结果
             with self._state_lock:
                 self._last_face_result = result
-            if not present:
-                faces_val = result.get("faces", [])
-                if isinstance(faces_val, list):
-                    present = len(faces_val) > 0
-                else:
-                    count_val = result.get("count", 0)
-                    try:
-                        present = int(count_val) > 0
-                    except (TypeError, ValueError):
-                        present = False
 
+            # 直接用 FaceDetector 的 presence（已含帧平滑+防抖）
+            # 只在状态变化时触发回调和模式切换
             with self._state_lock:
-                if present:
-                    # 检测到人脸：开始/重置计时
-                    self._absent_count = 0
-                    if not self._user_present:
-                        self._user_present_since = current_time
-                    self._last_seen_time = current_time
+                if present and not self._user_present:
+                    # 用户刚到场
                     self._user_present = True
-                else:
-                    # 未检测到人脸：累计缺失帧数
-                    self._absent_count += 1
-                    if self._user_present and self._absent_count >= self._absent_frame_threshold:
-                        self._user_present = False
-                        self._last_notified_present = False
-                        logger.info("用户离开视野")
-                        self._set_mode(MonitorMode.IDLE)
-                        if self._presence_callback:
-                            try:
-                                self._presence_callback(False)
-                            except Exception as e:
-                                logger.error(f"Presence callback error: {e}")
-                # 仅在状态从不在场变为在场且持续足够久时触发回调
-                if self._user_present and not self._last_notified_present:
-                    if (current_time - self._user_present_since) >= self._min_presence_time:
-                        self._last_notified_present = True
-                        logger.info("用户出现在视野中")
-                        if self._presence_callback:
-                            try:
-                                self._presence_callback(True)
-                            except Exception as e:
-                                logger.error(f"Presence callback error: {e}")
+                    self._user_present_since = current_time
+                    logger.info("用户出现在视野中")
+                    if self._presence_callback:
+                        try:
+                            self._presence_callback(True)
+                        except Exception as e:
+                            logger.error(f"Presence callback error: {e}")
+                elif not present and self._user_present:
+                    # 用户刚离开
+                    self._user_present = False
+                    logger.info("用户离开视野")
+                    self._set_mode(MonitorMode.IDLE)
+                    if self._presence_callback:
+                        try:
+                            self._presence_callback(False)
+                        except Exception as e:
+                            logger.error(f"Presence callback error: {e}")
 
                 # 智能调节采样频率
                 if self._auto_adjust:

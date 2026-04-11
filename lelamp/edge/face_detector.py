@@ -99,6 +99,8 @@ class FaceDetector:
             self._min_neighbors = 3
 
         self._min_size = (60, 60)  # 最小人脸尺寸（像素）
+        self._smooth_absent_count = 0  # 连续未检测到人脸的帧数
+        self._smooth_absent_threshold = 3  # 容忍连续3帧丢失（第4帧才判不在场）
 
         self.presence_callback = presence_callback
         self._last_presence = False
@@ -198,8 +200,12 @@ class FaceDetector:
 
             if faces:
                 self._total_detections += 1
+                self._smooth_absent_count = 0  # 检测到人脸，重置计数
+            else:
+                self._smooth_absent_count += 1
 
-            presence = len(faces) > 0
+            # 帧平滑：连续 N 帧都没检测到才判为不在场
+            presence = len(faces) > 0 or self._smooth_absent_count <= self._smooth_absent_threshold
             presence_duration = self._update_presence_state(presence)
 
             return {
