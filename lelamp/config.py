@@ -126,7 +126,7 @@ class MotorConfig:
     fps: int = 30
     # 健康监控配置
     health_check_enabled: bool = True
-    health_check_interval_s: float = 300.0  # 5分钟检查一次
+    health_check_interval_s: float = 30.0  # 30秒检查一次（配合滑动窗口：30s × 3次 = 90s 确认）
     temp_warning_c: float = 65.0            # 温度警告阈值
     temp_critical_c: float = 75.0           # 温度危险阈值
     voltage_min_v: float = 4.5              # 最低电压

@@ -141,15 +141,32 @@ class MotorsService(ServiceBase):
         )
         thread.start()
 
+    def _send_with_retry(self, fn, joint_name: str, max_retries: int = 2):
+        """带重试的串口操作"""
+        last_exc = None
+        for attempt in range(1 + max_retries):
+            try:
+                return fn()
+            except Exception as e:
+                last_exc = e
+                if attempt < max_retries:
+                    self.logger.warning(f"Serial retry {attempt + 1}/{max_retries} for {joint_name}: {e}")
+                    time.sleep(0.05)
+        raise last_exc
+
     def _interpolated_move(self, joint_name: str, target_angle: float):
         """Execute smooth interpolated move in a dedicated thread."""
         try:
             # 只读取一次当前位置
-            with self._bus_lock:
+            def read_obs():
                 if not self.robot:
                     self.logger.error("Robot disconnected before move operation")
-                    return
-                obs = self.robot.get_observation()
+                    return None
+                return self.robot.get_observation()
+
+            obs = self._send_with_retry(read_obs, joint_name)
+            if obs is None:
+                return
 
             current_pos = 0.0
             for key, value in obs.items():
@@ -162,13 +179,16 @@ class MotorsService(ServiceBase):
             # 如果差距很小，直接发送
             step_deg = self.motor_config.interpolation_step_deg if self.motor_config else 3.0
             if abs(diff) <= step_deg:
-                with self._bus_lock:
+                def send_direct():
                     if not self.robot:
                         return
                     action = {key: float(val) for key, val in obs.items() if key.endswith(".pos")}
                     action[f"{joint_name}.pos"] = target_angle
                     self._last_target_positions[joint_name] = target_angle
                     self.robot.send_action(action)
+
+                with self._bus_lock:
+                    self._send_with_retry(send_direct, joint_name)
                 self.logger.info(f"Moved joint {joint_name} to {target_angle:.1f}° (direct)")
                 return
 
@@ -183,14 +203,17 @@ class MotorsService(ServiceBase):
                 interpolated = current_pos + diff * progress
 
                 t0 = time.perf_counter()
-                with self._bus_lock:
+                def send_step(pos=interpolated):
                     if not self.robot:
                         self.logger.error("Robot disconnected during interpolation")
                         return
                     action = {key: float(val) for key, val in obs.items() if key.endswith(".pos")}
-                    action[f"{joint_name}.pos"] = interpolated
-                    self._last_target_positions[joint_name] = interpolated
+                    action[f"{joint_name}.pos"] = pos
+                    self._last_target_positions[joint_name] = pos
                     self.robot.send_action(action)
+
+                with self._bus_lock:
+                    self._send_with_retry(send_step, joint_name)
 
                 sleep_time = 1.0 / self.fps - (time.perf_counter() - t0)
                 if sleep_time > 0:
@@ -206,10 +229,16 @@ class MotorsService(ServiceBase):
         if not self.robot:
             self.logger.error("Robot not connected")
             return {}
-        
+
         try:
-            with self._bus_lock:
-                obs = self.robot.get_observation()
+            def read_obs():
+                if not self.robot:
+                    return None
+                return self.robot.get_observation()
+
+            obs = self._send_with_retry(read_obs, "get_positions")
+            if obs is None:
+                return {}
             # Extract joint positions (remove ".pos" suffix from keys)
             positions = {}
             for key, value in obs.items():
@@ -363,13 +392,19 @@ class MotorsService(ServiceBase):
 
         while not self._health_check_stop.is_set():
             try:
-                # 检查所有舵机健康状态
-                with self._bus_lock:
-                    health_results = self.health_monitor.check_all_motors_health(
-                        target_positions=self._last_target_positions
-                    )
+                # 逐个舵机检查健康状态，每次只短暂持有总线锁，不阻塞动作控制
+                health_results = {}
+                for motor_name in self.robot.bus.motors:
+                    try:
+                        with self._bus_lock:
+                            health_results[motor_name] = self.health_monitor.check_motor_health(
+                                motor_name, self._last_target_positions.get(motor_name)
+                            )
+                    except Exception as e:
+                        self.logger.warning(f"Health check failed for {motor_name}: {e}")
 
                 # 检查是否有异常状态
+                has_fault = False
                 for motor_name, health_data in health_results.items():
                     new_status = health_data.status
                     old_status = self._prev_motor_status.get(motor_name)
@@ -379,18 +414,26 @@ class MotorsService(ServiceBase):
 
                     if health_data.status == HealthStatus.STALLED:
                         self.logger.error(f"Motor {motor_name} STALLED! Taking protective action...")
-                        # 堵转时停止所有动作
                         self._cancel_playback.set()
-                        # 可以在这里添加更多保护措施,如断电等
+                        has_fault = True
 
                     elif health_data.status == HealthStatus.CRITICAL:
                         self.logger.error(f"Motor {motor_name} in CRITICAL state!")
-                        # 严重状态时停止动作
                         self._cancel_playback.set()
+                        has_fault = True
 
                     elif health_data.status == HealthStatus.WARNING:
                         self.logger.warning(f"Motor {motor_name} in WARNING state")
-                        # 警告状态可以继续运行,但记录日志
+
+                # 所有舵机恢复正常时，自动重置 _cancel_playback 允许后续动作
+                if not has_fault and self._cancel_playback.is_set():
+                    all_recovered = all(
+                        h.status in (HealthStatus.HEALTHY, HealthStatus.WARNING)
+                        for h in health_results.values()
+                    )
+                    if all_recovered:
+                        self._cancel_playback.clear()
+                        self.logger.info("All motors recovered, resuming operations")
 
             except Exception as e:
                 self.logger.error(f"Error in health check loop: {e}")

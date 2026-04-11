@@ -73,6 +73,10 @@ class MotorHealthMonitor:
         self._history_lock = threading.Lock()
         self._max_history_size = 100  # 每个舵机保留最近 100 条记录
 
+        # 堵转滑动窗口：连续 N 次高负载才判定堵转，过滤瞬时负载尖峰
+        self._stall_window: Dict[str, list[bool]] = {}
+        self._stall_window_size: int = 3
+
         # 统计数据
         self._warning_count: Dict[str, int] = {}
         self._critical_count: Dict[str, int] = {}
@@ -116,8 +120,8 @@ class MotorHealthMonitor:
             try:
                 load_raw = self.bus.read("Present_Load", motor_name)
                 if load_raw is not None:
-                    # 负载值通常是 0-1023 映射到 0-100%
-                    health_data.load = abs(float(load_raw)) / 1023.0
+                    # 负载值低 10 位为负载量（0-1023），第 10 位为方向位（Dynamixel 兼容协议）
+                    health_data.load = (abs(float(load_raw)) & 0x3FF) / 1023.0
             except Exception as e:
                 self.logger.debug(f"Cannot read load for {motor_name}: {e}")
 
@@ -174,10 +178,27 @@ class MotorHealthMonitor:
         Returns:
             HealthStatus: 健康状态
         """
-        # 检查堵转 (最高优先级)
+        # 检查堵转 — 使用滑动窗口：连续 N 次高负载才判定，过滤瞬时尖峰
         if data.load is not None and data.load >= self.thresholds.load_stall:
-            self.logger.error(f"Motor {data.motor_name} STALLED! Load: {data.load:.1%}")
-            return HealthStatus.STALLED
+            window = self._stall_window.setdefault(data.motor_name, [])
+            window.append(True)
+            if len(window) > self._stall_window_size:
+                window.pop(0)
+            if len(window) >= self._stall_window_size and all(window):
+                self.logger.error(
+                    f"Motor {data.motor_name} STALLED! Load: {data.load:.1%} "
+                    f"(consecutive {self._stall_window_size} checks)"
+                )
+                return HealthStatus.STALLED
+            # 单次高负载仅警告，不判定为堵转
+            self.logger.warning(f"Motor {data.motor_name} high load: {data.load:.1%} (1/{self._stall_window_size})")
+            # 不 return，继续检查其他条件
+        else:
+            # 负载正常，记录到窗口
+            window = self._stall_window.setdefault(data.motor_name, [])
+            window.append(False)
+            if len(window) > self._stall_window_size:
+                window.pop(0)
 
         # 检查温度危险
         if data.temperature is not None and data.temperature >= self.thresholds.temp_critical_c:
