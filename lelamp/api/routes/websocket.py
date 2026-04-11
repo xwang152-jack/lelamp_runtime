@@ -595,7 +595,7 @@ async def execute_direct_command(action: str, params: dict, rgb_service, motors_
                 _track_background_task(agent._set_system_volume(volume_percent))
                 # 同步音量到 .env 文件，重启后生效
                 _track_background_task(
-                    config_sync_service.sync_setting("volume_level", volume_percent)
+                    config_sync_service._sync_to_env_file({"volume_level": volume_percent})
                 )
                 return True
 

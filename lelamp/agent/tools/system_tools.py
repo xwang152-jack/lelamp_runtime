@@ -458,13 +458,10 @@ class SystemTools:
         except Exception as e:
             return f"Error controlling volume: {str(e)}"
         finally:
-            # 无论成功失败，异步同步音量到 .env（供重启后使用）
+            # 无论成功失败，同步音量到 .env（供重启后使用）
             try:
-                import asyncio
                 from lelamp.api.services.config_sync import config_sync_service
-                asyncio.ensure_future(
-                    config_sync_service.sync_setting("volume_level", volume_percent)
-                )
+                config_sync_service._sync_to_env_file({"volume_level": volume_percent})
             except Exception:
                 pass
 
