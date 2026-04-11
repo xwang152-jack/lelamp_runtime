@@ -49,6 +49,21 @@ class MotorsService(ServiceBase):
         self.robot.connect(calibrate=False)
         self.logger.info(f"Motors service connected to {self.port}")
 
+        # 应用平滑控制参数（覆盖 configure() 中的默认值）
+        if self.motor_config:
+            for motor in self.robot.bus.motors:
+                self.robot.bus.write("P_Coefficient", motor, self.motor_config.motor_p_coefficient)
+                self.robot.bus.write("D_Coefficient", motor, self.motor_config.motor_d_coefficient)
+                self.robot.bus.write("Acceleration", motor, self.motor_config.motor_acceleration)
+            if hasattr(self.robot.bus, "protocol_version") and self.robot.bus.protocol_version == 0:
+                for motor in self.robot.bus.motors:
+                    self.robot.bus.write("Maximum_Acceleration", motor, self.motor_config.motor_max_acceleration)
+            self.logger.info(
+                f"Smooth control applied: P={self.motor_config.motor_p_coefficient}, "
+                f"D={self.motor_config.motor_d_coefficient}, "
+                f"accel={self.motor_config.motor_acceleration}"
+            )
+
         # 启动健康监控
         if self.motor_config and self.motor_config.health_check_enabled:
             thresholds = HealthThresholds(
@@ -97,8 +112,11 @@ class MotorsService(ServiceBase):
             self.logger.warning(f"Unknown event type: {event_type}")
     
     def _handle_move_joint(self, payload: dict):
-        """Move a single joint to a specified angle"""
-        # 检查服务是否正在停止
+        """Move a single joint to a specified angle with smooth interpolation.
+
+        The interpolation runs in a separate thread to avoid blocking the
+        event loop and interfering with audio processing.
+        """
         if self._cancel_playback.is_set():
             self.logger.info("Service is stopping, ignoring move_joint request")
             return
@@ -114,30 +132,72 @@ class MotorsService(ServiceBase):
             self.logger.error(f"Invalid joint name: {joint_name}")
             return
 
+        # 在独立线程中执行插值，避免阻塞事件循环
+        thread = threading.Thread(
+            target=self._interpolated_move,
+            args=(joint_name, float(angle)),
+            daemon=True,
+            name=f"move-{joint_name}",
+        )
+        thread.start()
+
+    def _interpolated_move(self, joint_name: str, target_angle: float):
+        """Execute smooth interpolated move in a dedicated thread."""
         try:
+            # 只读取一次当前位置
             with self._bus_lock:
-                # 最后一次检查 robot 连接
                 if not self.robot:
                     self.logger.error("Robot disconnected before move operation")
                     return
-
-                # Get current positions of all joints first
                 obs = self.robot.get_observation()
-                action = {}
-                for key, value in obs.items():
-                    if key.endswith(".pos"):
-                        action[key] = value
 
-                # Update only the target joint
-                action[f"{joint_name}.pos"] = float(angle)
+            current_pos = 0.0
+            for key, value in obs.items():
+                if key == f"{joint_name}.pos":
+                    current_pos = float(value)
+                    break
 
-                # 记录目标位置(用于健康监控)
-                self._last_target_positions[joint_name] = float(angle)
+            diff = target_angle - current_pos
 
-                # Send full action with all joints
-                self.robot.send_action(action)
+            # 如果差距很小，直接发送
+            step_deg = self.motor_config.interpolation_step_deg if self.motor_config else 3.0
+            if abs(diff) <= step_deg:
+                with self._bus_lock:
+                    if not self.robot:
+                        return
+                    action = {key: float(val) for key, val in obs.items() if key.endswith(".pos")}
+                    action[f"{joint_name}.pos"] = target_angle
+                    self._last_target_positions[joint_name] = target_angle
+                    self.robot.send_action(action)
+                self.logger.info(f"Moved joint {joint_name} to {target_angle:.1f}° (direct)")
+                return
 
-            self.logger.info(f"Moved joint {joint_name} to {angle} degrees")
+            # 多帧插值移动
+            num_steps = max(2, int(abs(diff) / step_deg))
+            for i in range(1, num_steps + 1):
+                if self._cancel_playback.is_set():
+                    self.logger.info(f"Move cancelled: {joint_name}")
+                    break
+
+                progress = i / num_steps
+                interpolated = current_pos + diff * progress
+
+                t0 = time.perf_counter()
+                with self._bus_lock:
+                    if not self.robot:
+                        self.logger.error("Robot disconnected during interpolation")
+                        return
+                    action = {key: float(val) for key, val in obs.items() if key.endswith(".pos")}
+                    action[f"{joint_name}.pos"] = interpolated
+                    self._last_target_positions[joint_name] = interpolated
+                    self.robot.send_action(action)
+
+                sleep_time = 1.0 / self.fps - (time.perf_counter() - t0)
+                if sleep_time > 0:
+                    time.sleep(sleep_time)
+
+            if not self._cancel_playback.is_set():
+                self.logger.info(f"Moved joint {joint_name} to {target_angle:.1f}° ({num_steps} steps)")
         except Exception as e:
             self.logger.error(f"Error moving joint {joint_name}: {e}")
     

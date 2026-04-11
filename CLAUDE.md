@@ -243,7 +243,9 @@ SAFE_JOINT_RANGES = {
 
 核心必需变量（`.env` 文件）：
 - `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` — 语音基础设施
-- `DEEPSEEK_API_KEY` — LLM 对话
+- `LLM_API_KEY` — LLM 对话（fallback: `DEEPSEEK_API_KEY`）
+- `LLM_MODEL` — LLM 模型名（默认: `MiniMax-M2.7`，fallback: `DEEPSEEK_MODEL`）
+- `LLM_BASE_URL` — LLM API 地址（默认: `https://api.minimaxi.com/v1`，fallback: `DEEPSEEK_BASE_URL`）
 - `BAIDU_SPEECH_API_KEY`, `BAIDU_SPEECH_SECRET_KEY` — 语音识别/合成
 
 常用可选变量：
@@ -260,7 +262,8 @@ SAFE_JOINT_RANGES = {
 - `LELAMP_CORS_ORIGINS` — 自定义 CORS 允许的源列表（逗号分隔，开发环境内网 IP 通过此变量配置，不要硬编码）
 - `MODELSCOPE_API_KEY` — Qwen VL 视觉模型
 - `FEISHU_APP_ID`, `FEISHU_APP_SECRET`, `FEISHU_RECEIVE_ID` — 飞书通知集成
-- `BOCHA_API_KEY` — 博查 AI 搜索
+- `TAVILY_API_KEY` — Tavily 搜索
+- `LELAMP_VOLUME_LEVEL` (default: "100") — 系统音量 (0-100)，通过 Web 界面调节后自动保存到 .env
 - `LOG_LEVEL` (default: "INFO") — 日志级别
 - `LELAMP_LOG_TO_FILE` (default: false) — 启用文件日志
 - `LELAMP_VAD_MIN_SPEECH_DURATION` — VAD 最小语音时长（秒）

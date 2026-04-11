@@ -134,6 +134,12 @@ class MotorConfig:
     load_warning: float = 0.8               # 负载警告阈值
     load_stall: float = 0.95                # 堵转阈值
     position_error_deg: float = 5.0         # 位置误差阈值
+    # 平滑控制参数
+    motor_acceleration: int = 100           # 加速度 (0-254, 越小越柔和)
+    motor_max_acceleration: int = 150       # 最大加速度 (0-254)
+    motor_p_coefficient: int = 10           # PID P系数 (降低=更柔和)
+    motor_d_coefficient: int = 45           # PID D系数 (增加=更少超调)
+    interpolation_step_deg: float = 3.0     # move_joint 插值每帧最大角度
 
 
 @dataclass
@@ -181,10 +187,10 @@ def load_config() -> AppConfig:
         livekit_api_key=_get_env_str("LIVEKIT_API_KEY", ""),
         livekit_api_secret=_get_env_str("LIVEKIT_API_SECRET", ""),
 
-        # LLM
-        deepseek_model=_get_env_str("DEEPSEEK_MODEL", "deepseek-chat") or "deepseek-chat",
-        deepseek_base_url=_get_env_str("DEEPSEEK_BASE_URL", "https://api.deepseek.com") or "https://api.deepseek.com",
-        deepseek_api_key=_get_env_str("DEEPSEEK_API_KEY", "dummy"),
+        # LLM（优先读 LLM_*，fallback DEEPSEEK_*）
+        deepseek_model=_get_env_str("LLM_MODEL") or _get_env_str("DEEPSEEK_MODEL", "MiniMax-M2.7") or "MiniMax-M2.7",
+        deepseek_base_url=_get_env_str("LLM_BASE_URL") or _get_env_str("DEEPSEEK_BASE_URL", "https://api.minimaxi.com/v1") or "https://api.minimaxi.com/v1",
+        deepseek_api_key=_get_env_str("LLM_API_KEY") or _get_env_str("DEEPSEEK_API_KEY", "dummy"),
 
         # Vision
         modelscope_base_url=_get_env_str("MODELSCOPE_BASE_URL", "https://api-inference.modelscope.cn/v1") or "https://api-inference.modelscope.cn/v1",
@@ -231,10 +237,10 @@ def load_config_strict() -> AppConfig:
         livekit_api_key=_require_env("LIVEKIT_API_KEY"),
         livekit_api_secret=_require_env("LIVEKIT_API_SECRET"),
 
-        # LLM
-        deepseek_model=_get_env_str("DEEPSEEK_MODEL", "deepseek-chat") or "deepseek-chat",
-        deepseek_base_url=_get_env_str("DEEPSEEK_BASE_URL", "https://api.deepseek.com") or "https://api.deepseek.com",
-        deepseek_api_key=_require_env("DEEPSEEK_API_KEY"),
+        # LLM（优先读 LLM_*，fallback DEEPSEEK_*）
+        deepseek_model=_get_env_str("LLM_MODEL") or _get_env_str("DEEPSEEK_MODEL", "MiniMax-M2.7") or "MiniMax-M2.7",
+        deepseek_base_url=_get_env_str("LLM_BASE_URL") or _get_env_str("DEEPSEEK_BASE_URL", "https://api.minimaxi.com/v1") or "https://api.minimaxi.com/v1",
+        deepseek_api_key=_get_env_str("LLM_API_KEY") or _require_env("DEEPSEEK_API_KEY"),
 
         # Vision
         modelscope_base_url=_get_env_str("MODELSCOPE_BASE_URL", "https://api-inference.modelscope.cn/v1") or "https://api-inference.modelscope.cn/v1",
@@ -287,6 +293,12 @@ def load_motor_config() -> MotorConfig:
         load_warning=_get_env_float("LELAMP_MOTOR_LOAD_WARNING", 0.8),
         load_stall=_get_env_float("LELAMP_MOTOR_LOAD_STALL", 0.95),
         position_error_deg=_get_env_float("LELAMP_MOTOR_POSITION_ERROR_DEG", 5.0),
+        # 平滑控制参数
+        motor_acceleration=_get_env_int("LELAMP_MOTOR_ACCELERATION", 100),
+        motor_max_acceleration=_get_env_int("LELAMP_MOTOR_MAX_ACCELERATION", 150),
+        motor_p_coefficient=_get_env_int("LELAMP_MOTOR_P_COEFFICIENT", 10),
+        motor_d_coefficient=_get_env_int("LELAMP_MOTOR_D_COEFFICIENT", 45),
+        interpolation_step_deg=_get_env_float("LELAMP_MOTOR_INTERPOLATION_STEP_DEG", 3.0),
     )
 
 

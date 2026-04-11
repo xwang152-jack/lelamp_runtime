@@ -457,6 +457,16 @@ class SystemTools:
             return f"已将音量设置为 {volume_percent}%"
         except Exception as e:
             return f"Error controlling volume: {str(e)}"
+        finally:
+            # 无论成功失败，异步同步音量到 .env（供重启后使用）
+            try:
+                import asyncio
+                from lelamp.api.services.config_sync import config_sync_service
+                asyncio.ensure_future(
+                    config_sync_service.sync_setting("volume_level", volume_percent)
+                )
+            except Exception:
+                pass
 
     @function_tool()
     async def get_rate_limit_stats(
@@ -498,69 +508,32 @@ class SystemTools:
         if len(query) > self.SEARCH_QUERY_MAX_LENGTH:
             return f"搜索关键词过长，请限制在{self.SEARCH_QUERY_MAX_LENGTH}字以内"
 
-        api_key = os.getenv("BOCHA_API_KEY")
+        api_key = os.getenv("TAVILY_API_KEY")
         if not api_key:
-            return "未配置 BOCHA_API_KEY，无法进行联网搜索。"
+            return "未配置 TAVILY_API_KEY，无法进行联网搜索。"
 
-        self.logger.info(f"正在通过博查搜索: {query}")
-        url = "https://api.bochaai.com/v1/web-search"
-
-        # 导入 URL 验证函数
-        from lelamp.utils.url_validation import (
-            validate_external_url,
-            ALLOWED_API_DOMAINS,
-        )
-
-        # URL 安全验证
-        if not validate_external_url(url, ALLOWED_API_DOMAINS):
-            self.logger.error(f"搜索 API URL 验证失败: {url}")
-            return "搜索服务配置错误"
-
-        payload = json.dumps(
-            {"query": query.strip(), "freshness": "oneDay", "summary": True}
-        ).encode("utf-8")
-
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        }
+        self.logger.info(f"正在通过 Tavily 搜索: {query}")
 
         def _call() -> dict:
-            req = urllib.request.Request(
-                url=url, data=payload, headers=headers, method="POST"
-            )
-            with urllib.request.urlopen(req, timeout=15) as resp:
-                raw = resp.read()
-            return json.loads(raw.decode("utf-8"))
+            from tavily import TavilyClient
+            client = TavilyClient(api_key)
+            return client.search(query=query.strip(), search_depth="advanced")
 
         try:
             data = await asyncio.to_thread(_call)
-            if data.get("code") != 200:
-                return f"搜索失败: {data.get('msg')}"
 
-            data_content = data.get("data", {})
-            web_pages = data_content.get("webPages", {}).get("value", [])
-
-            if not web_pages:
+            results_list = data.get("results", [])
+            if not results_list:
                 return "没有找到相关的联网搜索结果。"
 
             results = []
-            for page in web_pages[:3]:  # 取前3个结果
-                title = page.get("name")
-                snippet = page.get("snippet")
+            for page in results_list[:3]:  # 取前3个结果
+                title = page.get("title")
+                snippet = page.get("content")
                 results.append(f"- {title}: {snippet}")
 
             return "以下是联网搜索到的信息：\n" + "\n".join(results)
 
-        except (urllib.error.HTTPError, urllib.error.URLError) as e:
-            self.logger.error(f"Network error during web search: {e}")
-            return "网络连接失败，请稍后重试"
-        except (socket.timeout, asyncio.TimeoutError) as e:
-            self.logger.error(f"Timeout during web search: {e}")
-            return "搜索请求超时，请稍后重试"
-        except (json.JSONDecodeError, KeyError) as e:
-            self.logger.error(f"Data parsing error during web search: {e}")
-            return "搜索结果解析失败"
         except Exception as e:
             self.logger.error(f"Unexpected error during web search: {e}")
             return f"联网搜索发生异常: {str(e)}"

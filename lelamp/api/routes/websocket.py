@@ -11,6 +11,7 @@ from datetime import datetime, UTC
 from openai import AsyncOpenAI
 from lelamp.config import load_config
 from lelamp.api.services.auth_service import AuthService
+from lelamp.api.services.config_sync import config_sync_service
 
 from lelamp.api.models.websocket import (
     WSPing,
@@ -592,6 +593,10 @@ async def execute_direct_command(action: str, params: dict, rgb_service, motors_
             if hasattr(agent, '_set_system_volume'):
                 import asyncio
                 _track_background_task(agent._set_system_volume(volume_percent))
+                # 同步音量到 .env 文件，重启后生效
+                _track_background_task(
+                    config_sync_service.sync_setting("volume_level", volume_percent)
+                )
                 return True
 
         # 摄像头激活命令

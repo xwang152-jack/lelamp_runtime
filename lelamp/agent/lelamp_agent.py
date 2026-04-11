@@ -409,7 +409,7 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
         self._motor_fault_notified: dict = {}  # motor_name -> HealthStatus（Task 4 用）
 
         # 标记需要设置音量（延迟到有事件循环时）
-        self._pending_volume_set = 100
+        self._pending_volume_set = int(os.getenv("LELAMP_VOLUME_LEVEL", "100"))
 
         # 用于运行 amixer 的用户名（可配置）
         self._amixer_user = os.getenv("LELAMP_AMIXER_USER", "pi")
@@ -440,9 +440,9 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
 
                 self._memory_store = MemoryStore()
                 self._memory_consolidator = MemoryConsolidator(
-                    base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
-                    api_key=os.getenv("DEEPSEEK_API_KEY", ""),
-                    model=os.getenv("DEEPSEEK_MODEL", "deepseek-chat"),
+                    base_url=os.getenv("LLM_BASE_URL") or os.getenv("DEEPSEEK_BASE_URL", "https://api.minimaxi.com/v1"),
+                    api_key=os.getenv("LLM_API_KEY") or os.getenv("DEEPSEEK_API_KEY", ""),
+                    model=os.getenv("LLM_MODEL") or os.getenv("DEEPSEEK_MODEL", "MiniMax-M2.7"),
                     memory_store=self._memory_store,
                 )
                 self._memory_tools = MemoryTools(
@@ -690,6 +690,15 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
 
         except Exception as e:
             logger.warning(f"Failed to set system volume: {e}")
+        finally:
+            # 同步音量到 .env（供重启后使用）
+            try:
+                from lelamp.api.services.config_sync import config_sync_service
+                asyncio.ensure_future(
+                    config_sync_service.sync_setting("volume_level", volume_percent)
+                )
+            except Exception:
+                pass
 
     # ==================== 记忆系统方法 ====================
 

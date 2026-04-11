@@ -54,6 +54,9 @@ class ConfigSyncService:
         "greeting_text": "LELAMP_GREETING_TEXT",
         "noise_cancellation": "LELAMP_NOISE_CANCELLATION",
         "motion_cooldown_s": "LELAMP_MOTION_COOLDOWN_S",
+
+        # Audio
+        "volume_level": "LELAMP_VOLUME_LEVEL",
     }
 
     def __init__(self, env_file_path: Optional[Path] = None):
@@ -96,7 +99,7 @@ class ConfigSyncService:
             "language": settings.language if settings else "zh",
             "notifications_enabled": settings.notifications_enabled if settings else True,
             "brightness_level": settings.brightness_level if settings else 25,
-            "volume_level": settings.volume_level if settings else 50,
+            "volume_level": settings.volume_level if settings else int(os.getenv("LELAMP_VOLUME_LEVEL", "50")),
 
             # LLM
             "deepseek_model": settings.deepseek_model if settings and settings.deepseek_model else os.getenv("DEEPSEEK_MODEL", "deepseek-chat"),
