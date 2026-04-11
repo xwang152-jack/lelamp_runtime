@@ -140,6 +140,7 @@ class MotorConfig:
     motor_p_coefficient: int = 10           # PID P系数 (降低=更柔和)
     motor_d_coefficient: int = 45           # PID D系数 (增加=更少超调)
     interpolation_step_deg: float = 3.0     # move_joint 插值每帧最大角度
+    playback_speed: float = 0.5             # 录制回放速度倍率（1.0=原速，0.5=半速）
 
 
 @dataclass
@@ -299,6 +300,7 @@ def load_motor_config() -> MotorConfig:
         motor_p_coefficient=_get_env_int("LELAMP_MOTOR_P_COEFFICIENT", 10),
         motor_d_coefficient=_get_env_int("LELAMP_MOTOR_D_COEFFICIENT", 45),
         interpolation_step_deg=_get_env_float("LELAMP_MOTOR_INTERPOLATION_STEP_DEG", 3.0),
+        playback_speed=_get_env_float("LELAMP_MOTOR_PLAYBACK_SPEED", 0.5),
     )
 
 

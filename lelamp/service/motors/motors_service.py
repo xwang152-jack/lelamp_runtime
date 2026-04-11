@@ -326,7 +326,8 @@ class MotorsService(ServiceBase):
                         return
 
                 # Use time.sleep instead of busy_wait to avoid blocking other threads
-                sleep_time = 1.0 / self.fps - (time.perf_counter() - t0)
+                playback_fps = self.fps * (self.motor_config.playback_speed if self.motor_config else 1.0)
+                sleep_time = 1.0 / playback_fps - (time.perf_counter() - t0)
                 if sleep_time > 0:
                     time.sleep(sleep_time)
 
