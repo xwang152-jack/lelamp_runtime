@@ -196,7 +196,15 @@ class BaiduShortSpeechSTT(stt.STT):
 
         err_no = data.get("err_no", 0)
         if err_no != 0:
-            retryable = err_no in {3302, 3307, 3308, 3309, 3310, 3311, 3312}
+            # 3307 = 识别错误（音频太短/质量差），不重试，返回空结果让 LiveKit 继续等待
+            if err_no == 3307:
+                logger.debug(f"Baidu STT err_no=3307 (recognition error), returning empty")
+                return SpeechEvent(
+                    type=SpeechEventType.FINAL_TRANSCRIPT,
+                    request_id=str(data.get("sn") or request_id),
+                    alternatives=[SpeechData(language="zh-CN", text="", confidence=0.0)],
+                )
+            retryable = err_no in {3302, 3308, 3309, 3310, 3311, 3312}
             raise APIError(
                 f"Baidu STT err_no={err_no}",
                 body=data,

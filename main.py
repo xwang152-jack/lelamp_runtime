@@ -84,6 +84,9 @@ def _build_vad() -> object:
     activation_threshold = _get_float_env("LELAMP_VAD_ACTIVATION_THRESHOLD")
     if activation_threshold is not None:
         kwargs["activation_threshold"] = activation_threshold
+    vad_sample_rate = _get_float_env("LELAMP_VAD_SAMPLE_RATE")
+    if vad_sample_rate is not None:
+        kwargs["sample_rate"] = int(vad_sample_rate)
 
     try:
         if kwargs:
