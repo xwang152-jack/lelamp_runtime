@@ -57,7 +57,10 @@ SessionLocal = sessionmaker(
 Base = declarative_base()
 
 
-def enable_wal_mode():
+_wal_checkpoint_task = None
+
+
+def enable_wal_mode() -> None:
     """启用 SQLite WAL 模式（Write-Ahead Logging）
 
     WAL 模式提供更好的并发性能：
@@ -78,10 +81,45 @@ def enable_wal_mode():
             conn.execute(text("PRAGMA cache_size=-64000"))  # 64MB
             # 设置临时存储为内存
             conn.execute(text("PRAGMA temp_store=MEMORY"))
+            # WAL 自动 checkpoint 阈值：WAL 文件超过 1000 页时自动 checkpoint
+            conn.execute(text("PRAGMA wal_autocheckpoint=1000"))
             conn.commit()
         logger.info("SQLite WAL mode enabled")
     except Exception as e:
         logger.warning(f"Failed to enable WAL mode: {e}")
+
+
+async def start_periodic_wal_checkpoint(interval_s: int = 300) -> None:
+    """定期执行 WAL checkpoint，防止 WAL 文件过大导致数据丢失风险。
+
+    服务被 systemctl restart 强制终止时，WAL 中未 checkpoint 的数据
+    可能丢失。定期 checkpoint 将 WAL 刷写到主数据库文件。
+
+    Args:
+        interval_s: checkpoint 间隔（秒），默认 5 分钟
+    """
+    global _wal_checkpoint_task
+
+    if not DATABASE_URL.startswith("sqlite"):
+        return
+
+    import asyncio
+
+    async def _checkpoint_loop():
+        while True:
+            await asyncio.sleep(interval_s)
+            try:
+                with engine.connect() as conn:
+                    result = conn.execute(text("PRAGMA wal_checkpoint(TRUNCATE)"))
+                    status = result.fetchone()
+                    if status:
+                        logger.debug(f"WAL checkpoint: busy={status[0]}, log={status[1]}, checkpointed={status[2]}")
+                    conn.commit()
+            except Exception as e:
+                logger.warning(f"Periodic WAL checkpoint failed: {e}")
+
+    _wal_checkpoint_task = asyncio.create_task(_checkpoint_loop())
+    logger.info(f"Periodic WAL checkpoint started (every {interval_s}s)")
 
 
 def get_db() -> Generator[Session, None, None]:
