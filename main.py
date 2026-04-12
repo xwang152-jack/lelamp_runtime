@@ -216,6 +216,19 @@ async def entrypoint(ctx: JobContext):
             agent.handle_data_message(data_packet.data, data_packet.participant)
         )
 
+    # 监听不可恢复错误，避免 session 直接崩溃
+    @session.on("error")
+    def on_session_error(ev):
+        error = ev.error
+        if not error.recoverable:
+            logger.warning(f"不可恢复的 {ev.source} 错误: {error}")
+            try:
+                agent._track_task(
+                    session.say("抱歉，我遇到了一点问题，请再试一次吧。"),
+                )
+            except Exception:
+                pass
+
     try:
         await session.start(
             agent=agent,
