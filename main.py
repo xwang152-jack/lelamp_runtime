@@ -190,6 +190,7 @@ async def entrypoint(ctx: JobContext):
             per=config.baidu_tts_per,
             state_cb=_on_state,
         ),
+        preemptive_generation=True,  # 提前发起 LLM+TTS，降低响应延迟
         # 使用新的 turn_handling API (LiveKit 1.5+)
         # adaptive: ML 模型区分真正的打断 vs 假阳性（咳嗽、背景音等）
         # dynamic: 自适应沉默阈值，根据对话节奏动态调整
@@ -220,9 +221,21 @@ async def entrypoint(ctx: JobContext):
             room=ctx.room,
             **start_kwargs,
         )
+        # 预热 TTS 缓存：greeting 同步预热（确保播放时缓存可用），其余后台预热
         if config.greeting_text:
-            # greeting 期间禁用打断
-            await session.say(config.greeting_text, allow_interruptions=False)
+            await agent._preheat_greeting(config.greeting_text)
+        remaining = agent._get_fixed_phrases()
+        if config.greeting_text and config.greeting_text in remaining:
+            remaining.remove(config.greeting_text)
+        agent._track_task(agent._preheat_tts_phrases(remaining))
+        if config.greeting_text:
+            cached = agent._tts_cache.get(config.greeting_text)
+
+            async def _greeting_audio():
+                for frame in cached:
+                    yield frame
+
+            await session.say(config.greeting_text, audio=_greeting_audio(), allow_interruptions=False)
     except Exception as e:
         logger.error(f"Session error: {e}")
     finally:

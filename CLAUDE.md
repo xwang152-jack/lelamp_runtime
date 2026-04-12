@@ -141,12 +141,17 @@ web/                       # Vue 3 灯控面板（构建后由 FastAPI 托管，
 **LiveKit 1.5+ turn_handling API** — `AgentSession` 使用 `turn_handling` 参数配置打断和结束点检测：
 ```python
 session = AgentSession(
+    preemptive_generation=True,  # 用户说话过程中提前发起 LLM+TTS，降低响应延迟
     turn_handling={
         "interruption": {"mode": "adaptive"},  # ML 区分真正打断 vs 假阳性
         "endpointing": {"mode": "dynamic"},    # 自适应沉默阈值
     },
 )
 ```
+
+**Preemptive Generation** — `preemptive_generation=True` 使 Agent 在 STT 产出中间 transcript 后立即发起 LLM+TTS，不等 end-of-turn。用户继续说话时预生成结果被丢弃，增加少量 token 消耗。
+
+**TTS 固定短语缓存** — `LeLamp` agent 内部维护 `_tts_cache: dict[str, list[rtc.AudioFrame]]`，对 greeting、手势确认、电机故障提示等固定文本做 synthesize-once 缓存。greeting 启动时同步预热确保首次播放命中，其余短语后台预热。命中时通过 `session.say(text, audio=frames)` 绕过百度 TTS API。所有缓存读写必须在 asyncio 事件循环线程中完成。
 单次 `session.say()` 使用 `allow_interruptions=False/True` 控制打断行为。
 
 **配置管理** — 所有配置通过 `lelamp/config.py` 的冻结 dataclass 加载，运行时不可变。提供两个入口：`load_config()`（宽容模式，API 使用）和 `load_config_strict()`（严格模式，Agent 使用，强制校验关键密钥）。`main.py` 不再重复定义配置加载逻辑。

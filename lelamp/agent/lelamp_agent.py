@@ -418,6 +418,7 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
 
         self._event_loop: Optional[asyncio.AbstractEventLoop] = None
         self._motor_fault_notified: dict = {}  # motor_name -> HealthStatus（Task 4 用）
+        self._tts_cache: dict[str, list] = {}  # text -> list[rtc.AudioFrame]
 
         # 标记需要设置音量（延迟到有事件循环时）
         self._pending_volume_set = int(os.getenv("LELAMP_VOLUME_LEVEL", "100"))
@@ -516,12 +517,67 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
             await self._set_system_volume(self._pending_volume_set)
             delattr(self, "_pending_volume_set")
 
+    def _get_fixed_phrases(self, *, include_greeting: bool = False, greeting_text: str = "") -> list[str]:
+        """返回需要预热的固定短语。
+
+        Args:
+            include_greeting: 是否包含问候语
+            greeting_text: 问候语文本（仅 include_greeting=True 时使用）
+        """
+        phrases: list[str] = []
+        if include_greeting and greeting_text:
+            phrases.append(greeting_text)
+        # 手势确认（从 _GESTURE_NAMES 派生，避免重复定义）
+        gesture_names = [
+            "点赞", "踩", "耶", "挥手", "握拳", "指向", "OK", "张开手掌",
+        ]
+        for name in gesture_names:
+            phrases.append(f"你是在比{name}吗？")
+        # 电机故障提示
+        phrases.append("我今天有点不舒服，动作可能不太灵活")
+        phrases.append("我的关节好像有点问题，先凑合着用吧")
+        return phrases
+
+    async def _preheat_tts_phrases(self, texts: list[str]) -> None:
+        """预热指定短语的 TTS 缓存。必须在 asyncio 事件循环线程中调用。"""
+        if not hasattr(self, "session") or self.session is None:
+            return
+        tts = self.session.tts
+        if tts is None:
+            return
+
+        for text in texts:
+            if text in self._tts_cache:
+                continue
+            try:
+                stream = tts.synthesize(text)
+                frames: list = []
+                async for event in stream:
+                    frames.append(event.frame)
+                if frames:
+                    self._tts_cache[text] = frames
+                    logger.debug(f"TTS cache preheated: {text[:20]}...")
+            except Exception as e:
+                logger.warning(f"TTS cache preheat failed for '{text[:20]}...': {e}")
+
+    async def _preheat_greeting(self, greeting_text: str) -> None:
+        """预热问候语 TTS（阻塞等待，确保 greeting 播放时缓存可用）"""
+        await self._preheat_tts_phrases([greeting_text])
+
     async def _speak_proactively(self, text: str) -> None:
         """从异步上下文主动发声（手势确认、故障提示等）"""
         try:
             if hasattr(self, "session") and self.session is not None:
-                # 使用 VAD 打断模式允许用户打断（与 AgentSession 的 adaptive 模式配合）
-                await self.session.say(text, allow_interruptions=True)
+                cached = self._tts_cache.get(text)
+                if cached:
+
+                    async def _audio_gen():
+                        for frame in cached:
+                            yield frame
+
+                    await self.session.say(text, audio=_audio_gen(), allow_interruptions=True)
+                else:
+                    await self.session.say(text, allow_interruptions=True)
             else:
                 logger.info(f"[speak_proactively] session not ready: {text}")
         except Exception as e:
