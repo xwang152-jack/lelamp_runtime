@@ -588,6 +588,10 @@ You are LeLamp, a sentient robot lamp. You are warm, gentle, and genuinely carin
         from lelamp.service.motors.health_monitor import HealthStatus
         from lelamp.agent.states import StateColors
 
+        # agent 初始化完成前可能收到回调，防御性检查
+        if not hasattr(self, '_motor_fault_notified'):
+            return
+
         if new_status == HealthStatus.HEALTHY:
             # 故障恢复：清除记录，检查是否所有故障舵机都已恢复
             self._motor_fault_notified.pop(motor_name, None)

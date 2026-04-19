@@ -121,7 +121,7 @@ class MotorHealthMonitor:
                 load_raw = self.bus.read("Present_Load", motor_name)
                 if load_raw is not None:
                     # 负载值低 10 位为负载量（0-1023），第 10 位为方向位（Dynamixel 兼容协议）
-                    health_data.load = (abs(float(load_raw)) & 0x3FF) / 1023.0
+                    health_data.load = (abs(int(float(load_raw))) & 0x3FF) / 1023.0
             except Exception as e:
                 self.logger.debug(f"Cannot read load for {motor_name}: {e}")
 
